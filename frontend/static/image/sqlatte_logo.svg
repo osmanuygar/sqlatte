@@ -1,0 +1,83 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cupBrown" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#A67C52;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8B6F47;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Cup Body -->
+  <path d="M 60 70 L 68 145 Q 68 152 75 152 L 125 152 Q 132 152 132 145 L 140 70 Z" 
+        fill="url(#cupBrown)"/>
+  
+  <!-- Cup Rim -->
+  <ellipse cx="100" cy="70" rx="40" ry="9" fill="#D4A574"/>
+  <ellipse cx="100" cy="70" rx="37" ry="7" fill="url(#cupBrown)"/>
+  
+  <!-- Handle (subtle) -->
+  <path d="M 140 85 Q 155 87 157 105 Q 158 123 152 133 Q 150 137 140 135" 
+        fill="none" stroke="#8B6F47" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M 140 85 Q 153 87 155 105 Q 156 123 151 131 Q 149 134 140 135" 
+        fill="none" stroke="#A67C52" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Text "sqlatte" - LOWERCASE -->
+  <text x="100" y="108" text-anchor="middle" 
+        font-family="'Courier New', monospace" font-weight="bold" font-size="19" fill="white">
+    sqlatte
+  </text>
+  
+  <!-- Neural Network - PROMINENT -->
+  <g opacity="0.85">
+    <!-- Layer 1 - Input nodes -->
+    <circle cx="70" cy="45" r="4" fill="#D4A574">
+      <animate attributeName="r" values="4;5;4" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="85" cy="35" r="4" fill="#D4A574">
+      <animate attributeName="r" values="4;5;4" dur="2s" begin="0.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" begin="0.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="100" cy="30" r="4.5" fill="#D4A574">
+      <animate attributeName="r" values="4.5;5.5;4.5" dur="2s" begin="0.4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" begin="0.4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="115" cy="35" r="4" fill="#D4A574">
+      <animate attributeName="r" values="4;5;4" dur="2s" begin="0.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" begin="0.6s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="130" cy="45" r="4" fill="#D4A574">
+      <animate attributeName="r" values="4;5;4" dur="2s" begin="0.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" begin="0.8s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- Layer 2 - Hidden nodes -->
+    <circle cx="80" cy="20" r="3.5" fill="#D4A574">
+      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="2s" begin="0.3s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="100" cy="15" r="3.5" fill="#D4A574">
+      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="2s" begin="0.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="120" cy="20" r="3.5" fill="#D4A574">
+      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="2s" begin="0.7s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- Connections -->
+    <line x1="70" y1="45" x2="100" y2="30" stroke="#D4A574" stroke-width="1.5" opacity="0.5">
+      <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" repeatCount="indefinite"/>
+    </line>
+    <line x1="85" y1="35" x2="100" y2="30" stroke="#D4A574" stroke-width="1.5" opacity="0.5">
+      <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" begin="0.5s" repeatCount="indefinite"/>
+    </line>
+    <line x1="115" y1="35" x2="100" y2="30" stroke="#D4A574" stroke-width="1.5" opacity="0.5">
+      <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" begin="1s" repeatCount="indefinite"/>
+    </line>
+    <line x1="130" y1="45" x2="100" y2="30" stroke="#D4A574" stroke-width="1.5" opacity="0.5">
+      <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" begin="1.5s" repeatCount="indefinite"/>
+    </line>
+    
+    <!-- Upper layer connections -->
+    <line x1="100" y1="30" x2="80" y2="20" stroke="#D4A574" stroke-width="1.5" opacity="0.4"/>
+    <line x1="100" y1="30" x2="100" y2="15" stroke="#D4A574" stroke-width="1.5" opacity="0.4"/>
+    <line x1="100" y1="30" x2="120" y2="20" stroke="#D4A574" stroke-width="1.5" opacity="0.4"/>
+  </g>
+</svg>

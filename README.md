@@ -1,6 +1,9 @@
 # SQLatte ☕
-AI-powered natural language to SQL converter. Modern web app to convert natural language to SQL queries using large language models (LLMs) like Anthropic and OpenAI. Supports multiple databases including Postgres, MySQL, Trino, and SQLite.
 
+AI-powered natural language to SQL converter. Modern web app to convert natural language to SQL queries using large language models (LLMs) like Anthropic and OpenAI. Supports multiple databases including Postgres, MySQL, Trino, and SQLite.
+<p align="left">
+  <img src="frontend/static/image/sqlatte_logo.svg" width="150" alt="sqlatte logo">
+</p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/release/python-380/)
