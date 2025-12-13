@@ -1,0 +1,7 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+anthropic>=0.27.0
+trino==0.328.0
+pydantic==2.5.0
+pyyaml==6.0.1
+python-dotenv==1.0.0

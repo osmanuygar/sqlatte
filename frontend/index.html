@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLatte ☕ - Natural Language to SQL</title>
+    
+    <!-- SQLatte Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <!-- Optional: Google Fonts for better typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>SQLatte</h1>
+            <div class="table-selector">
+                <label>Tables:</label>
+                <select id="tableSelect" multiple>
+                    <option value="">Loading...</option>
+                </select>
+                <small>Ctrl+Click for multiple</small>
+            </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="chat-area" id="chatArea">
+            <div class="empty-state">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <h3>Welcome to SQLatte!</h3>
+                <p>Ask me anything! I can help you query data or just chat.</p>
+                <p class="text-xs opacity-70 mt-2">
+                    Try: "Hello!" or select tables above to query your data
+                </p>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <textarea 
+                id="queryInput" 
+                placeholder="Ask a question... (e.g., 'Show me top 10 customers' or 'Hello!')"
+                rows="2"
+            ></textarea>
+            <button id="sendBtn" onclick="sendQuery()">
+                <span id="btnText">Send</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- SQLatte JavaScript -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

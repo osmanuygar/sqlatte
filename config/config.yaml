@@ -1,0 +1,62 @@
+# SQLatte Configuration
+# Simple YAML config - no .env file needed!
+# You can use environment variables with ${VAR:default} syntax if you want
+
+# Application Settings
+app:
+  name: "SQLatte"
+  version: "0.1.0"
+  host: "0.0.0.0"
+  port: 8000
+
+# LLM Provider Configuration
+llm:
+  provider: "anthropic"  # Which LLM to use
+  
+  # Anthropic Claude
+  anthropic:
+    # Option 1: Direct API key (simple)
+    api_key: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    
+    # Option 2: From environment variable (secure)
+    # api_key: "${ANTHROPIC_API_KEY}"
+    
+    model: "claude-sonnet-4-20250514"
+    max_tokens: 1000
+
+# Database Provider Configuration
+database:
+  provider: "trino"  # Which database to use
+  
+  # Trino Configuration
+  trino:
+    # Direct values (simple)
+    host: "trino.example.com"
+    port: 443
+    user: "db_user"
+    password: "secure_password"
+    catalog: "hive"
+    schema: "default"
+    http_scheme: "https"
+    
+    # Or use environment variables (secure)
+    # host: "${TRINO_HOST}"
+    # port: "${TRINO_PORT:8443}"
+
+# CORS Settings
+cors:
+  allow_origins: ["*"]
+  allow_credentials: true
+  allow_methods: ["*"]
+  allow_headers: ["*"]
+
+# Query Settings
+query:
+  default_limit: 100
+  max_limit: 1000
+  timeout: 300
+
+# Tips:
+# 1. Edit values directly in this file (easiest)
+# 2. Or use ${VAR} for environment variables
+# 3. No .env file needed unless you want to use env vars

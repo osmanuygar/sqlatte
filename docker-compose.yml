@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  querycraft:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Anthropic
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      
+      # Trino
+      - TRINO_HOST=${TRINO_HOST}
+      - TRINO_PORT=${TRINO_PORT}
+      - TRINO_USER=${TRINO_USER}
+      - TRINO_PASSWORD=${TRINO_PASSWORD}
+      - TRINO_CATALOG=${TRINO_CATALOG}
+      - TRINO_SCHEMA=${TRINO_SCHEMA}
+      - TRINO_HTTP_SCHEME=${TRINO_HTTP_SCHEME}
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config  # Mount config for easy updates
