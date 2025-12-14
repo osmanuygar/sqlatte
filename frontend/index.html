@@ -4,57 +4,207 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SQLatte ☕ - Natural Language to SQL</title>
-    
-    <!-- SQLatte Styles -->
-    <link rel="stylesheet" href="/static/css/style.css">
-    
-    <!-- Optional: Google Fonts for better typography -->
+
+    <!-- Landing Page Styles -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .landing-container {
+            max-width: 600px;
+            text-align: center;
+        }
+
+        .logo-large {
+            width: 150px;
+            height: 150px;
+            margin: 0 auto 30px;
+            filter: drop-shadow(0 4px 12px rgba(212, 165, 116, 0.3));
+        }
+
+        h1 {
+            font-size: 48px;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 20px;
+            color: #a0a0a0;
+            margin-bottom: 40px;
+        }
+
+        .cta-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 32px;
+            background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(212, 165, 116, 0.4);
+        }
+
+        .cta-button:active {
+            transform: translateY(-1px);
+        }
+
+        .cta-button svg {
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+        }
+
+        .features {
+            margin-top: 50px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+        }
+
+        .feature {
+            background: rgba(212, 165, 116, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(212, 165, 116, 0.2);
+        }
+
+        .feature-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .feature h3 {
+            font-size: 16px;
+            color: #D4A574;
+            margin-bottom: 5px;
+        }
+
+        .feature p {
+            font-size: 13px;
+            color: #a0a0a0;
+        }
+
+        .hint {
+            margin-top: 30px;
+            font-size: 14px;
+            color: #707070;
+        }
+
+        .hint-arrow {
+            display: inline-block;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(5px); }
+        }
+    </style>
+
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>SQLatte</h1>
-            <div class="table-selector">
-                <label>Tables:</label>
-                <select id="tableSelect" multiple>
-                    <option value="">Loading...</option>
-                </select>
-                <small>Ctrl+Click for multiple</small>
+    <div class="landing-container">
+        <img src="/static/image/sqlatte_logo.svg" alt="SQLatte Logo" class="logo-large">
+
+        <h1>SQLatte</h1>
+        <p class="subtitle">Natural Language to SQL</p>
+
+        <button class="cta-button" onclick="openAssistantWidget()">
+            <svg width="24" height="24" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="cta-cup" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color:#A67C52;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#8B6F47;stop-opacity:1" />
+                    </linearGradient>
+                </defs>
+                <path d="M 60 70 L 68 145 Q 68 152 75 152 L 125 152 Q 132 152 132 145 L 140 70 Z"
+                      fill="url(#cta-cup)"/>
+                <ellipse cx="100" cy="70" rx="40" ry="9" fill="#D4A574"/>
+            </svg>
+            <span>Open Assistant</span>
+        </button>
+
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">🤖</div>
+                <h3>AI-Powered</h3>
+                <p>Natural language queries</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🗄️</div>
+                <h3>Multi-DB</h3>
+                <p>Trino, Postgres & more</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">⚡</div>
+                <h3>Fast</h3>
+                <p>Instant SQL generation</p>
             </div>
         </div>
 
-        <!-- Chat Area -->
-        <div class="chat-area" id="chatArea">
-            <div class="empty-state">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                </svg>
-                <h3>Welcome to SQLatte!</h3>
-                <p>Ask me anything! I can help you query data or just chat.</p>
-                <p class="text-xs opacity-70 mt-2">
-                    Try: "Hello!" or select tables above to query your data
-                </p>
-            </div>
-        </div>
-
-        <!-- Input Area -->
-        <div class="input-area">
-            <textarea 
-                id="queryInput" 
-                placeholder="Ask a question... (e.g., 'Show me top 10 customers' or 'Hello!')"
-                rows="2"
-            ></textarea>
-            <button id="sendBtn" onclick="sendQuery()">
-                <span id="btnText">Send</span>
-            </button>
-        </div>
+        <p class="hint">
+            <span class="hint-arrow">👉</span> Click the button above or the ☕ badge in the corner
+        </p>
     </div>
 
-    <!-- SQLatte JavaScript -->
-    <script src="/static/js/app.js"></script>
+    <!-- SQLatte Widget (Badge) - TAM EKRAN MODE -->
+    <script src="/static/js/sqlatte-badge.js"></script>
+
+    <!-- Widget Control -->
+    <script>
+        function openAssistantWidget() {
+            if (window.SQLatteWidget) {
+                window.SQLatteWidget.open();
+            } else {
+                alert('Widget is loading... Please try again in a moment.');
+            }
+        }
+
+        // Configure widget to open fullscreen
+        window.addEventListener('load', () => {
+            if (window.SQLatteWidget) {
+                // Fullscreen mode configuration
+                window.SQLatteWidget.configure({
+                    position: 'bottom-right',
+                    fullscreen: true,  // TAM EKRAN MODE
+                    title: 'SQLatte Assistant ☕',
+                    placeholder: 'Ask a question... (e.g., "Show me top 10 customers")'
+                });
+
+                console.log('✅ SQLatte Widget loaded successfully!');
+                console.log('🎯 Widget will open in FULLSCREEN mode');
+            }
+        });
+    </script>
 </body>
 </html>

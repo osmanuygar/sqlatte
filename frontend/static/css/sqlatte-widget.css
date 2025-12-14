@@ -89,31 +89,56 @@
     }
 }
 
-/* Modal */
+/* Modal - FULLSCREEN MODE SUPPORT */
 .sqlatte-modal {
-    position: absolute;
-    bottom: 80px;
-    right: 0;
-    width: 420px;
-    max-width: 90vw;
-    height: 600px;
-    max-height: 80vh;
+    position: fixed;
     background: #1a1a1a;
-    border-radius: 16px;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(212, 165, 116, 0.2);
     display: flex;
     flex-direction: column;
     opacity: 0;
-    transform: scale(0.9) translateY(20px);
     pointer-events: none;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
+    z-index: 2147483647; /* ← MAX z-index for modal */
+}
+
+/* Default: Small modal (bottom-right) - DISABLED when fullscreen */
+.sqlatte-modal:not(.sqlatte-modal-fullscreen) {
+    bottom: 80px;
+    right: 20px;
+    width: 600px;
+    max-width: 90vw;
+    height: 600px;
+    max-height: 80vh;
+    border-radius: 16px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(212, 165, 116, 0.2);
+    transform: scale(0.9) translateY(20px);
+}
+
+/* FULLSCREEN MODE - Tam Ekran */
+.sqlatte-modal.sqlatte-modal-fullscreen {
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 .sqlatte-modal.sqlatte-modal-open {
     opacity: 1;
-    transform: scale(1) translateY(0);
     pointer-events: all;
+}
+
+.sqlatte-modal.sqlatte-modal-open:not(.sqlatte-modal-fullscreen) {
+    transform: scale(1) translateY(0);
 }
 
 /* Modal Header */
@@ -185,7 +210,7 @@
 
 .sqlatte-modal-toolbar select {
     flex: 1;
-    min-width: 150px;
+    min-width: 200px;  /* ← Min genişlik artırıldı (150px → 200px) */
     padding: 6px 10px;
     background: #1a1a1a;
     border: 1px solid #333;
@@ -311,7 +336,7 @@
 }
 
 .sqlatte-message-content {
-    max-width: 75%;
+    max-width: 80%;  /* ← Max genişlik artırıldı (75% → 80%) */
     background: #242424;
     padding: 10px 14px;
     border-radius: 10px;
@@ -362,7 +387,7 @@
     border-radius: 4px;
 }
 
-/* Results Table */
+/* Results Table - FULLSCREEN OPTIMIZED */
 .sqlatte-results-table {
     width: 100%;
     margin: 12px 0;
@@ -370,22 +395,66 @@
     background: #1a1a1a;
     border-radius: 6px;
     overflow: hidden;
-    font-size: 11px;
+    font-size: 12px;
+    display: block;  /* ← block yaparak scroll enable ettik */
+    max-height: 400px;  /* ← Max yükseklik */
+    overflow-y: auto;  /* ← Dikey scroll */
+}
+
+.sqlatte-results-table thead {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    position: sticky;  /* ← Sticky header */
+    top: 0;
+    z-index: 10;
+    background: #242424;
+}
+
+.sqlatte-results-table tbody {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+}
+
+.sqlatte-results-table::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.sqlatte-results-table::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.sqlatte-results-table::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+}
+
+.sqlatte-results-table::-webkit-scrollbar-thumb:hover {
+    background: #444;
 }
 
 .sqlatte-results-table th {
-    padding: 8px 10px;
+    padding: 10px 12px;
     text-align: left;
     font-weight: 600;
     color: #D4A574;
     background: #242424;
     border-bottom: 2px solid #333;
+    white-space: nowrap;
 }
 
 .sqlatte-results-table td {
-    padding: 6px 10px;
+    padding: 8px 12px;
     border-bottom: 1px solid #333;
     color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sqlatte-results-table tbody tr:hover {
+    background: rgba(212, 165, 116, 0.05);
 }
 
 .sqlatte-results-table tr:last-child td {
@@ -470,7 +539,7 @@
 }
 
 /* Responsive */
-@media (max-width: 480px) {
+@media (max-width: 768px) {
     .sqlatte-modal {
         width: calc(100vw - 20px);
         height: calc(100vh - 100px);
@@ -484,6 +553,10 @@
         bottom: 10px;
         right: 10px;
         left: auto;
+    }
+
+    .sqlatte-modal-toolbar select {
+        min-width: 150px;
     }
 }
 

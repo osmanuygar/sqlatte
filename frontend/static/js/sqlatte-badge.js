@@ -20,7 +20,8 @@
         title: 'SQLatte Assistant ☕',
         placeholder: "Ask a question... (e.g., 'Hello!' or 'Show me customers')",
         customStyle: null,
-        openByDefault: false
+        openByDefault: false,
+        fullscreen: false  // ← FULLSCREEN MODE FLAG
     };
 
     // State
@@ -70,14 +71,21 @@
             <span class="sqlatte-badge-pulse"></span>
         `;
 
-        const modal = createModal();
-
+        // Badge'i widget'a ekle
         widget.appendChild(badge);
-        widget.appendChild(modal);
+
+        // Widget'i body'ye ekle (sadece badge)
+        document.body.appendChild(widget);
+        console.log('✅ Badge widget added to body');
+
+        // Modal'ı DOĞRUDAN body'ye ekle (widget'ın DIŞINDA)
+        const modal = createModal();
+        document.body.appendChild(modal);
+        console.log('✅ Modal added to body (outside widget)');
+        console.log('🔍 Modal ID:', modal.id);
+        console.log('🔍 Modal in DOM:', document.getElementById('sqlatte-modal') !== null);
 
         injectStyles();
-
-        document.body.appendChild(widget);
 
         setTimeout(() => {
             widget.classList.add('sqlatte-widget-visible');
@@ -168,12 +176,37 @@
     function openModal() {
         const modal = document.getElementById('sqlatte-modal');
         if (modal) {
+            console.log('🔍 Modal element found:', modal);
+            console.log('🔍 Modal parent:', modal.parentElement);
+            console.log('🔍 Fullscreen mode:', BADGE_CONFIG.fullscreen);
+
+            // FULLSCREEN MODE: Class'ları aynı anda ekle
+            if (BADGE_CONFIG.fullscreen) {
+                modal.classList.add('sqlatte-modal-fullscreen');
+                console.log('🎯 Opening modal in FULLSCREEN mode');
+                console.log('🎯 Modal classes:', modal.className);
+            }
+
             modal.classList.add('sqlatte-modal-open');
             isModalOpen = true;
+
+            // Check position after classes added
+            setTimeout(() => {
+                const rect = modal.getBoundingClientRect();
+                console.log('📏 Modal position:', {
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: rect.height
+                });
+            }, 100);
+
             setTimeout(() => {
                 const input = document.getElementById('sqlatte-input');
                 if (input) input.focus();
             }, 300);
+        } else {
+            console.error('❌ Modal element NOT found!');
         }
     }
 
@@ -181,6 +214,7 @@
         const modal = document.getElementById('sqlatte-modal');
         if (modal) {
             modal.classList.remove('sqlatte-modal-open');
+            modal.classList.remove('sqlatte-modal-fullscreen');
             isModalOpen = false;
         }
     }
@@ -424,8 +458,14 @@
         handleTableChange: handleTableChange,
         configure: function(options) {
             Object.assign(BADGE_CONFIG, options);
+
+            // Remove both widget and modal
             const widget = document.getElementById('sqlatte-widget');
+            const modal = document.getElementById('sqlatte-modal');
+
             if (widget) widget.remove();
+            if (modal) modal.remove();
+
             setTimeout(createWidget, 100);
         },
         getConfig: function() {
