@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLatte Widget Demo ☕</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: #e0e0e0;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: #a0a0a0;
+        }
+
+        .demo-section {
+            background: #242424;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .demo-section h2 {
+            color: #D4A574;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+
+        .demo-section p {
+            line-height: 1.8;
+            margin-bottom: 15px;
+        }
+
+        .info-box {
+            background: rgba(212, 165, 116, 0.1);
+            border-left: 3px solid #D4A574;
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .info-box strong {
+            color: #D4A574;
+        }
+
+        .success-box {
+            background: rgba(74, 222, 128, 0.1);
+            border-left: 3px solid #4ade80;
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .success-box strong {
+            color: #4ade80;
+        }
+
+        code {
+            background: #000;
+            color: #00ff00;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        pre {
+            background: #000;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(212, 165, 116, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .arrow {
+            font-size: 32px;
+            color: #D4A574;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(10px); }
+        }
+
+        ul {
+            margin-left: 20px;
+            line-height: 1.8;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .status.loading {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 3px solid #3b82f6;
+        }
+
+        .status.success {
+            background: rgba(74, 222, 128, 0.1);
+            border-left: 3px solid #4ade80;
+        }
+
+        .status.error {
+            background: rgba(248, 113, 113, 0.1);
+            border-left: 3px solid #f87171;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>☕ SQLatte Widget Demo</h1>
+            <p class="subtitle">Natural Language to SQL - Interactive Chat Widget</p>
+        </header>
+
+        <!-- Introduction -->
+        <div class="demo-section">
+            <h2>🎯 Welcome!</h2>
+            <p>
+                This demo showcases the SQLatte chatbot widget - an interactive AI assistant
+                that helps you query databases using natural language.
+            </p>
+            <div class="info-box">
+                <strong>💡 Try it now:</strong> Look for the animated ☕ badge in the bottom-right corner!
+                <span class="arrow">→</span>
+            </div>
+            <div class="success-box">
+                <strong>✅ Widget Features:</strong><br>
+                • Chat with AI using natural language<br>
+                • Select tables for queries<br>
+                • Execute SQL and see results<br>
+                • Minimize/maximize modal<br>
+                • Responsive design (mobile-friendly)
+            </div>
+        </div>
+
+        <!-- Backend Status -->
+        <div class="demo-section">
+            <h2>🔌 Backend Status</h2>
+            <div id="backend-status" class="status loading">
+                <strong>⏳ Checking...</strong> Testing backend connection...
+            </div>
+            <div class="info-box">
+                <strong>📍 API Endpoint:</strong><br>
+                <code id="api-endpoint-display">Detecting...</code>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="demo-section">
+            <h2>🎮 Widget Controls</h2>
+            <p>Test widget functionality with these controls:</p>
+            <div class="controls">
+                <button onclick="openWidget()">🚀 Open Modal</button>
+                <button onclick="closeWidget()">❌ Close Modal</button>
+                <button onclick="toggleWidget()">🔄 Toggle Modal</button>
+                <button onclick="testConfig()">⚙️ Show Config</button>
+            </div>
+        </div>
+
+        <!-- Usage Examples -->
+        <div class="demo-section">
+            <h2>💬 Example Queries</h2>
+            <p>Once you open the widget, try these:</p>
+            <ul>
+                <li><strong>Hello!</strong> - General greeting</li>
+                <li><strong>Show me top 10 customers</strong> - SQL query (select tables first)</li>
+                <li><strong>What tables do you have?</strong> - List available tables</li>
+                <li><strong>Help me analyze sales data</strong> - Get assistance</li>
+            </ul>
+        </div>
+
+        <!-- Integration Code -->
+        <div class="demo-section">
+            <h2>🔧 Integration Code</h2>
+            <p>Add this to your HTML to use the widget:</p>
+            <pre>&lt;!-- SQLatte Widget --&gt;
+&lt;script src="http://localhost:8000/static/js/sqlatte-badge.js"&gt;&lt;/script&gt;
+
+&lt;!-- Optional: Configuration --&gt;
+&lt;script&gt;
+    window.addEventListener('load', () => {
+        SQLatteWidget.configure({
+            position: 'bottom-right',
+            title: 'My Assistant ☕',
+            placeholder: 'Ask anything...'
+        });
+    });
+&lt;/script&gt;</pre>
+        </div>
+
+    </div>
+
+    <!-- SQLatte Widget -->
+    <script src="http://localhost:8000/static/js/sqlatte-badge.js"></script>
+
+    <!-- Demo Controls & Status Check -->
+    <script>
+        // Widget control functions
+        function openWidget() {
+            if (window.SQLatteWidget) {
+                window.SQLatteWidget.open();
+                console.log('✅ Widget opened');
+            } else {
+                alert('❌ Widget not loaded yet!');
+            }
+        }
+
+        function closeWidget() {
+            if (window.SQLatteWidget) {
+                window.SQLatteWidget.close();
+                console.log('✅ Widget closed');
+            }
+        }
+
+        function toggleWidget() {
+            if (window.SQLatteWidget) {
+                window.SQLatteWidget.toggle();
+                console.log('✅ Widget toggled');
+            }
+        }
+
+        function testConfig() {
+            if (window.SQLatteWidget) {
+                const config = window.SQLatteWidget.getConfig();
+                alert('Widget Configuration:\n\n' + JSON.stringify(config, null, 2));
+                console.log('📋 Config:', config);
+            } else {
+                alert('❌ Widget not loaded yet!');
+            }
+        }
+
+        // Backend status check
+        async function checkBackendStatus() {
+            const statusDiv = document.getElementById('backend-status');
+
+            // Get auto-detected API base
+            let apiBase = 'http://localhost:8000';
+            if (window.SQLatteWidget) {
+                const config = window.SQLatteWidget.getConfig();
+                apiBase = config.apiBase;
+            }
+
+            try {
+                const response = await fetch(apiBase + '/health', {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.className = 'status success';
+                    statusDiv.innerHTML = `
+                        <strong>✅ Backend Online!</strong><br>
+                        <strong>Endpoint:</strong> <code>${apiBase}</code><br>
+                        App: ${data.app || 'SQLatte'} v${data.version || '0.1.0'}<br>
+                        LLM: ${data.llm?.provider || 'Unknown'} (${data.llm?.healthy ? '✅' : '❌'})<br>
+                        DB: ${data.database?.provider || 'Unknown'} (${data.database?.healthy ? '✅' : '❌'})
+                    `;
+                } else {
+                    throw new Error('Backend responded with error');
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `
+                    <strong>❌ Backend Offline</strong><br>
+                    <strong>Endpoint:</strong> <code>${apiBase}</code><br><br>
+                    Could not connect to backend.<br><br>
+                    <strong>Make sure:</strong><br>
+                    1. Backend is running: <code>python run.py</code><br>
+                    2. Listening on: <code>0.0.0.0:8000</code><br>
+                    3. No firewall blocking<br><br>
+                    <strong>Error:</strong> ${error.message}
+                `;
+            }
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            // Check backend status
+            checkBackendStatus();
+
+            // Display detected API endpoint
+            const apiDisplay = document.getElementById('api-endpoint-display');
+            if (apiDisplay && window.SQLatteWidget) {
+                const config = window.SQLatteWidget.getConfig();
+                apiDisplay.textContent = config.apiBase;
+                console.log('🌐 Detected API Base:', config.apiBase);
+            }
+
+            // Log widget status
+            if (window.SQLatteWidget) {
+                console.log('✅ SQLatte Widget loaded successfully!');
+                console.log('📍 API Base:', window.SQLatteWidget.getConfig().apiBase);
+                console.log('🎨 External CSS loaded');
+                console.log('🎯 Look for the ☕ badge in bottom-right corner');
+            } else {
+                console.error('❌ SQLatte Widget failed to load');
+                console.error('Check if backend is running and JS file exists');
+            }
+        });
+    </script>
+</body>
+</html>
