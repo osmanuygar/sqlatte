@@ -119,7 +119,7 @@ vi config/config.yaml
 docker-compose up -d
 
 # 3. Open browser
-http://localhost:8000
+http://localhost:8000 or http://YOUR-SQLATTE-SERVER:8000
 ```
 
 ### Using Dockerfile
