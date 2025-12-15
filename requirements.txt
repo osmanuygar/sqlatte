@@ -1,7 +1,17 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+
+# LLM Providers
 anthropic>=0.27.0
+google-generativeai>=0.3.0
+google-cloud-aiplatform>=1.38.0
+
+# Database
 trino==0.328.0
+
+# Core
 pydantic
 pyyaml==6.0.1
 python-dotenv==1.0.0
+
+
