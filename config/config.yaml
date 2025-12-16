@@ -11,18 +11,70 @@ app:
 
 # LLM Provider Configuration
 llm:
+  #provider: "gemini"  # Which LLM to use
+  #provider: "vertexai"  # Which LLM to use
   provider: "anthropic"  # Which LLM to use
   
   # Anthropic Claude
   anthropic:
     # Option 1: Direct API key (simple)
-    api_key: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    api_key: "sk-anthropic-api"
     
     # Option 2: From environment variable (secure)
     # api_key: "${ANTHROPIC_API_KEY}"
     
     model: "claude-sonnet-4-20250514"
     max_tokens: 1000
+
+  gemini:
+    # Option 1: Direct API key (simple)
+    api_key: "sk-gemini-api"
+
+    # Option 2: From environment variable (secure)
+    # api_key: "${GEMINI_API_KEY}"
+
+    # Available models:
+    # - gemini-pro (recommended, free tier available)
+    # - gemini-pro-vision (for image analysis)
+    # - gemini-1.5-pro (latest version)
+    model: "gemini-pro"
+    max_tokens: 1000
+
+  # Google Vertex AI (Enterprise)
+  vertexai:
+    # GCP Project ID (REQUIRED)
+    project_id: "my-gcp-project-id"
+
+    # Region/Location (REQUIRED)
+    # Options: us-central1, europe-west1, asia-southeast1, etc.
+    location: "europe-west1"
+
+    # Model name
+    # Options: gemini-pro, gemini-1.5-pro, gemini-1.5-flash
+    model: "gemini-2.5-flash"
+
+    # Token limit
+    max_tokens: 1000
+
+    # ========================================
+    # AUTHENTICATION (3 yöntem var!)
+    # ========================================
+
+    # METHOD 1: Service Account JSON File Path (RECOMMENDED for local)
+    # credentials_path: "/path/to/service-account-key.json"
+    credentials_path: "/path/to/service-account-key.json"
+
+    # METHOD 2: Service Account JSON Content (RECOMMENDED for containers)
+    # JSON içeriğini direkt buraya yapıştır (string olarak)
+    # credentials_json: '{"type": "service_account", "project_id": "...", ...}'
+
+    # METHOD 3: Default Credentials (RECOMMENDED for GCP ortamları)
+    # GCP üzerinde çalışıyorsan (Cloud Run, GKE, Compute Engine)
+    # Bu durumda credentials_path ve credentials_json boş bırak
+    # ADC (Application Default Credentials) otomatik kullanılır
+
+    # Environment variable da kullanabilirsin:
+    # credentials_path: "${GOOGLE_APPLICATION_CREDENTIALS}"
 
 # Database Provider Configuration
 database:
@@ -33,8 +85,8 @@ database:
     # Direct values (simple)
     host: "trino.example.com"
     port: 443
-    user: "db_user"
-    password: "secure_password"
+    user: "readonly_user"
+    password: "readonly_password"
     catalog: "hive"
     schema: "default"
     http_scheme: "https"
