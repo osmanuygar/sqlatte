@@ -19,6 +19,7 @@ llm:
   anthropic:
     # Option 1: Direct API key (simple)
     api_key: "sk-anthropic-api"
+
     
     # Option 2: From environment variable (secure)
     # api_key: "${ANTHROPIC_API_KEY}"
@@ -78,6 +79,8 @@ llm:
 
 # Database Provider Configuration
 database:
+  #provider: "mysql"      # Distributed SQL engine
+  #provider: "postgresql" # PostgreSQL database
   provider: "trino"  # Which database to use
   
   # Trino Configuration
@@ -85,8 +88,8 @@ database:
     # Direct values (simple)
     host: "trino.example.com"
     port: 443
-    user: "readonly_user"
-    password: "readonly_password"
+    user: "username123"
+    password: "***********"
     catalog: "hive"
     schema: "default"
     http_scheme: "https"
@@ -95,6 +98,52 @@ database:
     # host: "${TRINO_HOST}"
     # port: "${TRINO_PORT:8443}"
 
+# ============================================
+  # POSTGRESQL Configuration
+  # ============================================
+  postgresql:
+    # Direct configuration (simple)
+    host: "host.docker.internal"
+    port: 5432
+    database: "database1"
+    user: "Username1"
+    password: "********"
+    schema: "public"
+
+    # Or use environment variables (secure)
+    # host: "${POSTGRES_HOST:localhost}"
+    # port: "${POSTGRES_PORT:5432}"
+    # database: "${POSTGRES_DB:postgres}"
+    # user: "${POSTGRES_USER:postgres}"
+    # password: "${POSTGRES_PASSWORD}"
+    # schema: "${POSTGRES_SCHEMA:public}"
+
+    # Connection pool settings (optional)
+    min_connections: 1
+    max_connections: 10
+
+  # ============================================
+  # MYSQL Configuration
+  # ============================================
+  mysql:
+    # Direct configuration (simple)
+    host: "host.docker.internal"
+    port: 3306
+    database: "database1"
+    user: "username1"
+    password: "**********"
+
+    # Or use environment variables (secure)
+    # host: "${MYSQL_HOST:localhost}"
+    # port: "${MYSQL_PORT:3306}"
+    # database: "${MYSQL_DATABASE:mysql}"
+    # user: "${MYSQL_USER:root}"
+    # password: "${MYSQL_PASSWORD}"
+
+    # MySQL specific settings (optional)
+    #charset: "utf8mb4"
+    #use_unicode: true
+    autocommit: true
 # CORS Settings
 cors:
   allow_origins: ["*"]

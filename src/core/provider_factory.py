@@ -22,9 +22,11 @@ class ProviderFactory:
 
     DB_PROVIDERS = {
         'trino': 'src.providers.database.trino_provider.TrinoProvider',
+        'postgresql': 'src.providers.database.postgresql_provider.PostgreSQLProvider',
+        'mysql': 'src.providers.database.mysql_provider.MySQLProvider',
         # 'presto': 'src.providers.database.presto_provider.PrestoProvider',
         # 'clickhouse': 'src.providers.database.clickhouse_provider.ClickHouseProvider',
-        # 'postgresql': 'src.providers.database.postgresql_provider.PostgreSQLProvider',
+        # 'bigquery': 'src.providers.database.bigquery_provider.BigQueryProvider',
     }
 
     @staticmethod
