@@ -8,6 +8,8 @@ google-cloud-aiplatform>=1.38.0
 
 # Database
 trino==0.328.0
+psycopg2-binary>=2.9.9        # PostgreSQL
+mysql-connector-python>=8.2.0  # MySQL
 
 # Core
 pydantic
