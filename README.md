@@ -5,31 +5,35 @@
 </p>
 
 <p align="center">
-  <strong>AI-Powered Natural Language to SQL Converter</strong><br>
-  Transform your questions into SQL queries with the power of AI
+  <strong>AI-Powered Natural Language to SQL Converter with Conversation Memory</strong><br>
+  Transform your questions into SQL queries with the power of AI - Now with conversation memory! 🧠
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
   <img src="https://img.shields.io/badge/python-3.8%2B-blue.svg" alt="Python 3.8+">
   <img src="https://img.shields.io/badge/AI-Anthropic%20Claude-blueviolet" alt="AI: Anthropic Claude">
+  <img src="https://img.shields.io/badge/Memory-Conversation%20Tracking-green" alt="Conversation Memory">
 </p>
 
 ---
 
-## 🌟 Features
+##  Features
 
-- 🤖 **AI-Powered** - Uses Anthropic Claude for intelligent query generation
-- 🗄️ **Multi-Database Support** - Trino, Presto, PostgreSQL, MySQL, and more
+### Core Features
+- 🤖 **AI-Powered** - Uses Anthropic Claude, Google Gemini, or Google Vertex AI
+- 🗄️ **Multi-Database Support** - Trino, PostgreSQL, MySQL, and more
 - 💬 **Smart Chat Interface** - Conversational AI that understands context
 - 🔗 **Multi-Table JOINs** - Automatically detects and creates table relationships
+- 🧠 **Conversation Memory** - Remembers chat history per session (in-memory)
+- 🎯 **Context-Aware Responses** - Understands follow-up questions
 - 📱 **Widget-Based UI** - Fullscreen modal with modern, responsive design
 - ⚡ **Fast & Simple** - Single YAML config file, no complex setup
 - 🐳 **Docker Ready** - Easy deployment with Docker & Docker Compose
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Installation
 
@@ -78,31 +82,39 @@ http://localhost:8000
 
 **That's it!** 🎉
 
----
 
 ---
 
 ## 🎨 Architecture
 
-### Backend Flow
+### Backend Flow with Memory
 
 ```
 User Question
      ↓
-LLM Intent Detection (SQL or Chat?)
+Session Management (Get/Create Session)
+     ↓
+Add to Conversation History
+     ↓
+Get Recent Context (Last 10 messages)
+     ↓
+LLM Intent Detection + Context
      ↓
    ┌─────────────┬──────────────┐
    │             │              │
   SQL          Chat         Schema
    │             │              │
 Generate      Generate      Fetch from DB
- Query       Response
+ Query        Response
+(with context)  (with context)
    │             │
 Execute       Return
    │             │
    └──────┬──────┘
           ↓
-    Return Results
+    Add Response to History
+          ↓
+    Return to User
 ```
 
 ---
@@ -119,7 +131,7 @@ vi config/config.yaml
 docker-compose up -d
 
 # 3. Open browser
-http://localhost:8000 or http://YOUR-SQLATTE-SERVER:8000
+http://localhost:8000
 ```
 
 ### Using Dockerfile
@@ -135,24 +147,16 @@ docker run -d -p 8000:8000 \
   --name sqlatte \
   sqlatte
 ```
+
 ---
 
 ## 🔌 Embedding in Your Website
 
-You can easily add the SQLatte widget to **any existing website**. There are two ways to deploy:
+You can easily add the SQLatte widget to **any existing website**.
 
-### 📡 Method 1: Serve from SQLatte Backend (Recommended)
+### Method 1: Serve from SQLatte Backend (Recommended)
 
-**Easiest way!** SQLatte backend already serves the widget files. Just point to your backend:
-
-```html
-<!-- Load widget directly from SQLatte backend -->
-<script src="http://YOUR-SQLATTE-SERVER:8000/static/js/sqlatte-badge.js"></script>
-```
-
-**That's it!** The badge will appear in the bottom-right corner.
-
-#### Complete Example
+**Easiest way!** SQLatte backend already serves the widget files:
 
 ```html
 <!DOCTYPE html>
@@ -166,14 +170,14 @@ You can easily add the SQLatte widget to **any existing website**. There are two
     <p>Your content here...</p>
 
     <!-- Load widget from SQLatte backend -->
-    <script src="http://192.168.1.100:8000/static/js/sqlatte-badge.js"></script>
+    <script src="http://YOUR-SQLATTE-SERVER:8000/static/js/sqlatte-badge.js"></script>
     
     <!-- Configure (optional) -->
     <script>
         window.addEventListener('load', () => {
             window.SQLatteWidget.configure({
                 fullscreen: true,
-                apiBase: 'http://192.168.1.100:8000'  // Same as script source
+                apiBase: 'http://YOUR-SQLATTE-SERVER:8000'
             });
         });
     </script>
@@ -181,33 +185,23 @@ You can easily add the SQLatte widget to **any existing website**. There are two
 </html>
 ```
 
-
 #### CORS Configuration
 
-If your website and SQLatte are on **different domains**, configure CORS:
+If your website and SQLatte are on **different domains**, configure CORS in `config/config.yaml`:
 
-**Edit `config/config.yaml`:**
 ```yaml
 cors:
   allow_origins: 
-    - "https://your-website.com"      # Your website domain
-    - "http://192.168.1.50"           # Or internal IP
+    - "https://your-website.com"
+    - "http://192.168.1.50"
   allow_credentials: true
   allow_methods: ["*"]
   allow_headers: ["*"]
 ```
 
-**Restart SQLatte backend:**
-```bash
-# Restart to apply CORS changes
-python run.py
-# or
-docker-compose restart
-```
-
 ---
 
-### ⚙️ Configuration Options
+## ⚙️ Widget Configuration
 
 Customize the widget behavior:
 
@@ -238,8 +232,6 @@ window.SQLatteWidget.configure({
 
 ### Programmatic Control
 
-You can control the widget with JavaScript:
-
 ```javascript
 // Open the widget
 window.SQLatteWidget.open();
@@ -250,30 +242,162 @@ window.SQLatteWidget.close();
 // Toggle widget
 window.SQLatteWidget.toggle();
 
-// Get current configuration
-const config = window.SQLatteWidget.getConfig();
-console.log(config);
+// Clear conversation history
+window.SQLatteWidget.clearChat();
+
+// Get current session ID
+const sessionId = window.SQLatteWidget.getSessionId();
 ```
 
-### Integration with Buttons
+---
 
-Add custom buttons to open the widget:
+## 🗄️ Supported Databases
 
-```html
-<button onclick="window.SQLatteWidget.open()">
-    💬 Ask AI Assistant
-</button>
+### Currently Supported
+- ✅ **Trino** - Distributed SQL engine
+- ✅ **PostgreSQL** - Advanced relational database
+- ✅ **MySQL** - Popular relational database
 
-<button onclick="window.SQLatteWidget.toggle()">
-    🔍 Query Database
-</button>
+### Configuration Examples
+
+<details>
+<summary><b>Trino Configuration</b></summary>
+
+```yaml
+database:
+  provider: "trino"
+  trino:
+    host: "trino.example.com"
+    port: 443
+    user: "username"
+    password: "password"
+    catalog: "hive"
+    schema: "default"
+    http_scheme: "https"
 ```
+</details>
+
+<details>
+<summary><b>PostgreSQL Configuration</b></summary>
+
+```yaml
+database:
+  provider: "postgresql"
+  postgresql:
+    host: "localhost"
+    port: 5432
+    database: "mydatabase"
+    user: "postgres"
+    password: "password"
+    schema: "public"
+```
+</details>
+
+<details>
+<summary><b>MySQL Configuration</b></summary>
+
+```yaml
+database:
+  provider: "mysql"
+  mysql:
+    host: "localhost"
+    port: 3306
+    database: "mydatabase"
+    user: "root"
+    password: "password"
+```
+</details>
+
+---
+
+## 🤖 Supported LLM Providers
+
+### Currently Supported
+- ✅ **Anthropic Claude** - Most advanced (recommended)
+- ✅ **Google Gemini** - Free tier available
+- ✅ **Google Vertex AI** - Enterprise GCP solution
+
+### Configuration Examples
+
+<details>
+<summary><b>Anthropic Claude</b></summary>
+
+```yaml
+llm:
+  provider: "anthropic"
+  anthropic:
+    api_key: "sk-ant-your-key-here"
+    model: "claude-sonnet-4-20250514"
+    max_tokens: 1000
+```
+</details>
+
+<details>
+<summary><b>Google Gemini</b></summary>
+
+```yaml
+llm:
+  provider: "gemini"
+  gemini:
+    api_key: "your-gemini-key"
+    model: "gemini-pro"
+    max_tokens: 1000
+```
+</details>
+
+<details>
+<summary><b>Google Vertex AI</b></summary>
+
+```yaml
+llm:
+  provider: "vertexai"
+  vertexai:
+    project_id: "my-gcp-project"
+    location: "us-central1"
+    model: "gemini-pro"
+    credentials_path: "/path/to/service-account.json"
+```
+</details>
+
+---
+
+---
+
+## Changelog
+
+### v0.2.0 (Latest) - Conversation Memory
+- 🧠 Added conversation memory system
+- 💬 Session-based chat tracking
+- 🎯 Context-aware responses
+- 🗑️ Clear chat functionality
+- 📊 Conversation analytics endpoints
+
+### v0.1.0 - Initial Release
+- 🤖 Multi-LLM support (Anthropic, Gemini, Vertex AI)
+- 🗄️ Multi-database support (Trino, PostgreSQL, MySQL)
+- 💬 Smart chat interface
+- 🔗 Multi-table JOIN support
+- 📱 Embeddable widget
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+
+## 📧 Contact
+
+- **GitHub:** [@osmanuygar](https://github.com/osmanuygar)
+- **Project Link:** [https://github.com/osmanuygar/sqlatte](https://github.com/osmanuygar/sqlatte)
 
 ---
 
 <p align="center">
   <strong>Made with ❤️ and ☕</strong><br>
-  <sub>Transform your data queries with the power of AI</sub>
+  <sub>Transform your data queries with the power of AI and conversation memory</sub>
 </p>
 
 ---
