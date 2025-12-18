@@ -3,7 +3,6 @@
 
     // Configuration
     const BADGE_CONFIG = {
-        // Smart API base detection
         apiBase: (function() {
             if (window.location.protocol === 'file:') {
                 return 'http://localhost:8000';
@@ -21,19 +20,53 @@
         placeholder: "Ask a question... (e.g., 'Hello!' or 'Show me customers')",
         customStyle: null,
         openByDefault: false,
-        fullscreen: false  // ← FULLSCREEN MODE FLAG
+        fullscreen: false
     };
 
     // State
     let isModalOpen = false;
     let selectedTables = [];
     let currentSchema = '';
+    let sessionId = null;  // NEW: Track session ID for conversation memory
+
+    /**
+     * SESSION MANAGEMENT (NEW!)
+     */
+    function getOrCreateSession() {
+        // Try to get session ID from localStorage
+        const storedSessionId = localStorage.getItem('sqlatte_session_id');
+
+        if (storedSessionId) {
+            console.log('📦 Using existing session:', storedSessionId.substring(0, 8) + '...');
+            sessionId = storedSessionId;
+        } else {
+            console.log('🆕 New session will be created on first message');
+            sessionId = null;
+        }
+
+        return sessionId;
+    }
+
+    function saveSession(newSessionId) {
+        sessionId = newSessionId;
+        localStorage.setItem('sqlatte_session_id', newSessionId);
+        console.log('💾 Session saved:', newSessionId.substring(0, 8) + '...');
+    }
+
+    function clearSession() {
+        sessionId = null;
+        localStorage.removeItem('sqlatte_session_id');
+        console.log('🗑️  Session cleared');
+    }
 
     /**
      * Create widget
      */
     function createWidget() {
         if (document.getElementById('sqlatte-widget')) return;
+
+        // Initialize session
+        getOrCreateSession();
 
         const widget = document.createElement('div');
         widget.id = 'sqlatte-widget';
@@ -71,19 +104,13 @@
             <span class="sqlatte-badge-pulse"></span>
         `;
 
-        // Badge'i widget'a ekle
         widget.appendChild(badge);
-
-        // Widget'i body'ye ekle (sadece badge)
         document.body.appendChild(widget);
         console.log('✅ Badge widget added to body');
 
-        // Modal'ı DOĞRUDAN body'ye ekle (widget'ın DIŞINDA)
         const modal = createModal();
         document.body.appendChild(modal);
         console.log('✅ Modal added to body (outside widget)');
-        console.log('🔍 Modal ID:', modal.id);
-        console.log('🔍 Modal in DOM:', document.getElementById('sqlatte-modal') !== null);
 
         injectStyles();
 
@@ -99,7 +126,7 @@
     }
 
     /**
-     * Create modal
+     * Create modal with "Clear Chat" button
      */
     function createModal() {
         const modal = document.createElement('div');
@@ -123,6 +150,7 @@
                     <span>${BADGE_CONFIG.title}</span>
                 </div>
                 <div class="sqlatte-modal-actions">
+                    <button class="sqlatte-modal-clear" onclick="SQLatteWidget.clearChat()" title="Clear Chat">🗑️</button>
                     <button class="sqlatte-modal-minimize" onclick="SQLatteWidget.minimize()" title="Minimize">−</button>
                     <button class="sqlatte-modal-close" onclick="SQLatteWidget.close()" title="Close">×</button>
                 </div>
@@ -143,7 +171,7 @@
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                         </svg>
                         <h3>Welcome to SQLatte!</h3>
-                        <p>Ask me anything! I can help you query data or just chat.</p>
+                        <p>I remember our conversation! Ask me anything.</p>
                         <p class="text-xs">Try: "Hello!" or select tables above to query your data</p>
                     </div>
                 </div>
@@ -176,37 +204,17 @@
     function openModal() {
         const modal = document.getElementById('sqlatte-modal');
         if (modal) {
-            console.log('🔍 Modal element found:', modal);
-            console.log('🔍 Modal parent:', modal.parentElement);
-            console.log('🔍 Fullscreen mode:', BADGE_CONFIG.fullscreen);
-
-            // FULLSCREEN MODE: Class'ları aynı anda ekle
             if (BADGE_CONFIG.fullscreen) {
                 modal.classList.add('sqlatte-modal-fullscreen');
-                console.log('🎯 Opening modal in FULLSCREEN mode');
-                console.log('🎯 Modal classes:', modal.className);
             }
 
             modal.classList.add('sqlatte-modal-open');
             isModalOpen = true;
 
-            // Check position after classes added
-            setTimeout(() => {
-                const rect = modal.getBoundingClientRect();
-                console.log('📏 Modal position:', {
-                    top: rect.top,
-                    left: rect.left,
-                    width: rect.width,
-                    height: rect.height
-                });
-            }, 100);
-
             setTimeout(() => {
                 const input = document.getElementById('sqlatte-input');
                 if (input) input.focus();
             }, 300);
-        } else {
-            console.error('❌ Modal element NOT found!');
         }
     }
 
@@ -221,6 +229,35 @@
 
     function minimizeModal() {
         closeModal();
+    }
+
+    /**
+     * CLEAR CHAT (NEW!)
+     */
+    function clearChat() {
+        if (!confirm('Clear conversation history? This will start a new chat.')) {
+            return;
+        }
+
+        // Clear session
+        clearSession();
+
+        // Clear chat UI
+        const chatArea = document.getElementById('sqlatte-chat-area');
+        if (chatArea) {
+            chatArea.innerHTML = `
+                <div class="sqlatte-empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <h3>New Conversation</h3>
+                    <p>Your previous chat has been cleared.</p>
+                    <p class="text-xs">Ask me anything to start fresh!</p>
+                </div>
+            `;
+        }
+
+        console.log('🗑️  Chat cleared, new session will be created');
     }
 
     async function loadTables() {
@@ -287,7 +324,7 @@
                     body: JSON.stringify({ tables: selectedTables })
                 });
                 const data = await response.json();
-                currentSchema = data.schema;
+                currentSchema = data.combined_schema;
             }
         } catch (error) {
             console.error('Error loading schema:', error);
@@ -376,12 +413,14 @@
         input.value = '';
 
         try {
+            // Send request WITH session ID
             const response = await fetch(`${BADGE_CONFIG.apiBase}/query`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     question: question,
-                    table_schema: currentSchema
+                    table_schema: currentSchema,
+                    session_id: sessionId  // NEW: Include session ID
                 })
             });
 
@@ -391,6 +430,11 @@
             }
 
             const result = await response.json();
+
+            // Save session ID from response
+            if (result.session_id) {
+                saveSession(result.session_id);
+            }
 
             let responseHTML = '';
 
@@ -425,10 +469,8 @@
     }
 
     function injectStyles() {
-        // Check if CSS already loaded
         if (document.getElementById('sqlatte-widget-styles')) return;
 
-        // Load external CSS file
         const link = document.createElement('link');
         link.id = 'sqlatte-widget-styles';
         link.rel = 'stylesheet';
@@ -456,10 +498,11 @@
         toggle: toggleModal,
         sendMessage: sendMessage,
         handleTableChange: handleTableChange,
+        clearChat: clearChat,  // NEW: Clear chat function
+        getSessionId: function() { return sessionId; },  // NEW: Get current session
         configure: function(options) {
             Object.assign(BADGE_CONFIG, options);
 
-            // Remove both widget and modal
             const widget = document.getElementById('sqlatte-widget');
             const modal = document.getElementById('sqlatte-modal');
 
