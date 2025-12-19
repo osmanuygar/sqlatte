@@ -169,13 +169,25 @@ Table Schema(s):
 User Question: {question}
 
 Rules:
-1. Generate ONLY valid SQL syntax
+1. Generate ONLY valid SQL syntax for trino 
 2. If multiple tables are provided, use appropriate JOINs
 3. Infer JOIN conditions from table relationships (common column names)
 4. Use table aliases for readability (e.g., orders o, customers c)
 5. Include LIMIT clause for safety (default 100 rows)
 6. For aggregations, use GROUP BY appropriately
 7. Use explicit JOIN syntax (INNER JOIN, LEFT JOIN, etc.)
+⚡ PERFORMANCE OPTIMIZATION (CRITICAL):
+8. **PARTITION COLUMN**: If schema contains a 'dt' column (VARCHAR format YYYYMMDD, e.g., '20251218'), this is a PARTITION KEY
+   - ALWAYS add WHERE clause with 'dt' filter when possible
+   - Date filters MUST use dt column in format: dt = '20251218' or dt BETWEEN '20251201' AND '20251218'
+   - For "recent", "latest", "today" queries → use last 7-30 days: dt >= '20251201'
+   - For "yesterday" → use dt = '20251218' (current date - 1)
+   - For specific date range → convert to dt format (e.g., "last week" → dt >= '20251211')
+   - ⚠️ NEVER query without dt filter unless explicitly asked for "all time" data
+9. If 'datetime' column exists alongside 'dt', use 'dt' for filtering (faster) and 'datetime' for display
+10. Example optimized query: 
+    SELECT * FROM orders WHERE dt >= '20251201' AND status = 'completed' LIMIT 100
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')  -> Yesterday's dt=yesterday 
 
 Format your response as:
 SQL:
