@@ -169,7 +169,7 @@ Table Schema(s):
 User Question: {question}
 
 Rules:
-1. Generate ONLY valid SQL syntax
+1. Generate ONLY valid SQL syntax for trino 
 2. If multiple tables are provided, use appropriate JOINs
 3. Infer JOIN conditions from table relationships (common column names)
 4. Use table aliases for readability (e.g., orders o, customers c)
