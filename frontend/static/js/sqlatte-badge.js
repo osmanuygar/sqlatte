@@ -362,15 +362,22 @@
         }
 
         let html = '<table class="sqlatte-results-table"><thead><tr>';
+
+        // Kolon başlıkları - tooltip ile tam isim
         columns.forEach(col => {
-            html += `<th>${escapeHtml(col)}</th>`;
+            const colName = escapeHtml(col);
+            html += `<th title="${colName}">${colName}</th>`;
         });
         html += '</tr></thead><tbody>';
 
+        // Data satırları - tooltip ile tam değer
         data.forEach(row => {
             html += '<tr>';
             row.forEach(cell => {
-                html += `<td>${escapeHtml(String(cell))}</td>`;
+                const cellValue = String(cell);
+                const escapedValue = escapeHtml(cellValue);
+                // title attribute ile tooltip ekle
+                html += `<td title="${escapedValue}">${escapedValue}</td>`;
             });
             html += '</tr>';
         });
@@ -869,7 +876,7 @@
     border-radius: 4px;
 }
 
-/* Results Table */
+/* Results Table - IMPROVED: Horizontal + Vertical Scroll */
 .sqlatte-results-table {
     width: 100%;
     margin: 12px 0;
@@ -880,13 +887,14 @@
     font-size: 12px;
     display: block;
     max-height: 400px;
-    overflow-y: auto;
+    overflow-x: auto;  /* ← YATAY SCROLL EKLENDI */
+    overflow-y: auto;  /* Dikey scroll */
 }
 
 .sqlatte-results-table thead {
     display: table;
     width: 100%;
-    table-layout: fixed;
+    table-layout: auto;  /* ← FIXED yerine AUTO - kolonlar içeriğe göre genişler */
     position: sticky;
     top: 0;
     z-index: 10;
@@ -896,12 +904,12 @@
 .sqlatte-results-table tbody {
     display: table;
     width: 100%;
-    table-layout: fixed;
+    table-layout: auto;  /* ← AUTO - tbody da aynı layout */
 }
 
 .sqlatte-results-table::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;    /* ← Biraz daha kalın scrollbar */
+    height: 8px;   /* ← Yatay scrollbar yüksekliği */
 }
 
 .sqlatte-results-table::-webkit-scrollbar-track {
@@ -909,34 +917,53 @@
 }
 
 .sqlatte-results-table::-webkit-scrollbar-thumb {
-    background: #333;
-    border-radius: 3px;
+    background: #555;  /* ← Biraz daha görünür */
+    border-radius: 4px;
 }
 
 .sqlatte-results-table::-webkit-scrollbar-thumb:hover {
-    background: #444;
+    background: #666;  /* ← Hover'da daha açık */
 }
 
 .sqlatte-results-table th {
-    padding: 10px 12px;
+    padding: 10px 16px;  /* ← Daha fazla padding */
     text-align: left;
     font-weight: 600;
     color: #D4A574;
     background: #242424;
     border-bottom: 2px solid #333;
-    white-space: nowrap;
+    white-space: nowrap;  /* ← Kolon başlıkları kırılmaz */
+    min-width: 120px;     /* ← MINIMUM genişlik - dar kolonları engeller */
+    position: sticky;
+    top: 0;
 }
 
 .sqlatte-results-table td {
-    padding: 8px 12px;
+    padding: 8px 16px;   /* ← Daha fazla padding */
     border-bottom: 1px solid #333;
     color: #e0e0e0;
+    min-width: 120px;    /* ← MINIMUM genişlik */
+    max-width: 300px;    /* ← MAKSIMUM genişlik - çok geniş kolonları sınırlar */
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;  /* ← Hücre içeriği kırılmaz, ellipsis gösterir */
+    cursor: default;      /* ← Mouse cursor */
+    transition: background 0.2s ease;  /* ← Smooth transition */
+}
+
+/* Hücre hover effect - hangi değere baktığımız belli olsun */
+.sqlatte-results-table td:hover {
+    background: rgba(212, 165, 116, 0.15);  /* ← Biraz highlight */
+    color: #fff;  /* ← Yazı daha belirgin */
 }
 
 .sqlatte-results-table tbody tr:hover {
     background: rgba(212, 165, 116, 0.05);
+}
+
+/* Hem satır hem hücre hover'ı kombinasyonu */
+.sqlatte-results-table tbody tr:hover td:hover {
+    background: rgba(212, 165, 116, 0.2);  /* ← En güçlü highlight */
 }
 
 .sqlatte-results-table tr:last-child td {
