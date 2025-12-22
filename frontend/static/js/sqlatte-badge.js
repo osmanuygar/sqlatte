@@ -468,17 +468,592 @@
         }
     }
 
+    /**
+     * Inject styles - INLINE CSS (portable, no CORS issues)
+     * CSS is embedded directly in JS for maximum portability
+     */
     function injectStyles() {
         if (document.getElementById('sqlatte-widget-styles')) return;
 
-        const link = document.createElement('link');
-        link.id = 'sqlatte-widget-styles';
-        link.rel = 'stylesheet';
-        link.href = BADGE_CONFIG.apiBase + '/static/css/sqlatte-widget.css';
+        const style = document.createElement('style');
+        style.id = 'sqlatte-widget-styles';
+        style.textContent = `
+/* SQLatte Widget Styles - Inline Version */
 
-        document.head.appendChild(link);
+/* Widget Container */
+.sqlatte-widget {
+    position: fixed;
+    z-index: 999999;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
 
-        console.log('✅ External CSS loaded:', link.href);
+.sqlatte-widget.sqlatte-widget-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Positions */
+.sqlatte-widget.sqlatte-widget-bottom-right {
+    bottom: 20px;
+    right: 20px;
+}
+
+.sqlatte-widget.sqlatte-widget-bottom-left {
+    bottom: 20px;
+    left: 20px;
+}
+
+.sqlatte-widget.sqlatte-widget-top-right {
+    top: 20px;
+    right: 20px;
+}
+
+.sqlatte-widget.sqlatte-widget-top-left {
+    top: 20px;
+    left: 20px;
+}
+
+/* Badge Button */
+.sqlatte-badge-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 3px rgba(212, 165, 116, 0.2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+    position: relative;
+}
+
+.sqlatte-badge-btn:hover {
+    transform: translateY(-4px) scale(1.05);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 0 3px rgba(212, 165, 116, 0.4);
+}
+
+.sqlatte-badge-btn:active {
+    transform: translateY(-2px) scale(1.02);
+}
+
+.sqlatte-badge-btn svg {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+/* Badge Pulse Animation */
+.sqlatte-badge-pulse {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 16px;
+    height: 16px;
+    background: #4ade80;
+    border-radius: 50%;
+    border: 3px solid #1a1a1a;
+    animation: sqlatte-pulse 2s infinite;
+}
+
+@keyframes sqlatte-pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 0.8;
+    }
+}
+
+/* Modal - FULLSCREEN MODE SUPPORT */
+.sqlatte-modal {
+    position: fixed;
+    background: #1a1a1a;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    z-index: 2147483647;
+}
+
+/* Default: Small modal (bottom-right) */
+.sqlatte-modal:not(.sqlatte-modal-fullscreen) {
+    bottom: 80px;
+    right: 20px;
+    width: 600px;
+    max-width: 90vw;
+    height: 600px;
+    max-height: 80vh;
+    border-radius: 16px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(212, 165, 116, 0.2);
+    transform: scale(0.9) translateY(20px);
+}
+
+/* FULLSCREEN MODE */
+.sqlatte-modal.sqlatte-modal-fullscreen {
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.sqlatte-modal.sqlatte-modal-open {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.sqlatte-modal.sqlatte-modal-open:not(.sqlatte-modal-fullscreen) {
+    transform: scale(1) translateY(0);
+}
+
+/* Modal Header */
+.sqlatte-modal-header {
+    background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sqlatte-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: white;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.sqlatte-modal-title svg {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.sqlatte-modal-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.sqlatte-modal-minimize,
+.sqlatte-modal-close,
+.sqlatte-modal-clear {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sqlatte-modal-minimize:hover,
+.sqlatte-modal-close:hover,
+.sqlatte-modal-clear:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Modal Toolbar */
+.sqlatte-modal-toolbar {
+    padding: 12px 16px;
+    background: #242424;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.sqlatte-modal-toolbar label {
+    font-size: 12px;
+    color: #a0a0a0;
+    font-weight: 500;
+}
+
+.sqlatte-modal-toolbar select {
+    flex: 1;
+    min-width: 200px;
+    padding: 6px 10px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.sqlatte-modal-toolbar select:focus {
+    outline: none;
+    border-color: #D4A574;
+}
+
+.sqlatte-modal-toolbar small {
+    font-size: 10px;
+    color: #707070;
+}
+
+/* Modal Body */
+.sqlatte-modal-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Chat Area */
+.sqlatte-chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    background: #0f0f0f;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sqlatte-chat-area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sqlatte-chat-area::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.sqlatte-chat-area::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+}
+
+/* Empty State */
+.sqlatte-empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: #a0a0a0;
+    text-align: center;
+    padding: 20px;
+}
+
+.sqlatte-empty-state svg {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 16px;
+    opacity: 0.3;
+    color: #D4A574;
+}
+
+.sqlatte-empty-state h3 {
+    font-size: 16px;
+    margin-bottom: 6px;
+    color: #e0e0e0;
+}
+
+.sqlatte-empty-state p {
+    font-size: 13px;
+    color: #a0a0a0;
+    margin: 4px 0;
+}
+
+/* Messages */
+.sqlatte-message {
+    display: flex;
+    gap: 10px;
+    animation: sqlatte-fadeIn 0.3s ease;
+}
+
+@keyframes sqlatte-fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.sqlatte-message.sqlatte-message-user {
+    flex-direction: row-reverse;
+}
+
+.sqlatte-message-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.sqlatte-message.sqlatte-message-user .sqlatte-message-avatar {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.sqlatte-message.sqlatte-message-assistant .sqlatte-message-avatar {
+    background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+}
+
+.sqlatte-message-content {
+    max-width: 80%;
+    background: #242424;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #e0e0e0;
+}
+
+.sqlatte-message.sqlatte-message-user .sqlatte-message-content {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+}
+
+/* SQL Code */
+.sqlatte-sql-code {
+    background: #000;
+    color: #00ff00;
+    padding: 12px;
+    border-radius: 6px;
+    margin: 8px 0;
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    border: 1px solid #1a1a1a;
+}
+
+/* Explanation */
+.sqlatte-explanation {
+    color: #a0a0a0;
+    font-size: 12px;
+    margin: 8px 0;
+    padding: 10px;
+    background: rgba(212, 165, 116, 0.1);
+    border-left: 3px solid #D4A574;
+    border-radius: 4px;
+}
+
+/* Error */
+.sqlatte-error {
+    color: #f87171;
+    font-size: 12px;
+    margin: 8px 0;
+    padding: 10px;
+    background: rgba(248, 113, 113, 0.1);
+    border-left: 3px solid #f87171;
+    border-radius: 4px;
+}
+
+/* Results Table */
+.sqlatte-results-table {
+    width: 100%;
+    margin: 12px 0;
+    border-collapse: collapse;
+    background: #1a1a1a;
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 12px;
+    display: block;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.sqlatte-results-table thead {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #242424;
+}
+
+.sqlatte-results-table tbody {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+}
+
+.sqlatte-results-table::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.sqlatte-results-table::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.sqlatte-results-table::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+}
+
+.sqlatte-results-table::-webkit-scrollbar-thumb:hover {
+    background: #444;
+}
+
+.sqlatte-results-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #D4A574;
+    background: #242424;
+    border-bottom: 2px solid #333;
+    white-space: nowrap;
+}
+
+.sqlatte-results-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #333;
+    color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sqlatte-results-table tbody tr:hover {
+    background: rgba(212, 165, 116, 0.05);
+}
+
+.sqlatte-results-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Input Area */
+.sqlatte-input-area {
+    padding: 12px 16px;
+    border-top: 1px solid #333;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    background: #1a1a1a;
+}
+
+.sqlatte-input-area textarea {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    font-size: 13px;
+    font-family: inherit;
+    resize: none;
+    transition: all 0.2s;
+}
+
+.sqlatte-input-area textarea:focus {
+    outline: none;
+    border-color: #D4A574;
+    background: #1a1a1a;
+}
+
+.sqlatte-input-area textarea::placeholder {
+    color: #707070;
+}
+
+.sqlatte-input-area button {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.sqlatte-input-area button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(212, 165, 116, 0.3);
+}
+
+.sqlatte-input-area button:active {
+    transform: translateY(0);
+}
+
+.sqlatte-input-area button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Loading Spinner */
+.sqlatte-loading {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: sqlatte-spin 0.8s linear infinite;
+}
+
+@keyframes sqlatte-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .sqlatte-modal:not(.sqlatte-modal-fullscreen) {
+        width: calc(100vw - 20px);
+        height: calc(100vh - 100px);
+        bottom: 70px;
+        left: 10px;
+        right: 10px;
+    }
+
+    .sqlatte-widget.sqlatte-widget-bottom-right,
+    .sqlatte-widget.sqlatte-widget-bottom-left {
+        bottom: 10px;
+        right: 10px;
+        left: auto;
+    }
+
+    .sqlatte-modal-toolbar select {
+        min-width: 150px;
+    }
+}
+
+/* Utility Classes */
+.text-xs {
+    font-size: 11px;
+}
+
+.text-sm {
+    font-size: 12px;
+}
+        `;
+
+        document.head.appendChild(style);
+        console.log('✅ Inline CSS injected (portable, CORS-free)');
     }
 
     function init() {
@@ -498,8 +1073,8 @@
         toggle: toggleModal,
         sendMessage: sendMessage,
         handleTableChange: handleTableChange,
-        clearChat: clearChat,  // NEW: Clear chat function
-        getSessionId: function() { return sessionId; },  // NEW: Get current session
+        clearChat: clearChat,
+        getSessionId: function() { return sessionId; },
         configure: function(options) {
             Object.assign(BADGE_CONFIG, options);
 
