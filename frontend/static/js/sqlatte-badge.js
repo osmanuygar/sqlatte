@@ -27,13 +27,107 @@
     let isModalOpen = false;
     let selectedTables = [];
     let currentSchema = '';
-    let sessionId = null;  // NEW: Track session ID for conversation memory
+    let sessionId = null;
+
+    // Results cache for CSV export
+    window.sqlatteResultsCache = {};
 
     /**
-     * SESSION MANAGEMENT (NEW!)
+     * CSV EXPORT FUNCTIONALITY (NEW!)
+     */
+    function exportToCSV(resultId) {
+        const cached = window.sqlatteResultsCache[resultId];
+        if (!cached) {
+            alert('Results not found. Please run the query again.');
+            return;
+        }
+
+        const { columns, data } = cached;
+
+        try {
+            // Generate CSV content
+            const csv = generateCSV(columns, data);
+
+            // Create download link
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+
+            // Generate filename with timestamp
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            const filename = `sqlatte_export_${timestamp}.csv`;
+
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            console.log('✅ CSV exported:', filename);
+
+            // Show success message
+            showToast('📥 CSV exported successfully!', 'success');
+
+        } catch (error) {
+            console.error('CSV export error:', error);
+            alert('Failed to export CSV: ' + error.message);
+        }
+    }
+
+    function generateCSV(columns, data) {
+        let csv = '';
+
+        // Add headers
+        csv += columns.map(col => escapeCSVField(col)).join(',') + '\n';
+
+        // Add data rows
+        data.forEach(row => {
+            csv += row.map(cell => escapeCSVField(String(cell))).join(',') + '\n';
+        });
+
+        return csv;
+    }
+
+    function escapeCSVField(field) {
+        // Handle null/undefined
+        if (field === null || field === undefined) {
+            return '';
+        }
+
+        // Convert to string
+        field = String(field);
+
+        // If field contains comma, newline, or quote, wrap in quotes and escape quotes
+        if (field.includes(',') || field.includes('\n') || field.includes('"')) {
+            return '"' + field.replace(/"/g, '""') + '"';
+        }
+
+        return field;
+    }
+
+    function showToast(message, type = 'info') {
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `sqlatte-toast sqlatte-toast-${type}`;
+        toast.textContent = message;
+
+        document.body.appendChild(toast);
+
+        // Trigger animation
+        setTimeout(() => toast.classList.add('sqlatte-toast-show'), 10);
+
+        // Remove after 3 seconds
+        setTimeout(() => {
+            toast.classList.remove('sqlatte-toast-show');
+            setTimeout(() => document.body.removeChild(toast), 300);
+        }, 3000);
+    }
+
+    /**
+     * SESSION MANAGEMENT
      */
     function getOrCreateSession() {
-        // Try to get session ID from localStorage
         const storedSessionId = localStorage.getItem('sqlatte_session_id');
 
         if (storedSessionId) {
@@ -65,7 +159,6 @@
     function createWidget() {
         if (document.getElementById('sqlatte-widget')) return;
 
-        // Initialize session
         getOrCreateSession();
 
         const widget = document.createElement('div');
@@ -126,7 +219,7 @@
     }
 
     /**
-     * Create modal with "Clear Chat" button
+     * Create modal
      */
     function createModal() {
         const modal = document.createElement('div');
@@ -231,18 +324,13 @@
         closeModal();
     }
 
-    /**
-     * CLEAR CHAT (NEW!)
-     */
     function clearChat() {
         if (!confirm('Clear conversation history? This will start a new chat.')) {
             return;
         }
 
-        // Clear session
         clearSession();
 
-        // Clear chat UI
         const chatArea = document.getElementById('sqlatte-chat-area');
         if (chatArea) {
             chatArea.innerHTML = `
@@ -361,29 +449,42 @@
             return '<div class="text-sm" style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
         }
 
-        let html = '<table class="sqlatte-results-table"><thead><tr>';
+        // Generate unique ID for this result set
+        const resultId = 'result-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
 
-        // Kolon başlıkları - tooltip ile tam isim
+        // Store data for CSV export
+        window.sqlatteResultsCache[resultId] = { columns, data };
+
+        let html = '<div class="sqlatte-results-container">';
+
+        // Export toolbar
+        html += `<div class="sqlatte-results-toolbar">`;
+        html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">`;
+        html += `📥 Export CSV</button>`;
+        html += `<span class="text-xs" style="opacity: 0.7;">${data.length} rows</span>`;
+        html += `</div>`;
+
+        // Table
+        html += '<table class="sqlatte-results-table"><thead><tr>';
+
         columns.forEach(col => {
             const colName = escapeHtml(col);
             html += `<th title="${colName}">${colName}</th>`;
         });
         html += '</tr></thead><tbody>';
 
-        // Data satırları - tooltip ile tam değer
         data.forEach(row => {
             html += '<tr>';
             row.forEach(cell => {
                 const cellValue = String(cell);
                 const escapedValue = escapeHtml(cellValue);
-                // title attribute ile tooltip ekle
                 html += `<td title="${escapedValue}">${escapedValue}</td>`;
             });
             html += '</tr>';
         });
 
         html += '</tbody></table>';
-        html += `<div class="text-xs" style="opacity: 0.7; margin-top: 8px;">${data.length} rows returned</div>`;
+        html += '</div>';
 
         return html;
     }
@@ -420,14 +521,13 @@
         input.value = '';
 
         try {
-            // Send request WITH session ID
             const response = await fetch(`${BADGE_CONFIG.apiBase}/query`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     question: question,
                     table_schema: currentSchema,
-                    session_id: sessionId  // NEW: Include session ID
+                    session_id: sessionId
                 })
             });
 
@@ -438,7 +538,6 @@
 
             const result = await response.json();
 
-            // Save session ID from response
             if (result.session_id) {
                 saveSession(result.session_id);
             }
@@ -476,8 +575,7 @@
     }
 
     /**
-     * Inject styles - INLINE CSS (portable, no CORS issues)
-     * CSS is embedded directly in JS for maximum portability
+     * Inject styles - INLINE CSS (with new CSV export styles)
      */
     function injectStyles() {
         if (document.getElementById('sqlatte-widget-styles')) return;
@@ -485,7 +583,9 @@
         const style = document.createElement('style');
         style.id = 'sqlatte-widget-styles';
         style.textContent = `
-/* SQLatte Widget Styles - Inline Version */
+/* SQLatte Widget Styles - With CSV Export */
+
+/* ... (previous styles remain same) ... */
 
 /* Widget Container */
 .sqlatte-widget {
@@ -876,25 +976,112 @@
     border-radius: 4px;
 }
 
-/* Results Table - IMPROVED: Horizontal + Vertical Scroll */
+/* ============================================
+   CSV EXPORT STYLES (NEW!)
+   ============================================ */
+
+/* Results Container */
+.sqlatte-results-container {
+    margin: 12px 0;
+}
+
+/* Export Toolbar */
+.sqlatte-results-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #242424;
+    border: 1px solid #333;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+}
+
+/* Export Button */
+.sqlatte-export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.sqlatte-export-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.sqlatte-export-btn:active {
+    transform: translateY(0);
+}
+
+/* Toast Notification */
+.sqlatte-toast {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    padding: 12px 20px;
+    background: #1a1a1a;
+    color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateX(100px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 999999999;
+    border: 1px solid #333;
+}
+
+.sqlatte-toast.sqlatte-toast-show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.sqlatte-toast.sqlatte-toast-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: #10b981;
+}
+
+.sqlatte-toast.sqlatte-toast-error {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    border-color: #ef4444;
+}
+
+.sqlatte-toast.sqlatte-toast-info {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    border-color: #3b82f6;
+}
+
+/* Results Table - WITH CSV Export */
 .sqlatte-results-table {
     width: 100%;
-    margin: 12px 0;
     border-collapse: collapse;
     background: #1a1a1a;
-    border-radius: 6px;
+    border: 1px solid #333;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
     overflow: hidden;
     font-size: 12px;
     display: block;
     max-height: 400px;
-    overflow-x: auto;  /* ← YATAY SCROLL EKLENDI */
-    overflow-y: auto;  /* Dikey scroll */
+    overflow-x: auto;
+    overflow-y: auto;
 }
 
 .sqlatte-results-table thead {
     display: table;
     width: 100%;
-    table-layout: auto;  /* ← FIXED yerine AUTO - kolonlar içeriğe göre genişler */
+    table-layout: auto;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -904,12 +1091,12 @@
 .sqlatte-results-table tbody {
     display: table;
     width: 100%;
-    table-layout: auto;  /* ← AUTO - tbody da aynı layout */
+    table-layout: auto;
 }
 
 .sqlatte-results-table::-webkit-scrollbar {
-    width: 8px;    /* ← Biraz daha kalın scrollbar */
-    height: 8px;   /* ← Yatay scrollbar yüksekliği */
+    width: 8px;
+    height: 8px;
 }
 
 .sqlatte-results-table::-webkit-scrollbar-track {
@@ -917,53 +1104,51 @@
 }
 
 .sqlatte-results-table::-webkit-scrollbar-thumb {
-    background: #555;  /* ← Biraz daha görünür */
+    background: #555;
     border-radius: 4px;
 }
 
 .sqlatte-results-table::-webkit-scrollbar-thumb:hover {
-    background: #666;  /* ← Hover'da daha açık */
+    background: #666;
 }
 
 .sqlatte-results-table th {
-    padding: 10px 16px;  /* ← Daha fazla padding */
+    padding: 10px 16px;
     text-align: left;
     font-weight: 600;
     color: #D4A574;
     background: #242424;
     border-bottom: 2px solid #333;
-    white-space: nowrap;  /* ← Kolon başlıkları kırılmaz */
-    min-width: 120px;     /* ← MINIMUM genişlik - dar kolonları engeller */
+    white-space: nowrap;
+    min-width: 120px;
     position: sticky;
     top: 0;
 }
 
 .sqlatte-results-table td {
-    padding: 8px 16px;   /* ← Daha fazla padding */
+    padding: 8px 16px;
     border-bottom: 1px solid #333;
     color: #e0e0e0;
-    min-width: 120px;    /* ← MINIMUM genişlik */
-    max-width: 300px;    /* ← MAKSIMUM genişlik - çok geniş kolonları sınırlar */
+    min-width: 120px;
+    max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;  /* ← Hücre içeriği kırılmaz, ellipsis gösterir */
-    cursor: default;      /* ← Mouse cursor */
-    transition: background 0.2s ease;  /* ← Smooth transition */
+    white-space: nowrap;
+    cursor: default;
+    transition: background 0.2s ease;
 }
 
-/* Hücre hover effect - hangi değere baktığımız belli olsun */
 .sqlatte-results-table td:hover {
-    background: rgba(212, 165, 116, 0.15);  /* ← Biraz highlight */
-    color: #fff;  /* ← Yazı daha belirgin */
+    background: rgba(212, 165, 116, 0.15);
+    color: #fff;
 }
 
 .sqlatte-results-table tbody tr:hover {
     background: rgba(212, 165, 116, 0.05);
 }
 
-/* Hem satır hem hücre hover'ı kombinasyonu */
 .sqlatte-results-table tbody tr:hover td:hover {
-    background: rgba(212, 165, 116, 0.2);  /* ← En güçlü highlight */
+    background: rgba(212, 165, 116, 0.2);
 }
 
 .sqlatte-results-table tr:last-child td {
@@ -1067,6 +1252,12 @@
     .sqlatte-modal-toolbar select {
         min-width: 150px;
     }
+
+    .sqlatte-toast {
+        right: 10px;
+        left: 10px;
+        top: 70px;
+    }
 }
 
 /* Utility Classes */
@@ -1080,7 +1271,7 @@
         `;
 
         document.head.appendChild(style);
-        console.log('✅ Inline CSS injected (portable, CORS-free)');
+        console.log('✅ Inline CSS injected with CSV export styles');
     }
 
     function init() {
@@ -1101,6 +1292,7 @@
         sendMessage: sendMessage,
         handleTableChange: handleTableChange,
         clearChat: clearChat,
+        exportCSV: exportToCSV,  // NEW: CSV export function
         getSessionId: function() { return sessionId; },
         configure: function(options) {
             Object.assign(BADGE_CONFIG, options);
