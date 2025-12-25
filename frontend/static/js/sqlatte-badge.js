@@ -124,6 +124,311 @@
         }, 3000);
     }
 
+
+    /**
+     * CHART.JS LOADER & VISUALIZATION
+     */
+    function loadChartJS(callback) {
+        console.log('📦 [DEBUG] loadChartJS called');
+        if (window.Chart) {
+            console.log('✅ [DEBUG] Chart.js already loaded, version:', window.Chart.version);
+            callback();
+            return;
+        }
+        console.log('📦 [DEBUG] Loading Chart.js from CDN...');
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+        script.onload = () => {
+            console.log('✅ [DEBUG] Chart.js loaded successfully!');
+            callback();
+        };
+        script.onerror = () => {
+            console.error('❌ [DEBUG] Failed to load Chart.js from CDN');
+            alert('Failed to load chart library. Charts will not be available.');
+        };
+        document.head.appendChild(script);
+    }
+
+    function detectChartType(columns, data) {
+        if (!data || data.length === 0) {
+            return { type: null, suitable: false, reason: 'No data' };
+        }
+
+        const numColumns = columns.length;
+        const hasNumeric = data.some(row =>
+            row.some(cell => typeof cell === 'number' || !isNaN(parseFloat(cell)))
+        );
+
+        if (!hasNumeric) {
+            return { type: null, suitable: false, reason: 'No numeric data' };
+        }
+
+        // 2 columns: label + value
+        if (numColumns === 2) {
+            const firstColIsText = data.every(row =>
+                typeof row[0] === 'string' || isNaN(parseFloat(row[0]))
+            );
+            const secondColIsNumeric = data.every(row =>
+                !isNaN(parseFloat(row[1]))
+            );
+
+            if (firstColIsText && secondColIsNumeric) {
+                if (data.length <= 10) {
+                    return {
+                        type: 'pie',
+                        suitable: true,
+                        reason: 'Categorical data (≤10 items)',
+                        labelCol: 0,
+                        valueCol: 1
+                    };
+                } else {
+                    return {
+                        type: 'bar',
+                        suitable: true,
+                        reason: 'Comparison data (>10 items)',
+                        labelCol: 0,
+                        valueCol: 1
+                    };
+                }
+            }
+        }
+
+        // Date/time series
+        const firstColIsDate = data.every(row => {
+            const val = row[0];
+            return !isNaN(Date.parse(val)) || /^\d{4}-\d{2}-\d{2}/.test(val);
+        });
+
+        if (firstColIsDate && numColumns >= 2) {
+            return {
+                type: 'line',
+                suitable: true,
+                reason: 'Time series detected',
+                labelCol: 0,
+                valueCols: Array.from({ length: numColumns - 1 }, (_, i) => i + 1)
+            };
+        }
+
+        return {
+            type: 'bar',
+            suitable: true,
+            reason: 'Default visualization',
+            labelCol: 0,
+            valueCol: 1
+        };
+    }
+
+    function showChart(resultId, chartType = null) {
+        console.log('📊 [DEBUG] showChart called with resultId:', resultId);
+
+        const cached = window.sqlatteResultsCache[resultId];
+        console.log('📊 [DEBUG] Cached data:', cached);
+
+        if (!cached) {
+            console.error('❌ [DEBUG] No cached data found for:', resultId);
+            alert('Results not found. Please run the query again.');
+            return;
+        }
+
+        const { columns, data } = cached;
+        console.log('📊 [DEBUG] Data:', data.length, 'rows,', columns.length, 'columns');
+
+        loadChartJS(() => {
+            console.log('📊 [DEBUG] Chart.js loaded, detecting chart type...');
+            const detection = detectChartType(columns, data);
+            console.log('📊 [DEBUG] Detection result:', detection);
+
+            if (!detection.suitable) {
+                console.warn('⚠️  [DEBUG] Data not suitable for chart:', detection.reason);
+                alert(`Cannot create chart: ${detection.reason}`);
+                return;
+            }
+
+            const finalChartType = chartType || detection.type;
+            console.log('📊 [DEBUG] Creating chart modal with type:', finalChartType);
+            createChartModal(resultId, columns, data, finalChartType, detection);
+        });
+    }
+
+    function createChartModal(resultId, columns, data, chartType, detection) {
+        console.log('🎨 [DEBUG] createChartModal called');
+        console.log('🎨 [DEBUG] Chart type:', chartType);
+        console.log('🎨 [DEBUG] Detection:', detection);
+
+        const existing = document.getElementById('sqlatte-chart-modal');
+        if (existing) {
+            console.log('🗑️  [DEBUG] Removing existing modal');
+            existing.remove();
+        }
+
+        console.log('🎨 [DEBUG] Creating new modal element');
+        const modal = document.createElement('div');
+        modal.id = 'sqlatte-chart-modal';
+        modal.className = 'sqlatte-chart-modal';
+
+        modal.innerHTML = `
+            <div class="sqlatte-chart-modal-content">
+                <div class="sqlatte-chart-header">
+                    <h3>📊 Data Visualization</h3>
+                    <div class="sqlatte-chart-controls">
+                        <select id="sqlatte-chart-type-select" class="sqlatte-chart-type-select">
+                            <option value="pie" ${chartType === 'pie' ? 'selected' : ''}>🥧 Pie Chart</option>
+                            <option value="bar" ${chartType === 'bar' ? 'selected' : ''}>📊 Bar Chart</option>
+                            <option value="line" ${chartType === 'line' ? 'selected' : ''}>📈 Line Chart</option>
+                            <option value="doughnut" ${chartType === 'doughnut' ? 'selected' : ''}>🍩 Doughnut</option>
+                            <option value="polarArea" ${chartType === 'polarArea' ? 'selected' : ''}>🎯 Polar Area</option>
+                        </select>
+                        <button class="sqlatte-chart-close" onclick="SQLatteWidget.closeChart()">✕</button>
+                    </div>
+                </div>
+                <div class="sqlatte-chart-body">
+                    <canvas id="sqlatte-chart-canvas"></canvas>
+                </div>
+                <div class="sqlatte-chart-footer">
+                    <small>💡 ${detection.reason}</small>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        console.log('✅ [DEBUG] Modal appended to body');
+        setTimeout(() => {
+            modal.classList.add('sqlatte-chart-modal-open');
+            console.log('✅ [DEBUG] Modal opened (class added)');
+        }, 10);
+        renderChart(columns, data, chartType, detection);
+
+        document.getElementById('sqlatte-chart-type-select').addEventListener('change', (e) => {
+            renderChart(columns, data, e.target.value, detection);
+        });
+    }
+
+    function renderChart(columns, data, chartType, detection) {
+        console.log('📈 [DEBUG] renderChart called with type:', chartType);
+
+        const canvas = document.getElementById('sqlatte-chart-canvas');
+        if (!canvas) {
+            console.error('❌ [DEBUG] Canvas element not found!');
+            return;
+        }
+        console.log('✅ [DEBUG] Canvas found:', canvas);
+
+        if (window.sqlatteCurrentChart) {
+            console.log('🗑️  [DEBUG] Destroying previous chart');
+            window.sqlatteCurrentChart.destroy();
+        }
+
+        const ctx = canvas.getContext('2d');
+        console.log('📊 [DEBUG] Preparing chart data...');
+        const chartData = prepareChartData(columns, data, chartType, detection);
+        console.log('📊 [DEBUG] Chart data:', chartData);
+
+        console.log('🎨 [DEBUG] Creating Chart.js instance...');
+        window.sqlatteCurrentChart = new Chart(ctx, {
+            type: chartType === 'polarArea' ? 'polarArea' : chartType,
+            data: chartData,
+            options: getChartOptions(chartType)
+        });
+        console.log('✅ [DEBUG] Chart rendered successfully!');
+    }
+
+    function prepareChartData(columns, data, chartType, detection) {
+        const labelCol = detection.labelCol || 0;
+        const valueCol = detection.valueCol || 1;
+
+        const labels = data.map(row => String(row[labelCol]));
+        const values = data.map(row => parseFloat(row[valueCol]) || 0);
+
+        const colors = [
+            'rgba(255, 99, 132, 0.8)', 'rgba(54, 162, 235, 0.8)',
+            'rgba(255, 206, 86, 0.8)', 'rgba(75, 192, 192, 0.8)',
+            'rgba(153, 102, 255, 0.8)', 'rgba(255, 159, 64, 0.8)',
+            'rgba(201, 203, 207, 0.8)', 'rgba(255, 99, 255, 0.8)',
+            'rgba(99, 255, 132, 0.8)', 'rgba(132, 99, 255, 0.8)'
+        ];
+
+        if (chartType === 'pie' || chartType === 'doughnut' || chartType === 'polarArea') {
+            return {
+                labels: labels,
+                datasets: [{
+                    label: columns[valueCol] || 'Value',
+                    data: values,
+                    backgroundColor: colors.slice(0, values.length),
+                    borderColor: 'rgba(255, 255, 255, 1)',
+                    borderWidth: 2
+                }]
+            };
+        } else if (chartType === 'line') {
+            return {
+                labels: labels,
+                datasets: [{
+                    label: columns[valueCol] || 'Value',
+                    data: values,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4
+                }]
+            };
+        } else {
+            return {
+                labels: labels,
+                datasets: [{
+                    label: columns[valueCol] || 'Value',
+                    data: values,
+                    backgroundColor: colors[0],
+                    borderColor: colors[0].replace('0.8', '1'),
+                    borderWidth: 2
+                }]
+            };
+        }
+    }
+
+    function getChartOptions(chartType) {
+        const baseOptions = {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: { color: '#e0e0e0', font: { size: 12 }, padding: 15 }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    borderColor: '#D4A574',
+                    borderWidth: 1,
+                    padding: 12
+                }
+            }
+        };
+
+        if (chartType === 'line' || chartType === 'bar') {
+            baseOptions.scales = {
+                x: { ticks: { color: '#e0e0e0' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                y: { ticks: { color: '#e0e0e0' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
+            };
+        }
+
+        return baseOptions;
+    }
+
+    function closeChart() {
+        const modal = document.getElementById('sqlatte-chart-modal');
+        if (modal) {
+            modal.classList.remove('sqlatte-chart-modal-open');
+            setTimeout(() => modal.remove(), 300);
+        }
+        if (window.sqlatteCurrentChart) {
+            window.sqlatteCurrentChart.destroy();
+            window.sqlatteCurrentChart = null;
+        }
+    }
+
+
     /**
      * SESSION MANAGEMENT
      */
@@ -455,12 +760,20 @@
         // Store data for CSV export
         window.sqlatteResultsCache[resultId] = { columns, data };
 
+        // Detect if chartable
+        const detection = detectChartType(columns, data);
+
         let html = '<div class="sqlatte-results-container">';
 
         // Export toolbar
         html += `<div class="sqlatte-results-toolbar">`;
         html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">`;
         html += `📥 Export CSV</button>`;
+
+        if (detection.suitable) {
+            html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize Data">📊 Show Chart</button>`;
+        }
+
         html += `<span class="text-xs" style="opacity: 0.7;">${data.length} rows</span>`;
         html += `</div>`;
 
@@ -1268,6 +1581,132 @@
 .text-sm {
     font-size: 12px;
 }
+
+/* ============================================
+   CHART VISUALIZATION STYLES
+   ============================================ */
+
+.sqlatte-chart-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 8px;
+}
+
+.sqlatte-chart-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.sqlatte-chart-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999999999;
+    opacity: 0;
+    transition: opacity 0.3s;
+    backdrop-filter: blur(4px);
+}
+
+.sqlatte-chart-modal.sqlatte-chart-modal-open {
+    opacity: 1;
+}
+
+.sqlatte-chart-modal-content {
+    background: #1a1a1a;
+    border-radius: 12px;
+    border: 1px solid #333;
+    width: 90%;
+    max-width: 900px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+}
+
+.sqlatte-chart-header {
+    padding: 20px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sqlatte-chart-header h3 {
+    margin: 0;
+    color: #f59e0b;
+    font-size: 20px;
+}
+
+.sqlatte-chart-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.sqlatte-chart-type-select {
+    padding: 8px 12px;
+    background: #242424;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.sqlatte-chart-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.sqlatte-chart-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.sqlatte-chart-body {
+    padding: 30px;
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sqlatte-chart-body canvas {
+    max-width: 100%;
+    max-height: 600px;
+}
+
+.sqlatte-chart-footer {
+    padding: 15px 20px;
+    border-top: 1px solid #333;
+    color: #a0a0a0;
+    font-size: 12px;
+    text-align: center;
+}
+
         `;
 
         document.head.appendChild(style);
@@ -1292,7 +1731,9 @@
         sendMessage: sendMessage,
         handleTableChange: handleTableChange,
         clearChat: clearChat,
-        exportCSV: exportToCSV,  // NEW: CSV export function
+        exportCSV: exportToCSV,
+        showChart: showChart,
+        closeChart: closeChart,
         getSessionId: function() { return sessionId; },
         configure: function(options) {
             Object.assign(BADGE_CONFIG, options);
