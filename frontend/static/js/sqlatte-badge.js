@@ -262,6 +262,14 @@
         }
 
         console.log('🎨 [DEBUG] Creating new modal element');
+
+        // Hide SQLatte modal to prevent z-index issues
+        const sqlatteModal = document.getElementById('sqlatte-modal');
+        if (sqlatteModal) {
+            sqlatteModal.classList.add('sqlatte-modal-hidden-for-chart');
+            console.log('🙈 [DEBUG] SQLatte modal hidden (class added)');
+        }
+
         const modal = document.createElement('div');
         modal.id = 'sqlatte-chart-modal';
         modal.className = 'sqlatte-chart-modal';
@@ -425,6 +433,13 @@
         if (window.sqlatteCurrentChart) {
             window.sqlatteCurrentChart.destroy();
             window.sqlatteCurrentChart = null;
+        }
+
+        // Restore SQLatte modal (remove hiding class)
+        const sqlatteModal = document.getElementById('sqlatte-modal');
+        if (sqlatteModal) {
+            sqlatteModal.classList.remove('sqlatte-modal-hidden-for-chart');
+            console.log('👁️  [DEBUG] SQLatte modal restored (class removed)');
         }
     }
 
@@ -1580,6 +1595,12 @@
 
 .text-sm {
     font-size: 12px;
+}
+
+/* Chart modal helper - hide SQLatte modal when chart is open */
+.sqlatte-modal-hidden-for-chart {
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 
 /* ============================================
