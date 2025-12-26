@@ -365,7 +365,7 @@ llm:
 
 ## Changelog
 
-### v0.3.0 (Latest) - Conversation Memory
+### v0.3.0 (Latest) - UI Improvements
 - 📥 Export query results to CSV with one click
 - 📊 Interactive charts (Pie, Bar, Line, Doughnut)
 - 📜 Track and replay your recent queries

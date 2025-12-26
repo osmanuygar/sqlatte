@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLatte Admin - Configuration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .admin-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .admin-header {
+            background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+            padding: 20px 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .admin-header h1 {
+            font-size: 28px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .admin-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #e0e0e0;
+            border: 1px solid #444;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Grid Layout */
+        .admin-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        /* Cards */
+        .config-card {
+            background: #242424;
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid #333;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .config-card h2 {
+            font-size: 20px;
+            color: #D4A574;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #333;
+        }
+
+        /* Form Groups */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #a0a0a0;
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 14px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #D4A574;
+            background: #222;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 4px;
+            font-size: 11px;
+            color: #707070;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-success {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .status-warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        /* Test Result */
+        .test-result {
+            margin-top: 16px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .test-result.show {
+            display: block;
+        }
+
+        .test-result.success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid #10b981;
+            color: #10b981;
+        }
+
+        .test-result.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            color: #ef4444;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            padding: 16px 24px;
+            background: #1a1a1a;
+            color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            font-size: 14px;
+            opacity: 0;
+            transform: translateX(100px);
+            transition: all 0.3s;
+            z-index: 9999;
+            border: 1px solid #333;
+            max-width: 400px;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .toast.success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-color: #10b981;
+        }
+
+        .toast.error {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border-color: #ef4444;
+        }
+
+        /* Info Panel */
+        .info-panel {
+            background: rgba(212, 165, 116, 0.1);
+            border: 1px solid #D4A574;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .info-panel h3 {
+            font-size: 14px;
+            color: #D4A574;
+            margin-bottom: 10px;
+        }
+
+        .info-panel ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .info-panel li {
+            padding: 6px 0;
+            font-size: 13px;
+            color: #a0a0a0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .info-panel li strong {
+            color: #e0e0e0;
+        }
+
+        /* Checkbox */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Header -->
+        <div class="admin-header">
+            <h1>
+                <span>⚙️</span>
+                SQLatte Admin
+            </h1>
+            <div class="admin-actions">
+                <button class="btn btn-secondary" onclick="loadConfig()">
+                    <span>🔄</span>
+                    Refresh
+                </button>
+                <button class="btn btn-danger" onclick="resetConfig()">
+                    <span>↩️</span>
+                    Reset to File
+                </button>
+                <button class="btn btn-primary" onclick="window.location.href='/'">
+                    <span>☕</span>
+                    Back to App
+                </button>
+            </div>
+        </div>
+
+        <!-- System Info Panel -->
+        <div class="info-panel" id="system-info">
+            <h3>📊 Current Configuration</h3>
+            <ul id="system-info-list">
+                <li>Loading...</li>
+            </ul>
+        </div>
+
+        <!-- Configuration Grid -->
+        <div class="admin-grid">
+            <!-- LLM Configuration -->
+            <div class="config-card">
+                <h2>
+                    <span>🤖</span>
+                    LLM Provider
+                </h2>
+
+                <div class="form-group">
+                    <label>Provider</label>
+                    <select id="llm-provider" onchange="updateLLMFields()">
+                        <option value="anthropic">Anthropic Claude</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="vertexai">Google Vertex AI</option>
+                    </select>
+                    <small>Select your AI provider</small>
+                </div>
+
+                <!-- Anthropic Fields -->
+                <div id="anthropic-fields">
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="anthropic-api-key" placeholder="sk-ant-...">
+                        <small>Your Anthropic API key</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Model</label>
+                        <input type="text" id="anthropic-model" placeholder="claude-sonnet-4-20250514">
+                        <small>e.g., claude-sonnet-4-20250514, claude-opus-4-20250514, claude-3-5-sonnet-20241022</small>
+                    </div>
+                </div>
+
+                <!-- Gemini Fields -->
+                <div id="gemini-fields" style="display: none;">
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="gemini-api-key" placeholder="Your Gemini API key">
+                    </div>
+                    <div class="form-group">
+                        <label>Model</label>
+                        <input type="text" id="gemini-model" placeholder="gemini-pro">
+                        <small>e.g., gemini-pro, gemini-1.5-pro, gemini-1.5-flash, gemini-2.0-flash-exp</small>
+                    </div>
+                </div>
+
+                <!-- Vertex AI Fields -->
+                <div id="vertexai-fields" style="display: none;">
+                    <div class="form-group">
+                        <label>Project ID</label>
+                        <input type="text" id="vertexai-project" placeholder="my-gcp-project">
+                    </div>
+                    <div class="form-group">
+                        <label>Location</label>
+                        <input type="text" id="vertexai-location" placeholder="us-central1">
+                        <small>e.g., us-central1, europe-west1, asia-southeast1</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Model</label>
+                        <input type="text" id="vertexai-model" placeholder="gemini-pro">
+                        <small>e.g., gemini-pro, gemini-1.5-pro, gemini-1.5-flash</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Credentials Path</label>
+                        <input type="text" id="vertexai-credentials" placeholder="/path/to/service-account.json">
+                        <small>Optional: Path to service account JSON</small>
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="llm-persist">
+                    <label for="llm-persist">Save to config.yaml</label>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button class="btn btn-secondary" onclick="testLLM()" style="flex: 1;">
+                        <span>🧪</span>
+                        Test Connection
+                    </button>
+                    <button class="btn btn-success" onclick="updateLLM()" style="flex: 1;">
+                        <span>✓</span>
+                        Apply
+                    </button>
+                </div>
+
+                <div id="llm-test-result" class="test-result"></div>
+            </div>
+
+            <!-- Database Configuration -->
+            <div class="config-card">
+                <h2>
+                    <span>🗄️</span>
+                    Database Provider
+                </h2>
+
+                <div class="form-group">
+                    <label>Provider</label>
+                    <select id="db-provider" onchange="updateDBFields()">
+                        <option value="trino">Trino</option>
+                        <option value="postgresql">PostgreSQL</option>
+                        <option value="mysql">MySQL</option>
+                    </select>
+                    <small>Select your database type</small>
+                </div>
+
+                <!-- Trino Fields -->
+                <div id="trino-fields">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="trino-host" placeholder="trino.example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="number" id="trino-port" value="8080">
+                    </div>
+                    <div class="form-group">
+                        <label>User</label>
+                        <input type="text" id="trino-user" placeholder="admin">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="trino-password">
+                    </div>
+                    <div class="form-group">
+                        <label>Catalog</label>
+                        <input type="text" id="trino-catalog" placeholder="hive">
+                    </div>
+                    <div class="form-group">
+                        <label>Schema</label>
+                        <input type="text" id="trino-schema" placeholder="default">
+                    </div>
+                    <div class="form-group">
+                        <label>HTTP Scheme</label>
+                        <select id="trino-http-scheme">
+                            <option value="https">HTTPS</option>
+                            <option value="http">HTTP</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- PostgreSQL Fields -->
+                <div id="postgresql-fields" style="display: none;">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="pg-host" placeholder="localhost">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="number" id="pg-port" value="5432">
+                    </div>
+                    <div class="form-group">
+                        <label>Database</label>
+                        <input type="text" id="pg-database" placeholder="postgres">
+                    </div>
+                    <div class="form-group">
+                        <label>User</label>
+                        <input type="text" id="pg-user" placeholder="postgres">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="pg-password">
+                    </div>
+                    <div class="form-group">
+                        <label>Schema</label>
+                        <input type="text" id="pg-schema" placeholder="public">
+                    </div>
+                </div>
+
+                <!-- MySQL Fields -->
+                <div id="mysql-fields" style="display: none;">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="mysql-host" placeholder="localhost">
+                    </div>
+                    <div class="form-group">
+                        <label>Port</label>
+                        <input type="number" id="mysql-port" value="3306">
+                    </div>
+                    <div class="form-group">
+                        <label>Database</label>
+                        <input type="text" id="mysql-database" placeholder="mysql">
+                    </div>
+                    <div class="form-group">
+                        <label>User</label>
+                        <input type="text" id="mysql-user" placeholder="root">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="mysql-password">
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="db-persist">
+                    <label for="db-persist">Save to config.yaml</label>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button class="btn btn-secondary" onclick="testDatabase()" style="flex: 1;">
+                        <span>🧪</span>
+                        Test Connection
+                    </button>
+                    <button class="btn btn-success" onclick="updateDatabase()" style="flex: 1;">
+                        <span>✓</span>
+                        Apply
+                    </button>
+                </div>
+
+                <div id="db-test-result" class="test-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        // ============================================
+        // LOAD CONFIGURATION
+        // ============================================
+        async function loadConfig() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/config`);
+                const data = await response.json();
+
+                if (data.success) {
+                    populateForm(data.config);
+                    updateSystemInfo(data);
+                    showToast('Configuration loaded', 'success');
+                }
+            } catch (error) {
+                console.error('Error loading config:', error);
+                showToast('Failed to load configuration', 'error');
+            }
+        }
+
+        function populateForm(config) {
+            // LLM Config
+            const llmProvider = config.llm?.provider || 'anthropic';
+            document.getElementById('llm-provider').value = llmProvider;
+
+            if (llmProvider === 'anthropic') {
+                const anthropicConfig = config.llm?.anthropic || {};
+                document.getElementById('anthropic-api-key').value = anthropicConfig.api_key || '';
+                document.getElementById('anthropic-model').value = anthropicConfig.model || 'claude-sonnet-4-20250514';
+            } else if (llmProvider === 'gemini') {
+                const geminiConfig = config.llm?.gemini || {};
+                document.getElementById('gemini-api-key').value = geminiConfig.api_key || '';
+                document.getElementById('gemini-model').value = geminiConfig.model || 'gemini-pro';
+            } else if (llmProvider === 'vertexai') {
+                const vertexConfig = config.llm?.vertexai || {};
+                document.getElementById('vertexai-project').value = vertexConfig.project_id || '';
+                document.getElementById('vertexai-location').value = vertexConfig.location || 'us-central1';
+                document.getElementById('vertexai-model').value = vertexConfig.model || 'gemini-pro';
+                document.getElementById('vertexai-credentials').value = vertexConfig.credentials_path || '';
+            }
+
+            updateLLMFields();
+
+            // Database Config
+            const dbProvider = config.database?.provider || 'trino';
+            document.getElementById('db-provider').value = dbProvider;
+
+            if (dbProvider === 'trino') {
+                const trinoConfig = config.database?.trino || {};
+                document.getElementById('trino-host').value = trinoConfig.host || '';
+                document.getElementById('trino-port').value = trinoConfig.port || 8080;
+                document.getElementById('trino-user').value = trinoConfig.user || '';
+                document.getElementById('trino-password').value = trinoConfig.password || '';
+                document.getElementById('trino-catalog').value = trinoConfig.catalog || 'hive';
+                document.getElementById('trino-schema').value = trinoConfig.schema || 'default';
+                document.getElementById('trino-http-scheme').value = trinoConfig.http_scheme || 'https';
+            } else if (dbProvider === 'postgresql') {
+                const pgConfig = config.database?.postgresql || {};
+                document.getElementById('pg-host').value = pgConfig.host || '';
+                document.getElementById('pg-port').value = pgConfig.port || 5432;
+                document.getElementById('pg-database').value = pgConfig.database || '';
+                document.getElementById('pg-user').value = pgConfig.user || '';
+                document.getElementById('pg-password').value = pgConfig.password || '';
+                document.getElementById('pg-schema').value = pgConfig.schema || 'public';
+            } else if (dbProvider === 'mysql') {
+                const mysqlConfig = config.database?.mysql || {};
+                document.getElementById('mysql-host').value = mysqlConfig.host || '';
+                document.getElementById('mysql-port').value = mysqlConfig.port || 3306;
+                document.getElementById('mysql-database').value = mysqlConfig.database || '';
+                document.getElementById('mysql-user').value = mysqlConfig.user || '';
+                document.getElementById('mysql-password').value = mysqlConfig.password || '';
+            }
+
+            updateDBFields();
+        }
+
+        function updateSystemInfo(data) {
+            const list = document.getElementById('system-info-list');
+            list.innerHTML = `
+                <li><strong>LLM Provider:</strong> <span>${data.config.llm?.provider || 'N/A'}</span></li>
+                <li><strong>Database Provider:</strong> <span>${data.config.database?.provider || 'N/A'}</span></li>
+                <li><strong>Runtime Overrides:</strong> <span>${data.has_runtime_overrides ? 'Active' : 'None'}</span></li>
+                <li><strong>Config File:</strong> <span>${data.config_file || 'N/A'}</span></li>
+            `;
+        }
+
+        // ============================================
+        // FIELD VISIBILITY
+        // ============================================
+        function updateLLMFields() {
+            const provider = document.getElementById('llm-provider').value;
+
+            document.getElementById('anthropic-fields').style.display = provider === 'anthropic' ? 'block' : 'none';
+            document.getElementById('gemini-fields').style.display = provider === 'gemini' ? 'block' : 'none';
+            document.getElementById('vertexai-fields').style.display = provider === 'vertexai' ? 'block' : 'none';
+        }
+
+        function updateDBFields() {
+            const provider = document.getElementById('db-provider').value;
+
+            document.getElementById('trino-fields').style.display = provider === 'trino' ? 'block' : 'none';
+            document.getElementById('postgresql-fields').style.display = provider === 'postgresql' ? 'block' : 'none';
+            document.getElementById('mysql-fields').style.display = provider === 'mysql' ? 'block' : 'none';
+        }
+
+        // ============================================
+        // LLM ACTIONS
+        // ============================================
+        async function testLLM() {
+            const provider = document.getElementById('llm-provider').value;
+            const config = getLLMConfig();
+
+            showTestResult('llm-test-result', 'Testing connection...', null);
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider_type: 'llm',
+                        provider: provider,
+                        config: config
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showTestResult('llm-test-result', `✓ Connection successful! Model: ${result.model}`, true);
+                } else {
+                    showTestResult('llm-test-result', `✗ ${result.message}`, false);
+                }
+            } catch (error) {
+                showTestResult('llm-test-result', `✗ Test failed: ${error.message}`, false);
+            }
+        }
+
+        async function updateLLM() {
+            const provider = document.getElementById('llm-provider').value;
+            const config = getLLMConfig();
+            const persist = document.getElementById('llm-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/llm/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider: provider,
+                        config: config,
+                        persist: persist
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('LLM configuration updated' + (persist ? ' and saved' : ''), 'success');
+                    loadConfig();
+                } else {
+                    showToast('Failed to update LLM configuration', 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        function getLLMConfig() {
+            const provider = document.getElementById('llm-provider').value;
+
+            if (provider === 'anthropic') {
+                return {
+                    api_key: document.getElementById('anthropic-api-key').value,
+                    model: document.getElementById('anthropic-model').value || 'claude-sonnet-4-20250514',
+                    max_tokens: 1000
+                };
+            } else if (provider === 'gemini') {
+                return {
+                    api_key: document.getElementById('gemini-api-key').value,
+                    model: document.getElementById('gemini-model').value || 'gemini-pro',
+                    max_tokens: 1000
+                };
+            } else if (provider === 'vertexai') {
+                return {
+                    project_id: document.getElementById('vertexai-project').value,
+                    location: document.getElementById('vertexai-location').value || 'us-central1',
+                    model: document.getElementById('vertexai-model').value || 'gemini-pro',
+                    credentials_path: document.getElementById('vertexai-credentials').value,
+                    max_tokens: 1000
+                };
+            }
+        }
+
+        // ============================================
+        // DATABASE ACTIONS
+        // ============================================
+        async function testDatabase() {
+            const provider = document.getElementById('db-provider').value;
+            const config = getDBConfig();
+
+            showTestResult('db-test-result', 'Testing connection...', null);
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider_type: 'database',
+                        provider: provider,
+                        config: config
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showTestResult('db-test-result', `✓ Connection successful! Tables: ${result.table_count || 0}`, true);
+                } else {
+                    showTestResult('db-test-result', `✗ ${result.message}`, false);
+                }
+            } catch (error) {
+                showTestResult('db-test-result', `✗ Test failed: ${error.message}`, false);
+            }
+        }
+
+        async function updateDatabase() {
+            const provider = document.getElementById('db-provider').value;
+            const config = getDBConfig();
+            const persist = document.getElementById('db-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/database/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider: provider,
+                        config: config,
+                        persist: persist
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('Database configuration updated' + (persist ? ' and saved' : ''), 'success');
+                    loadConfig();
+                } else {
+                    showToast('Failed to update database configuration', 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        function getDBConfig() {
+            const provider = document.getElementById('db-provider').value;
+
+            if (provider === 'trino') {
+                return {
+                    host: document.getElementById('trino-host').value,
+                    port: parseInt(document.getElementById('trino-port').value),
+                    user: document.getElementById('trino-user').value,
+                    password: document.getElementById('trino-password').value,
+                    catalog: document.getElementById('trino-catalog').value,
+                    schema: document.getElementById('trino-schema').value,
+                    http_scheme: document.getElementById('trino-http-scheme').value
+                };
+            } else if (provider === 'postgresql') {
+                return {
+                    host: document.getElementById('pg-host').value,
+                    port: parseInt(document.getElementById('pg-port').value),
+                    database: document.getElementById('pg-database').value,
+                    user: document.getElementById('pg-user').value,
+                    password: document.getElementById('pg-password').value,
+                    schema: document.getElementById('pg-schema').value
+                };
+            } else if (provider === 'mysql') {
+                return {
+                    host: document.getElementById('mysql-host').value,
+                    port: parseInt(document.getElementById('mysql-port').value),
+                    database: document.getElementById('mysql-database').value,
+                    user: document.getElementById('mysql-user').value,
+                    password: document.getElementById('mysql-password').value
+                };
+            }
+        }
+
+        // ============================================
+        // RESET CONFIG
+        // ============================================
+        async function resetConfig() {
+            if (!confirm('Reset all runtime changes and reload from config.yaml?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/reset`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('Configuration reset to file defaults', 'success');
+                    loadConfig();
+                } else {
+                    showToast('Failed to reset configuration', 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // ============================================
+        // UI HELPERS
+        // ============================================
+        function showTestResult(elementId, message, success) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'test-result show';
+
+            if (success !== null) {
+                element.classList.add(success ? 'success' : 'error');
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+
+            document.body.appendChild(toast);
+
+            setTimeout(() => toast.classList.add('show'), 10);
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => document.body.removeChild(toast), 300);
+            }, 3000);
+        }
+
+        // ============================================
+        // INIT
+        // ============================================
+        window.addEventListener('load', () => {
+            loadConfig();
+        });
+    </script>
+</body>
+</html>
