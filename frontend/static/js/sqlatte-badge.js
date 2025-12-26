@@ -29,11 +29,17 @@
     let currentSchema = '';
     let sessionId = null;
 
+    // NEW: History & Favorites state
+    let queryHistory = [];
+    let favorites = [];
+    let isHistoryPanelOpen = false;
+    let isFavoritesPanelOpen = false;
+
     // Results cache for CSV export
     window.sqlatteResultsCache = {};
 
     /**
-     * CSV EXPORT FUNCTIONALITY (NEW!)
+     * CSV EXPORT FUNCTIONALITY
      */
     function exportToCSV(resultId) {
         const cached = window.sqlatteResultsCache[resultId];
@@ -45,15 +51,11 @@
         const { columns, data } = cached;
 
         try {
-            // Generate CSV content
             const csv = generateCSV(columns, data);
-
-            // Create download link
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
 
-            // Generate filename with timestamp
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
             const filename = `sqlatte_export_${timestamp}.csv`;
 
@@ -64,9 +66,6 @@
             link.click();
             document.body.removeChild(link);
 
-            console.log('✅ CSV exported:', filename);
-
-            // Show success message
             showToast('📥 CSV exported successfully!', 'success');
 
         } catch (error) {
@@ -77,47 +76,28 @@
 
     function generateCSV(columns, data) {
         let csv = '';
-
-        // Add headers
         csv += columns.map(col => escapeCSVField(col)).join(',') + '\n';
-
-        // Add data rows
         data.forEach(row => {
             csv += row.map(cell => escapeCSVField(String(cell))).join(',') + '\n';
         });
-
         return csv;
     }
 
     function escapeCSVField(field) {
-        // Handle null/undefined
-        if (field === null || field === undefined) {
-            return '';
-        }
-
-        // Convert to string
+        if (field === null || field === undefined) return '';
         field = String(field);
-
-        // If field contains comma, newline, or quote, wrap in quotes and escape quotes
         if (field.includes(',') || field.includes('\n') || field.includes('"')) {
             return '"' + field.replace(/"/g, '""') + '"';
         }
-
         return field;
     }
 
     function showToast(message, type = 'info') {
-        // Create toast element
         const toast = document.createElement('div');
         toast.className = `sqlatte-toast sqlatte-toast-${type}`;
         toast.textContent = message;
-
         document.body.appendChild(toast);
-
-        // Trigger animation
         setTimeout(() => toast.classList.add('sqlatte-toast-show'), 10);
-
-        // Remove after 3 seconds
         setTimeout(() => {
             toast.classList.remove('sqlatte-toast-show');
             setTimeout(() => document.body.removeChild(toast), 300);
@@ -129,23 +109,14 @@
      * CHART.JS LOADER & VISUALIZATION
      */
     function loadChartJS(callback) {
-        console.log('📦 [DEBUG] loadChartJS called');
         if (window.Chart) {
-            console.log('✅ [DEBUG] Chart.js already loaded, version:', window.Chart.version);
             callback();
             return;
         }
-        console.log('📦 [DEBUG] Loading Chart.js from CDN...');
         const script = document.createElement('script');
         script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-        script.onload = () => {
-            console.log('✅ [DEBUG] Chart.js loaded successfully!');
-            callback();
-        };
-        script.onerror = () => {
-            console.error('❌ [DEBUG] Failed to load Chart.js from CDN');
-            alert('Failed to load chart library. Charts will not be available.');
-        };
+        script.onload = callback;
+        script.onerror = () => alert('Failed to load chart library.');
         document.head.appendChild(script);
     }
 
@@ -163,112 +134,61 @@
             return { type: null, suitable: false, reason: 'No numeric data' };
         }
 
-        // 2 columns: label + value
         if (numColumns === 2) {
             const firstColIsText = data.every(row =>
                 typeof row[0] === 'string' || isNaN(parseFloat(row[0]))
             );
-            const secondColIsNumeric = data.every(row =>
-                !isNaN(parseFloat(row[1]))
-            );
+            const secondColIsNumeric = data.every(row => !isNaN(parseFloat(row[1])));
 
             if (firstColIsText && secondColIsNumeric) {
                 if (data.length <= 10) {
-                    return {
-                        type: 'pie',
-                        suitable: true,
-                        reason: 'Categorical data (≤10 items)',
-                        labelCol: 0,
-                        valueCol: 1
-                    };
+                    return { type: 'pie', suitable: true, reason: 'Categorical data (≤10 items)', labelCol: 0, valueCol: 1 };
                 } else {
-                    return {
-                        type: 'bar',
-                        suitable: true,
-                        reason: 'Comparison data (>10 items)',
-                        labelCol: 0,
-                        valueCol: 1
-                    };
+                    return { type: 'bar', suitable: true, reason: 'Comparison data (>10 items)', labelCol: 0, valueCol: 1 };
                 }
             }
         }
 
-        // Date/time series
         const firstColIsDate = data.every(row => {
             const val = row[0];
             return !isNaN(Date.parse(val)) || /^\d{4}-\d{2}-\d{2}/.test(val);
         });
 
         if (firstColIsDate && numColumns >= 2) {
-            return {
-                type: 'line',
-                suitable: true,
-                reason: 'Time series detected',
-                labelCol: 0,
-                valueCols: Array.from({ length: numColumns - 1 }, (_, i) => i + 1)
-            };
+            return { type: 'line', suitable: true, reason: 'Time series detected', labelCol: 0, valueCols: Array.from({ length: numColumns - 1 }, (_, i) => i + 1) };
         }
 
-        return {
-            type: 'bar',
-            suitable: true,
-            reason: 'Default visualization',
-            labelCol: 0,
-            valueCol: 1
-        };
+        return { type: 'bar', suitable: true, reason: 'Default visualization', labelCol: 0, valueCol: 1 };
     }
 
     function showChart(resultId, chartType = null) {
-        console.log('📊 [DEBUG] showChart called with resultId:', resultId);
-
         const cached = window.sqlatteResultsCache[resultId];
-        console.log('📊 [DEBUG] Cached data:', cached);
-
         if (!cached) {
-            console.error('❌ [DEBUG] No cached data found for:', resultId);
             alert('Results not found. Please run the query again.');
             return;
         }
 
         const { columns, data } = cached;
-        console.log('📊 [DEBUG] Data:', data.length, 'rows,', columns.length, 'columns');
 
         loadChartJS(() => {
-            console.log('📊 [DEBUG] Chart.js loaded, detecting chart type...');
             const detection = detectChartType(columns, data);
-            console.log('📊 [DEBUG] Detection result:', detection);
 
             if (!detection.suitable) {
-                console.warn('⚠️  [DEBUG] Data not suitable for chart:', detection.reason);
                 alert(`Cannot create chart: ${detection.reason}`);
                 return;
             }
 
             const finalChartType = chartType || detection.type;
-            console.log('📊 [DEBUG] Creating chart modal with type:', finalChartType);
             createChartModal(resultId, columns, data, finalChartType, detection);
         });
     }
 
     function createChartModal(resultId, columns, data, chartType, detection) {
-        console.log('🎨 [DEBUG] createChartModal called');
-        console.log('🎨 [DEBUG] Chart type:', chartType);
-        console.log('🎨 [DEBUG] Detection:', detection);
-
         const existing = document.getElementById('sqlatte-chart-modal');
-        if (existing) {
-            console.log('🗑️  [DEBUG] Removing existing modal');
-            existing.remove();
-        }
+        if (existing) existing.remove();
 
-        console.log('🎨 [DEBUG] Creating new modal element');
-
-        // Hide SQLatte modal to prevent z-index issues
         const sqlatteModal = document.getElementById('sqlatte-modal');
-        if (sqlatteModal) {
-            sqlatteModal.classList.add('sqlatte-modal-hidden-for-chart');
-            console.log('🙈 [DEBUG] SQLatte modal hidden (class added)');
-        }
+        if (sqlatteModal) sqlatteModal.classList.add('sqlatte-modal-hidden-for-chart');
 
         const modal = document.createElement('div');
         modal.id = 'sqlatte-chart-modal';
@@ -284,7 +204,6 @@
                             <option value="bar" ${chartType === 'bar' ? 'selected' : ''}>📊 Bar Chart</option>
                             <option value="line" ${chartType === 'line' ? 'selected' : ''}>📈 Line Chart</option>
                             <option value="doughnut" ${chartType === 'doughnut' ? 'selected' : ''}>🍩 Doughnut</option>
-                            <option value="polarArea" ${chartType === 'polarArea' ? 'selected' : ''}>🎯 Polar Area</option>
                         </select>
                         <button class="sqlatte-chart-close" onclick="SQLatteWidget.closeChart()">✕</button>
                     </div>
@@ -299,11 +218,7 @@
         `;
 
         document.body.appendChild(modal);
-        console.log('✅ [DEBUG] Modal appended to body');
-        setTimeout(() => {
-            modal.classList.add('sqlatte-chart-modal-open');
-            console.log('✅ [DEBUG] Modal opened (class added)');
-        }, 10);
+        setTimeout(() => modal.classList.add('sqlatte-chart-modal-open'), 10);
         renderChart(columns, data, chartType, detection);
 
         document.getElementById('sqlatte-chart-type-select').addEventListener('change', (e) => {
@@ -312,32 +227,19 @@
     }
 
     function renderChart(columns, data, chartType, detection) {
-        console.log('📈 [DEBUG] renderChart called with type:', chartType);
-
         const canvas = document.getElementById('sqlatte-chart-canvas');
-        if (!canvas) {
-            console.error('❌ [DEBUG] Canvas element not found!');
-            return;
-        }
-        console.log('✅ [DEBUG] Canvas found:', canvas);
+        if (!canvas) return;
 
-        if (window.sqlatteCurrentChart) {
-            console.log('🗑️  [DEBUG] Destroying previous chart');
-            window.sqlatteCurrentChart.destroy();
-        }
+        if (window.sqlatteCurrentChart) window.sqlatteCurrentChart.destroy();
 
         const ctx = canvas.getContext('2d');
-        console.log('📊 [DEBUG] Preparing chart data...');
         const chartData = prepareChartData(columns, data, chartType, detection);
-        console.log('📊 [DEBUG] Chart data:', chartData);
 
-        console.log('🎨 [DEBUG] Creating Chart.js instance...');
         window.sqlatteCurrentChart = new Chart(ctx, {
-            type: chartType === 'polarArea' ? 'polarArea' : chartType,
+            type: chartType,
             data: chartData,
             options: getChartOptions(chartType)
         });
-        console.log('✅ [DEBUG] Chart rendered successfully!');
     }
 
     function prepareChartData(columns, data, chartType, detection) {
@@ -355,7 +257,7 @@
             'rgba(99, 255, 132, 0.8)', 'rgba(132, 99, 255, 0.8)'
         ];
 
-        if (chartType === 'pie' || chartType === 'doughnut' || chartType === 'polarArea') {
+        if (chartType === 'pie' || chartType === 'doughnut') {
             return {
                 labels: labels,
                 datasets: [{
@@ -398,19 +300,8 @@
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: {
-                    display: true,
-                    position: 'bottom',
-                    labels: { color: '#e0e0e0', font: { size: 12 }, padding: 15 }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    titleColor: '#fff',
-                    bodyColor: '#fff',
-                    borderColor: '#D4A574',
-                    borderWidth: 1,
-                    padding: 12
-                }
+                legend: { display: true, position: 'bottom', labels: { color: '#e0e0e0' } },
+                tooltip: { backgroundColor: 'rgba(0, 0, 0, 0.8)', borderColor: '#D4A574', borderWidth: 1 }
             }
         };
 
@@ -435,12 +326,8 @@
             window.sqlatteCurrentChart = null;
         }
 
-        // Restore SQLatte modal (remove hiding class)
         const sqlatteModal = document.getElementById('sqlatte-modal');
-        if (sqlatteModal) {
-            sqlatteModal.classList.remove('sqlatte-modal-hidden-for-chart');
-            console.log('👁️  [DEBUG] SQLatte modal restored (class removed)');
-        }
+        if (sqlatteModal) sqlatteModal.classList.remove('sqlatte-modal-hidden-for-chart');
     }
 
 
@@ -449,29 +336,291 @@
      */
     function getOrCreateSession() {
         const storedSessionId = localStorage.getItem('sqlatte_session_id');
-
         if (storedSessionId) {
-            console.log('📦 Using existing session:', storedSessionId.substring(0, 8) + '...');
             sessionId = storedSessionId;
         } else {
-            console.log('🆕 New session will be created on first message');
             sessionId = null;
         }
-
         return sessionId;
     }
 
     function saveSession(newSessionId) {
         sessionId = newSessionId;
         localStorage.setItem('sqlatte_session_id', newSessionId);
-        console.log('💾 Session saved:', newSessionId.substring(0, 8) + '...');
     }
 
     function clearSession() {
         sessionId = null;
         localStorage.removeItem('sqlatte_session_id');
-        console.log('🗑️  Session cleared');
     }
+
+
+    /**
+     * ============================================
+     * QUERY HISTORY & FAVORITES (NEW!)
+     * ============================================
+     */
+
+    async function loadHistory() {
+        if (!sessionId) return;
+
+        try {
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/history?session_id=${sessionId}&limit=20`);
+            if (response.ok) {
+                const data = await response.json();
+                queryHistory = data.queries || [];
+                renderHistoryPanel();
+            }
+        } catch (error) {
+            console.error('Error loading history:', error);
+        }
+    }
+
+    async function loadFavorites() {
+        try {
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/favorites?limit=50`);
+            if (response.ok) {
+                const data = await response.json();
+                favorites = data.favorites || [];
+                renderFavoritesPanel();
+            }
+        } catch (error) {
+            console.error('Error loading favorites:', error);
+        }
+    }
+
+    async function addToFavorites(queryId, customName = null) {
+        try {
+            const body = { query_id: queryId };
+            if (customName) body.favorite_name = customName;
+
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/favorites?session_id=${sessionId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (response.ok) {
+                showToast('⭐ Added to favorites!', 'success');
+                loadFavorites();
+                loadHistory();
+            } else {
+                throw new Error('Failed to add favorite');
+            }
+        } catch (error) {
+            console.error('Error adding favorite:', error);
+            showToast('❌ Failed to add favorite', 'error');
+        }
+    }
+
+    async function removeFromFavorites(queryId) {
+        try {
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/favorites/${queryId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                showToast('🗑️ Removed from favorites', 'info');
+                loadFavorites();
+                loadHistory();
+            }
+        } catch (error) {
+            console.error('Error removing favorite:', error);
+        }
+    }
+
+    async function deleteFromHistory(queryId) {
+        try {
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/history/${queryId}?session_id=${sessionId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                showToast('🗑️ Deleted from history', 'info');
+                loadHistory();
+            }
+        } catch (error) {
+            console.error('Error deleting from history:', error);
+        }
+    }
+
+    function useQuery(query) {
+        // Fill input with the question
+        const input = document.getElementById('sqlatte-input');
+        if (input) {
+            input.value = query.question;
+            input.focus();
+        }
+
+        // Select the tables if available
+        if (query.tables && query.tables.length > 0) {
+            const select = document.getElementById('sqlatte-table-select');
+            if (select) {
+                Array.from(select.options).forEach(opt => {
+                    opt.selected = query.tables.includes(opt.value);
+                });
+                handleTableChange();
+            }
+        }
+
+        // Close panels
+        closeHistoryPanel();
+        closeFavoritesPanel();
+
+        showToast('📝 Query loaded - press Enter to run', 'info');
+    }
+
+    function renderHistoryPanel() {
+        const panel = document.getElementById('sqlatte-history-panel');
+        if (!panel) return;
+
+        if (queryHistory.length === 0) {
+            panel.innerHTML = `
+                <div class="sqlatte-panel-empty">
+                    <span>📜</span>
+                    <p>No query history yet</p>
+                    <small>Your queries will appear here</small>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="sqlatte-panel-list">';
+
+        queryHistory.forEach(query => {
+            const timeAgo = getTimeAgo(query.created_at);
+            const isFav = query.is_favorite;
+
+            html += `
+                <div class="sqlatte-history-item ${isFav ? 'sqlatte-history-item-favorite' : ''}">
+                    <div class="sqlatte-history-item-header">
+                        <span class="sqlatte-history-question" onclick="SQLatteWidget.useQuery(${JSON.stringify(query).replace(/"/g, '&quot;')})">${escapeHtml(truncate(query.question, 50))}</span>
+                        <span class="sqlatte-history-time">${timeAgo}</span>
+                    </div>
+                    <div class="sqlatte-history-item-meta">
+                        <span class="sqlatte-history-rows">${query.row_count} rows</span>
+                        <span class="sqlatte-history-tables">${query.tables.join(', ') || 'N/A'}</span>
+                    </div>
+                    <div class="sqlatte-history-item-actions">
+                        <button onclick="SQLatteWidget.useQuery(${JSON.stringify(query).replace(/"/g, '&quot;')})" title="Use this query">▶️</button>
+                        ${isFav
+                            ? `<button onclick="SQLatteWidget.removeFromFavorites('${query.id}')" title="Remove from favorites">💔</button>`
+                            : `<button onclick="SQLatteWidget.addToFavorites('${query.id}')" title="Add to favorites">⭐</button>`
+                        }
+                        <button onclick="SQLatteWidget.deleteFromHistory('${query.id}')" title="Delete">🗑️</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        panel.innerHTML = html;
+    }
+
+    function renderFavoritesPanel() {
+        const panel = document.getElementById('sqlatte-favorites-panel');
+        if (!panel) return;
+
+        if (favorites.length === 0) {
+            panel.innerHTML = `
+                <div class="sqlatte-panel-empty">
+                    <span>⭐</span>
+                    <p>No favorites yet</p>
+                    <small>Star your frequent queries</small>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="sqlatte-panel-list">';
+
+        favorites.forEach(fav => {
+            html += `
+                <div class="sqlatte-favorite-item">
+                    <div class="sqlatte-favorite-item-header">
+                        <span class="sqlatte-favorite-name" onclick="SQLatteWidget.useQuery(${JSON.stringify(fav).replace(/"/g, '&quot;')})">⭐ ${escapeHtml(fav.favorite_name || truncate(fav.question, 40))}</span>
+                    </div>
+                    <div class="sqlatte-favorite-item-meta">
+                        <span class="sqlatte-favorite-tables">${fav.tables.join(', ') || 'N/A'}</span>
+                    </div>
+                    <div class="sqlatte-favorite-item-actions">
+                        <button onclick="SQLatteWidget.useQuery(${JSON.stringify(fav).replace(/"/g, '&quot;')})" title="Use this query">▶️</button>
+                        <button onclick="SQLatteWidget.removeFromFavorites('${fav.id}')" title="Remove">💔</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        panel.innerHTML = html;
+    }
+
+    function toggleHistoryPanel() {
+        const panel = document.getElementById('sqlatte-history-panel');
+        const btn = document.getElementById('sqlatte-history-btn');
+
+        if (isHistoryPanelOpen) {
+            closeHistoryPanel();
+        } else {
+            closeFavoritesPanel();
+            panel.classList.add('sqlatte-panel-open');
+            btn.classList.add('sqlatte-toolbar-btn-active');
+            isHistoryPanelOpen = true;
+            loadHistory();
+        }
+    }
+
+    function closeHistoryPanel() {
+        const panel = document.getElementById('sqlatte-history-panel');
+        const btn = document.getElementById('sqlatte-history-btn');
+        if (panel) panel.classList.remove('sqlatte-panel-open');
+        if (btn) btn.classList.remove('sqlatte-toolbar-btn-active');
+        isHistoryPanelOpen = false;
+    }
+
+    function toggleFavoritesPanel() {
+        const panel = document.getElementById('sqlatte-favorites-panel');
+        const btn = document.getElementById('sqlatte-favorites-btn');
+
+        if (isFavoritesPanelOpen) {
+            closeFavoritesPanel();
+        } else {
+            closeHistoryPanel();
+            panel.classList.add('sqlatte-panel-open');
+            btn.classList.add('sqlatte-toolbar-btn-active');
+            isFavoritesPanelOpen = true;
+            loadFavorites();
+        }
+    }
+
+    function closeFavoritesPanel() {
+        const panel = document.getElementById('sqlatte-favorites-panel');
+        const btn = document.getElementById('sqlatte-favorites-btn');
+        if (panel) panel.classList.remove('sqlatte-panel-open');
+        if (btn) btn.classList.remove('sqlatte-toolbar-btn-active');
+        isFavoritesPanelOpen = false;
+    }
+
+    function getTimeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        return date.toLocaleDateString();
+    }
+
+    function truncate(str, len) {
+        if (!str) return '';
+        return str.length > len ? str.substring(0, len) + '...' : str;
+    }
+
 
     /**
      * Create widget
@@ -504,7 +653,6 @@
                 <g opacity="0.85">
                     <circle cx="100" cy="30" r="4.5" fill="#D4A574">
                         <animate attributeName="r" values="4.5;5.5;4.5" dur="2s" repeatCount="indefinite"/>
-                        <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" repeatCount="indefinite"/>
                     </circle>
                     <circle cx="85" cy="35" r="4" fill="#D4A574">
                         <animate attributeName="r" values="4;5;4" dur="2s" begin="0.2s" repeatCount="indefinite"/>
@@ -519,11 +667,9 @@
 
         widget.appendChild(badge);
         document.body.appendChild(widget);
-        console.log('✅ Badge widget added to body');
 
         const modal = createModal();
         document.body.appendChild(modal);
-        console.log('✅ Modal added to body (outside widget)');
 
         injectStyles();
 
@@ -539,7 +685,7 @@
     }
 
     /**
-     * Create modal
+     * Create modal - WITH HISTORY & FAVORITES TOOLBAR
      */
     function createModal() {
         const modal = document.createElement('div');
@@ -569,12 +715,51 @@
                 </div>
             </div>
 
-            <div class="sqlatte-modal-toolbar">
-                <label>Tables:</label>
-                <select id="sqlatte-table-select" multiple onchange="SQLatteWidget.handleTableChange()">
-                    <option value="">Loading...</option>
-                </select>
-                <small>Ctrl+Click for multiple</small>
+            <!-- NEW: History & Favorites Toolbar -->
+            <div class="sqlatte-modal-toolbar-extended">
+                <div class="sqlatte-toolbar-buttons">
+                    <button id="sqlatte-history-btn" class="sqlatte-toolbar-btn" onclick="SQLatteWidget.toggleHistory()" title="Query History">
+                        📜 History
+                    </button>
+                    <button id="sqlatte-favorites-btn" class="sqlatte-toolbar-btn" onclick="SQLatteWidget.toggleFavorites()" title="Favorites">
+                        ⭐ Favorites
+                    </button>
+                </div>
+                <div class="sqlatte-toolbar-tables">
+                    <label>Tables:</label>
+                    <select id="sqlatte-table-select" multiple onchange="SQLatteWidget.handleTableChange()">
+                        <option value="">Loading...</option>
+                    </select>
+                    <small>Ctrl+Click for multiple</small>
+                </div>
+            </div>
+
+            <!-- History Panel (Slide-out) -->
+            <div id="sqlatte-history-panel" class="sqlatte-slide-panel">
+                <div class="sqlatte-panel-header">
+                    <h4>📜 Query History</h4>
+                    <button onclick="SQLatteWidget.closeHistoryPanel()">✕</button>
+                </div>
+                <div class="sqlatte-panel-content">
+                    <div class="sqlatte-panel-empty">
+                        <span>📜</span>
+                        <p>Loading history...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Favorites Panel (Slide-out) -->
+            <div id="sqlatte-favorites-panel" class="sqlatte-slide-panel">
+                <div class="sqlatte-panel-header">
+                    <h4>⭐ Favorites</h4>
+                    <button onclick="SQLatteWidget.closeFavoritesPanel()">✕</button>
+                </div>
+                <div class="sqlatte-panel-content">
+                    <div class="sqlatte-panel-empty">
+                        <span>⭐</span>
+                        <p>Loading favorites...</p>
+                    </div>
+                </div>
             </div>
 
             <div class="sqlatte-modal-body">
@@ -585,7 +770,7 @@
                         </svg>
                         <h3>Welcome to SQLatte!</h3>
                         <p>I remember our conversation! Ask me anything.</p>
-                        <p class="text-xs">Try: "Hello!" or select tables above to query your data</p>
+                        <p class="text-xs">💡 Tip: Use History to replay queries, Favorites to save them</p>
                     </div>
                 </div>
 
@@ -628,6 +813,12 @@
                 const input = document.getElementById('sqlatte-input');
                 if (input) input.focus();
             }, 300);
+
+            // Load history & favorites when modal opens
+            if (sessionId) {
+                loadHistory();
+                loadFavorites();
+            }
         }
     }
 
@@ -637,6 +828,8 @@
             modal.classList.remove('sqlatte-modal-open');
             modal.classList.remove('sqlatte-modal-fullscreen');
             isModalOpen = false;
+            closeHistoryPanel();
+            closeFavoritesPanel();
         }
     }
 
@@ -650,6 +843,7 @@
         }
 
         clearSession();
+        queryHistory = [];
 
         const chatArea = document.getElementById('sqlatte-chat-area');
         if (chatArea) {
@@ -660,12 +854,11 @@
                     </svg>
                     <h3>New Conversation</h3>
                     <p>Your previous chat has been cleared.</p>
-                    <p class="text-xs">Ask me anything to start fresh!</p>
                 </div>
             `;
         }
 
-        console.log('🗑️  Chat cleared, new session will be created');
+        renderHistoryPanel();
     }
 
     async function loadTables() {
@@ -764,66 +957,58 @@
         chatArea.scrollTop = chatArea.scrollHeight;
     }
 
-    function formatTable(columns, data) {
+    function formatTable(columns, data, queryId = null) {
         if (!data || data.length === 0) {
             return '<div class="text-sm" style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
         }
 
-        // Generate unique ID for this result set
         const resultId = 'result-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-
-        // Store data for CSV export
         window.sqlatteResultsCache[resultId] = { columns, data };
 
-        // Detect if chartable
         const detection = detectChartType(columns, data);
 
         let html = '<div class="sqlatte-results-container">';
 
-        // Export toolbar
         html += `<div class="sqlatte-results-toolbar">`;
-        html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">`;
-        html += `📥 Export CSV</button>`;
+        html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">📥 CSV</button>`;
 
         if (detection.suitable) {
-            html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize Data">📊 Show Chart</button>`;
+            html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize">📊 Chart</button>`;
         }
 
-        html += `<span class="text-xs" style="opacity: 0.7;">${data.length} rows</span>`;
+        // NEW: Add to favorites button
+        if (queryId) {
+            html += `<button class="sqlatte-fav-btn" onclick="SQLatteWidget.addToFavorites('${queryId}')" title="Add to Favorites">⭐ Save</button>`;
+        }
+
+        html += `<span class="text-xs" style="opacity: 0.7; margin-left: auto;">${data.length} rows</span>`;
         html += `</div>`;
 
-        // Table
         html += '<table class="sqlatte-results-table"><thead><tr>';
-
         columns.forEach(col => {
-            const colName = escapeHtml(col);
-            html += `<th title="${colName}">${colName}</th>`;
+            html += `<th title="${escapeHtml(col)}">${escapeHtml(col)}</th>`;
         });
         html += '</tr></thead><tbody>';
 
         data.forEach(row => {
             html += '<tr>';
             row.forEach(cell => {
-                const cellValue = String(cell);
-                const escapedValue = escapeHtml(cellValue);
-                html += `<td title="${escapedValue}">${escapedValue}</td>`;
+                const cellValue = escapeHtml(String(cell));
+                html += `<td title="${cellValue}">${cellValue}</td>`;
             });
             html += '</tr>';
         });
 
-        html += '</tbody></table>';
-        html += '</div>';
+        html += '</tbody></table></div>';
 
         return html;
     }
 
     function renderHTML(html) {
-        const sanitized = html
+        return html
             .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
             .replace(/javascript:/gi, '')
             .replace(/on\w+\s*=/gi, '');
-
-        return sanitized;
     }
 
     function escapeHtml(text) {
@@ -876,21 +1061,22 @@
                 responseHTML = `<div class="sqlatte-chat-message">${renderHTML(result.message)}</div>`;
             } else if (result.response_type === 'sql' || result.sql) {
                 if (result.explanation) {
-                    responseHTML += `<div class="sqlatte-explanation"><strong>💡 Explanation:</strong><br>${escapeHtml(result.explanation)}</div>`;
+                    responseHTML += `<div class="sqlatte-explanation"><strong>💡</strong> ${escapeHtml(result.explanation)}</div>`;
                 }
 
                 responseHTML += `<div class="sqlatte-sql-code">${escapeHtml(result.sql)}</div>`;
-                responseHTML += formatTable(result.columns, result.data);
+                responseHTML += formatTable(result.columns, result.data, result.query_id);
             } else {
                 const msg = result.message || JSON.stringify(result);
-                if (msg.includes('<') && msg.includes('>')) {
-                    responseHTML = `<div class="sqlatte-chat-message">${renderHTML(msg)}</div>`;
-                } else {
-                    responseHTML = `<div class="sqlatte-chat-message">${escapeHtml(msg)}</div>`;
-                }
+                responseHTML = `<div class="sqlatte-chat-message">${msg.includes('<') ? renderHTML(msg) : escapeHtml(msg)}</div>`;
             }
 
             addMessage('assistant', responseHTML);
+
+            // Refresh history after successful query
+            if (result.query_id) {
+                loadHistory();
+            }
 
         } catch (error) {
             addMessage('assistant', `<div class="sqlatte-error"><strong>❌ Error:</strong> ${escapeHtml(error.message)}</div>`);
@@ -903,7 +1089,7 @@
     }
 
     /**
-     * Inject styles - INLINE CSS (with new CSV export styles)
+     * Inject styles - WITH HISTORY & FAVORITES STYLES
      */
     function injectStyles() {
         if (document.getElementById('sqlatte-widget-styles')) return;
@@ -911,11 +1097,8 @@
         const style = document.createElement('style');
         style.id = 'sqlatte-widget-styles';
         style.textContent = `
-/* SQLatte Widget Styles - With CSV Export */
+/* SQLatte Widget Styles - With History & Favorites */
 
-/* ... (previous styles remain same) ... */
-
-/* Widget Container */
 .sqlatte-widget {
     position: fixed;
     z-index: 999999;
@@ -930,28 +1113,11 @@
     transform: translateY(0);
 }
 
-/* Positions */
-.sqlatte-widget.sqlatte-widget-bottom-right {
-    bottom: 20px;
-    right: 20px;
-}
+.sqlatte-widget.sqlatte-widget-bottom-right { bottom: 20px; right: 20px; }
+.sqlatte-widget.sqlatte-widget-bottom-left { bottom: 20px; left: 20px; }
+.sqlatte-widget.sqlatte-widget-top-right { top: 20px; right: 20px; }
+.sqlatte-widget.sqlatte-widget-top-left { top: 20px; left: 20px; }
 
-.sqlatte-widget.sqlatte-widget-bottom-left {
-    bottom: 20px;
-    left: 20px;
-}
-
-.sqlatte-widget.sqlatte-widget-top-right {
-    top: 20px;
-    right: 20px;
-}
-
-.sqlatte-widget.sqlatte-widget-top-left {
-    top: 20px;
-    left: 20px;
-}
-
-/* Badge Button */
 .sqlatte-badge-btn {
     width: 60px;
     height: 60px;
@@ -972,15 +1138,6 @@
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 0 3px rgba(212, 165, 116, 0.4);
 }
 
-.sqlatte-badge-btn:active {
-    transform: translateY(-2px) scale(1.02);
-}
-
-.sqlatte-badge-btn svg {
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-}
-
-/* Badge Pulse Animation */
 .sqlatte-badge-pulse {
     position: absolute;
     top: -2px;
@@ -994,17 +1151,11 @@
 }
 
 @keyframes sqlatte-pulse {
-    0%, 100% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    50% {
-        transform: scale(1.2);
-        opacity: 0.8;
-    }
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.8; }
 }
 
-/* Modal - FULLSCREEN MODE SUPPORT */
+/* Modal */
 .sqlatte-modal {
     position: fixed;
     background: #1a1a1a;
@@ -1017,20 +1168,18 @@
     z-index: 2147483647;
 }
 
-/* Default: Small modal (bottom-right) */
 .sqlatte-modal:not(.sqlatte-modal-fullscreen) {
     bottom: 80px;
     right: 20px;
-    width: 600px;
+    width: 650px;
     max-width: 90vw;
-    height: 600px;
-    max-height: 80vh;
+    height: 650px;
+    max-height: 85vh;
     border-radius: 16px;
     box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(212, 165, 116, 0.2);
     transform: scale(0.9) translateY(20px);
 }
 
-/* FULLSCREEN MODE */
 .sqlatte-modal.sqlatte-modal-fullscreen {
     top: 0 !important;
     left: 0 !important;
@@ -1042,9 +1191,6 @@
     max-height: none !important;
     border-radius: 0 !important;
     transform: none !important;
-    box-shadow: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
 }
 
 .sqlatte-modal.sqlatte-modal-open {
@@ -1056,10 +1202,15 @@
     transform: scale(1) translateY(0);
 }
 
+.sqlatte-modal-hidden-for-chart {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
 /* Modal Header */
 .sqlatte-modal-header {
     background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
-    padding: 16px 20px;
+    padding: 14px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1073,10 +1224,6 @@
     color: white;
     font-weight: 600;
     font-size: 16px;
-}
-
-.sqlatte-modal-title svg {
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 .sqlatte-modal-actions {
@@ -1093,8 +1240,7 @@
     background: rgba(255, 255, 255, 0.1);
     border: none;
     color: white;
-    font-size: 18px;
-    line-height: 1;
+    font-size: 16px;
     cursor: pointer;
     transition: all 0.2s;
     display: flex;
@@ -1108,24 +1254,61 @@
     background: rgba(255, 255, 255, 0.2);
 }
 
-/* Modal Toolbar */
-.sqlatte-modal-toolbar {
-    padding: 12px 16px;
+/* NEW: Extended Toolbar with History & Favorites */
+.sqlatte-modal-toolbar-extended {
+    padding: 10px 16px;
     background: #242424;
     border-bottom: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sqlatte-toolbar-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.sqlatte-toolbar-btn {
+    padding: 8px 14px;
+    background: #333;
+    border: 1px solid #444;
+    border-radius: 8px;
+    color: #e0e0e0;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sqlatte-toolbar-btn:hover {
+    background: #3d3d3d;
+    border-color: #D4A574;
+}
+
+.sqlatte-toolbar-btn.sqlatte-toolbar-btn-active {
+    background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+    border-color: #D4A574;
+    color: white;
+}
+
+.sqlatte-toolbar-tables {
     display: flex;
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
 }
 
-.sqlatte-modal-toolbar label {
+.sqlatte-toolbar-tables label {
     font-size: 12px;
     color: #a0a0a0;
     font-weight: 500;
 }
 
-.sqlatte-modal-toolbar select {
+.sqlatte-toolbar-tables select {
     flex: 1;
     min-width: 200px;
     padding: 6px 10px;
@@ -1137,14 +1320,232 @@
     cursor: pointer;
 }
 
-.sqlatte-modal-toolbar select:focus {
+.sqlatte-toolbar-tables select:focus {
     outline: none;
     border-color: #D4A574;
 }
 
-.sqlatte-modal-toolbar small {
+.sqlatte-toolbar-tables small {
     font-size: 10px;
     color: #707070;
+}
+
+/* Slide-out Panels for History & Favorites */
+.sqlatte-slide-panel {
+    position: absolute;
+    top: 105px;
+    left: 0;
+    width: 300px;
+    max-width: 80%;
+    height: calc(100% - 165px);
+    background: #1f1f1f;
+    border-right: 1px solid #333;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
+}
+
+.sqlatte-slide-panel.sqlatte-panel-open {
+    transform: translateX(0);
+}
+
+.sqlatte-panel-header {
+    padding: 14px 16px;
+    background: #2a2a2a;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sqlatte-panel-header h4 {
+    margin: 0;
+    font-size: 14px;
+    color: #D4A574;
+}
+
+.sqlatte-panel-header button {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: transparent;
+    border: none;
+    color: #a0a0a0;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.sqlatte-panel-header button:hover {
+    background: #333;
+    color: white;
+}
+
+.sqlatte-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.sqlatte-panel-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #707070;
+    text-align: center;
+}
+
+.sqlatte-panel-empty span {
+    font-size: 36px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+.sqlatte-panel-empty p {
+    margin: 0 0 4px 0;
+    font-size: 14px;
+}
+
+.sqlatte-panel-empty small {
+    font-size: 11px;
+}
+
+.sqlatte-panel-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* History Item */
+.sqlatte-history-item {
+    background: #2a2a2a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: all 0.2s;
+}
+
+.sqlatte-history-item:hover {
+    border-color: #D4A574;
+    background: #333;
+}
+
+.sqlatte-history-item.sqlatte-history-item-favorite {
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.sqlatte-history-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+}
+
+.sqlatte-history-question {
+    font-size: 13px;
+    color: #e0e0e0;
+    cursor: pointer;
+    flex: 1;
+    word-break: break-word;
+}
+
+.sqlatte-history-question:hover {
+    color: #D4A574;
+}
+
+.sqlatte-history-time {
+    font-size: 10px;
+    color: #707070;
+    white-space: nowrap;
+    margin-left: 8px;
+}
+
+.sqlatte-history-item-meta {
+    display: flex;
+    gap: 10px;
+    font-size: 10px;
+    color: #888;
+    margin-bottom: 8px;
+}
+
+.sqlatte-history-item-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.sqlatte-history-item-actions button {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.sqlatte-history-item-actions button:hover {
+    background: #333;
+    border-color: #D4A574;
+}
+
+/* Favorite Item */
+.sqlatte-favorite-item {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%);
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: all 0.2s;
+}
+
+.sqlatte-favorite-item:hover {
+    background: rgba(245, 158, 11, 0.2);
+}
+
+.sqlatte-favorite-item-header {
+    margin-bottom: 6px;
+}
+
+.sqlatte-favorite-name {
+    font-size: 13px;
+    color: #f59e0b;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.sqlatte-favorite-name:hover {
+    color: #fbbf24;
+}
+
+.sqlatte-favorite-item-meta {
+    font-size: 10px;
+    color: #888;
+    margin-bottom: 8px;
+}
+
+.sqlatte-favorite-item-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.sqlatte-favorite-item-actions button {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid #f59e0b;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.sqlatte-favorite-item-actions button:hover {
+    background: rgba(245, 158, 11, 0.3);
 }
 
 /* Modal Body */
@@ -1155,7 +1556,6 @@
     overflow: hidden;
 }
 
-/* Chat Area */
 .sqlatte-chat-area {
     flex: 1;
     overflow-y: auto;
@@ -1179,7 +1579,6 @@
     border-radius: 3px;
 }
 
-/* Empty State */
 .sqlatte-empty-state {
     flex: 1;
     display: flex;
@@ -1219,14 +1618,8 @@
 }
 
 @keyframes sqlatte-fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .sqlatte-message.sqlatte-message-user {
@@ -1253,7 +1646,7 @@
 }
 
 .sqlatte-message-content {
-    max-width: 80%;
+    max-width: 85%;
     background: #242424;
     padding: 10px 14px;
     border-radius: 10px;
@@ -1282,7 +1675,6 @@
     border: 1px solid #1a1a1a;
 }
 
-/* Explanation */
 .sqlatte-explanation {
     color: #a0a0a0;
     font-size: 12px;
@@ -1293,7 +1685,6 @@
     border-radius: 4px;
 }
 
-/* Error */
 .sqlatte-error {
     color: #f87171;
     font-size: 12px;
@@ -1304,20 +1695,15 @@
     border-radius: 4px;
 }
 
-/* ============================================
-   CSV EXPORT STYLES (NEW!)
-   ============================================ */
-
-/* Results Container */
+/* Results */
 .sqlatte-results-container {
     margin: 12px 0;
 }
 
-/* Export Toolbar */
 .sqlatte-results-toolbar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 8px;
     padding: 8px 12px;
     background: #242424;
     border: 1px solid #333;
@@ -1325,72 +1711,36 @@
     border-radius: 6px 6px 0 0;
 }
 
-/* Export Button */
-.sqlatte-export-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: white;
+.sqlatte-export-btn, .sqlatte-chart-btn, .sqlatte-fav-btn {
+    padding: 6px 10px;
     border: none;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
 }
 
-.sqlatte-export-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-    background: linear-gradient(135deg, #059669 0%, #047857 100%);
-}
-
-.sqlatte-export-btn:active {
-    transform: translateY(0);
-}
-
-/* Toast Notification */
-.sqlatte-toast {
-    position: fixed;
-    top: 80px;
-    right: 20px;
-    padding: 12px 20px;
-    background: #1a1a1a;
-    color: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    font-size: 13px;
-    font-weight: 500;
-    opacity: 0;
-    transform: translateX(100px);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 999999999;
-    border: 1px solid #333;
-}
-
-.sqlatte-toast.sqlatte-toast-show {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-.sqlatte-toast.sqlatte-toast-success {
+.sqlatte-export-btn {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    border-color: #10b981;
+    color: white;
 }
 
-.sqlatte-toast.sqlatte-toast-error {
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    border-color: #ef4444;
-}
-
-.sqlatte-toast.sqlatte-toast-info {
+.sqlatte-chart-btn {
     background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    border-color: #3b82f6;
+    color: white;
 }
 
-/* Results Table - WITH CSV Export */
+.sqlatte-fav-btn {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+}
+
+.sqlatte-export-btn:hover, .sqlatte-chart-btn:hover, .sqlatte-fav-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+}
+
 .sqlatte-results-table {
     width: 100%;
     border-collapse: collapse;
@@ -1401,7 +1751,7 @@
     overflow: hidden;
     font-size: 12px;
     display: block;
-    max-height: 400px;
+    max-height: 350px;
     overflow-x: auto;
     overflow-y: auto;
 }
@@ -1422,65 +1772,30 @@
     table-layout: auto;
 }
 
-.sqlatte-results-table::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-.sqlatte-results-table::-webkit-scrollbar-track {
-    background: #1a1a1a;
-}
-
-.sqlatte-results-table::-webkit-scrollbar-thumb {
-    background: #555;
-    border-radius: 4px;
-}
-
-.sqlatte-results-table::-webkit-scrollbar-thumb:hover {
-    background: #666;
-}
-
 .sqlatte-results-table th {
-    padding: 10px 16px;
+    padding: 10px 14px;
     text-align: left;
     font-weight: 600;
     color: #D4A574;
     background: #242424;
     border-bottom: 2px solid #333;
     white-space: nowrap;
-    min-width: 120px;
-    position: sticky;
-    top: 0;
+    min-width: 100px;
 }
 
 .sqlatte-results-table td {
-    padding: 8px 16px;
+    padding: 8px 14px;
     border-bottom: 1px solid #333;
     color: #e0e0e0;
-    min-width: 120px;
-    max-width: 300px;
+    min-width: 100px;
+    max-width: 250px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    cursor: default;
-    transition: background 0.2s ease;
 }
 
 .sqlatte-results-table td:hover {
-    background: rgba(212, 165, 116, 0.15);
-    color: #fff;
-}
-
-.sqlatte-results-table tbody tr:hover {
-    background: rgba(212, 165, 116, 0.05);
-}
-
-.sqlatte-results-table tbody tr:hover td:hover {
-    background: rgba(212, 165, 116, 0.2);
-}
-
-.sqlatte-results-table tr:last-child td {
-    border-bottom: none;
+    background: rgba(212, 165, 116, 0.1);
 }
 
 /* Input Area */
@@ -1512,10 +1827,6 @@
     background: #1a1a1a;
 }
 
-.sqlatte-input-area textarea::placeholder {
-    color: #707070;
-}
-
 .sqlatte-input-area button {
     padding: 10px 20px;
     background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
@@ -1526,7 +1837,6 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
-    white-space: nowrap;
 }
 
 .sqlatte-input-area button:hover {
@@ -1534,16 +1844,11 @@
     box-shadow: 0 4px 12px rgba(212, 165, 116, 0.3);
 }
 
-.sqlatte-input-area button:active {
-    transform: translateY(0);
-}
-
 .sqlatte-input-area button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-/* Loading Spinner */
 .sqlatte-loading {
     display: inline-block;
     width: 14px;
@@ -1555,79 +1860,48 @@
 }
 
 @keyframes sqlatte-spin {
-    to {
-        transform: rotate(360deg);
-    }
+    to { transform: rotate(360deg); }
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-    .sqlatte-modal:not(.sqlatte-modal-fullscreen) {
-        width: calc(100vw - 20px);
-        height: calc(100vh - 100px);
-        bottom: 70px;
-        left: 10px;
-        right: 10px;
-    }
-
-    .sqlatte-widget.sqlatte-widget-bottom-right,
-    .sqlatte-widget.sqlatte-widget-bottom-left {
-        bottom: 10px;
-        right: 10px;
-        left: auto;
-    }
-
-    .sqlatte-modal-toolbar select {
-        min-width: 150px;
-    }
-
-    .sqlatte-toast {
-        right: 10px;
-        left: 10px;
-        top: 70px;
-    }
-}
-
-/* Utility Classes */
-.text-xs {
-    font-size: 11px;
-}
-
-.text-sm {
-    font-size: 12px;
-}
-
-/* Chart modal helper - hide SQLatte modal when chart is open */
-.sqlatte-modal-hidden-for-chart {
-    visibility: hidden !important;
-    pointer-events: none !important;
-}
-
-/* ============================================
-   CHART VISUALIZATION STYLES
-   ============================================ */
-
-.sqlatte-chart-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+/* Toast */
+.sqlatte-toast {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    padding: 12px 20px;
+    background: #1a1a1a;
     color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-left: 8px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    font-size: 13px;
+    opacity: 0;
+    transform: translateX(100px);
+    transition: all 0.3s;
+    z-index: 999999999;
+    border: 1px solid #333;
 }
 
-.sqlatte-chart-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+.sqlatte-toast.sqlatte-toast-show {
+    opacity: 1;
+    transform: translateX(0);
 }
 
+.sqlatte-toast.sqlatte-toast-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: #10b981;
+}
+
+.sqlatte-toast.sqlatte-toast-error {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    border-color: #ef4444;
+}
+
+.sqlatte-toast.sqlatte-toast-info {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    border-color: #3b82f6;
+}
+
+/* Chart Modal */
 .sqlatte-chart-modal {
     position: fixed;
     top: 0;
@@ -1657,7 +1931,6 @@
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
 }
 
 .sqlatte-chart-header {
@@ -1670,8 +1943,8 @@
 
 .sqlatte-chart-header h3 {
     margin: 0;
-    color: #f59e0b;
-    font-size: 20px;
+    color: #D4A574;
+    font-size: 18px;
 }
 
 .sqlatte-chart-controls {
@@ -1687,7 +1960,6 @@
     border-radius: 6px;
     color: #e0e0e0;
     font-size: 13px;
-    cursor: pointer;
 }
 
 .sqlatte-chart-close {
@@ -1697,19 +1969,13 @@
     background: rgba(255, 255, 255, 0.1);
     border: none;
     color: white;
-    font-size: 20px;
+    font-size: 18px;
     cursor: pointer;
-    transition: all 0.2s;
-}
-
-.sqlatte-chart-close:hover {
-    background: rgba(255, 255, 255, 0.2);
 }
 
 .sqlatte-chart-body {
     padding: 30px;
     flex: 1;
-    overflow: auto;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1717,21 +1983,42 @@
 
 .sqlatte-chart-body canvas {
     max-width: 100%;
-    max-height: 600px;
+    max-height: 500px;
 }
 
 .sqlatte-chart-footer {
     padding: 15px 20px;
     border-top: 1px solid #333;
-    color: #a0a0a0;
+    color: #707070;
     font-size: 12px;
     text-align: center;
 }
 
+/* Responsive */
+@media (max-width: 768px) {
+    .sqlatte-modal:not(.sqlatte-modal-fullscreen) {
+        width: calc(100vw - 20px);
+        height: calc(100vh - 100px);
+        bottom: 70px;
+        left: 10px;
+        right: 10px;
+    }
+
+    .sqlatte-slide-panel {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .sqlatte-toolbar-tables {
+        width: 100%;
+    }
+}
+
+.text-xs { font-size: 11px; }
+.text-sm { font-size: 12px; }
         `;
 
         document.head.appendChild(style);
-        console.log('✅ Inline CSS injected with CSV export styles');
     }
 
     function init() {
@@ -1744,6 +2031,7 @@
 
     init();
 
+    // Expose public API
     window.SQLatteWidget = {
         open: openModal,
         close: closeModal,
@@ -1756,15 +2044,25 @@
         showChart: showChart,
         closeChart: closeChart,
         getSessionId: function() { return sessionId; },
+
+        // NEW: History & Favorites API
+        toggleHistory: toggleHistoryPanel,
+        toggleFavorites: toggleFavoritesPanel,
+        closeHistoryPanel: closeHistoryPanel,
+        closeFavoritesPanel: closeFavoritesPanel,
+        loadHistory: loadHistory,
+        loadFavorites: loadFavorites,
+        addToFavorites: addToFavorites,
+        removeFromFavorites: removeFromFavorites,
+        deleteFromHistory: deleteFromHistory,
+        useQuery: useQuery,
+
         configure: function(options) {
             Object.assign(BADGE_CONFIG, options);
-
             const widget = document.getElementById('sqlatte-widget');
             const modal = document.getElementById('sqlatte-modal');
-
             if (widget) widget.remove();
             if (modal) modal.remove();
-
             setTimeout(createWidget, 100);
         },
         getConfig: function() {
