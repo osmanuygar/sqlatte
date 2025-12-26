@@ -1,5 +1,5 @@
 """
-SQLatte API - Enhanced with Query History & Favorites
+SQLatte API - Enhanced with Query History & Favorites + Admin Configuration
 """
 
 import time
@@ -18,24 +18,52 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 # Now import from src
-from src.core.config_loader import ConfigLoader
+from src.core.config_manager import config_manager
 from src.core.provider_factory import ProviderFactory
 from src.core.conversation_manager import conversation_manager
 from src.core.query_history import query_history
+from src.api.admin_routes import router as admin_router
 
-# Load configuration
+# Load configuration from file
 CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
-config = ConfigLoader.load(CONFIG_PATH)
+config = config_manager.load_from_file(CONFIG_PATH)
 
 # Create providers
 llm_provider = ProviderFactory.create_llm_provider(config)
 db_provider = ProviderFactory.create_db_provider(config)
 
+# ============================================
+# DYNAMIC PROVIDER RELOAD
+# ============================================
+def reload_providers():
+    """
+    Reload providers with current configuration
+    Call this after config updates to apply changes
+    """
+    global llm_provider, db_provider
+
+    current_config = config_manager.get_config()
+
+    try:
+        # Recreate LLM provider
+        llm_provider = ProviderFactory.create_llm_provider(current_config)
+        print("✅ LLM provider reloaded")
+    except Exception as e:
+        print(f"⚠️ Failed to reload LLM provider: {e}")
+
+    try:
+        # Recreate Database provider
+        db_provider = ProviderFactory.create_db_provider(current_config)
+        print("✅ Database provider reloaded")
+    except Exception as e:
+        print(f"⚠️ Failed to reload Database provider: {e}")
+
+
 # Initialize FastAPI
 app = FastAPI(
     title=config['app']['name'],
     version=config['app']['version'],
-    description="☕ Serving perfect SQL queries with conversation memory & query history"
+    description="☕ Serving perfect SQL queries with conversation memory, query history & runtime configuration"
 )
 
 # CORS
@@ -51,6 +79,9 @@ app.add_middleware(
 STATIC_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static')
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Include admin routes
+app.include_router(admin_router)
 
 
 # ============================================
@@ -71,7 +102,7 @@ class SQLQueryResponse(BaseModel):
     row_count: int
     explanation: str
     session_id: str
-    query_id: Optional[str] = None  # NEW: For history tracking
+    query_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -79,23 +110,6 @@ class ChatResponse(BaseModel):
     message: str
     intent_info: Optional[dict] = None
     session_id: str
-
-
-# NEW: History & Favorites Models
-class FavoriteRequest(BaseModel):
-    query_id: Optional[str] = None  # Mark existing query as favorite
-    question: Optional[str] = None  # Or create new favorite
-    sql: Optional[str] = None
-    tables: Optional[List[str]] = None
-    favorite_name: Optional[str] = None
-    tags: Optional[List[str]] = None
-
-
-class HistorySearchRequest(BaseModel):
-    search: Optional[str] = None
-    tables_filter: Optional[List[str]] = None
-    limit: int = 20
-    offset: int = 0
 
 
 # Union response type
@@ -135,7 +149,7 @@ async def health_check():
             "healthy": db_provider.health_check()
         },
         "conversations": conversation_manager.get_stats(),
-        "query_history": query_history.get_stats()  # NEW
+        "query_history": query_history.get_stats()
     }
 
 
@@ -148,6 +162,26 @@ async def get_config():
         "llm_model": llm_provider.get_model_name(),
         "db_info": db_provider.get_connection_info()
     }
+
+
+@app.post("/reload-providers")
+async def trigger_reload_providers():
+    """
+    Reload providers after configuration change
+
+    ⚠️ Call this endpoint after updating config via /admin
+    """
+    try:
+        reload_providers()
+
+        return {
+            "success": True,
+            "message": "Providers reloaded successfully",
+            "llm_provider": llm_provider.get_model_name(),
+            "db_provider": db_provider.get_connection_info()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/tables")
@@ -199,9 +233,7 @@ async def process_query(request: QueryRequest):
     try:
         start_time = time.time()
 
-        # ============================================
         # SESSION MANAGEMENT
-        # ============================================
         session_id, session = conversation_manager.get_or_create_session(request.session_id)
 
         # Add user message to conversation history
@@ -216,7 +248,7 @@ async def process_query(request: QueryRequest):
         if not schema_info:
             schema_info = "No schema provided."
 
-        # Extract tables from schema (simple parsing)
+        # Extract tables from schema
         selected_tables = []
         if schema_info != "No schema provided.":
             for line in schema_info.split('\n'):
@@ -226,17 +258,13 @@ async def process_query(request: QueryRequest):
                         table_name = table_name.split('.')[-1]
                     selected_tables.append(table_name)
 
-        # ============================================
         # DETERMINE INTENT
-        # ============================================
         intent_result = llm_provider.determine_intent(
             request.question,
             schema_info
         )
 
-        # ============================================
         # ROUTE BASED ON INTENT
-        # ============================================
         if intent_result["intent"] == "sql" and intent_result["confidence"] > 0.6:
             if schema_info == "No schema provided.":
                 response_message = "☕ I'd love to help you query your data! But first, please select one or more tables from the dropdown above so I know what data we're working with."
@@ -255,9 +283,7 @@ async def process_query(request: QueryRequest):
                     session_id=session_id
                 )
 
-            # ============================================
             # GENERATE SQL WITH CONVERSATION CONTEXT
-            # ============================================
             conversation_context = conversation_manager.get_conversation_context(session_id)
 
             if len(conversation_context) > 1:
@@ -286,9 +312,7 @@ async def process_query(request: QueryRequest):
 
             execution_time = (time.time() - start_time) * 1000  # ms
 
-            # ============================================
-            # ADD TO QUERY HISTORY (NEW!)
-            # ============================================
+            # ADD TO QUERY HISTORY
             history_record = query_history.add_query(
                 session_id=session_id,
                 question=request.question,
@@ -319,13 +343,11 @@ async def process_query(request: QueryRequest):
                 row_count=len(data),
                 explanation=explanation,
                 session_id=session_id,
-                query_id=history_record.id  # NEW: Return query ID
+                query_id=history_record.id
             )
 
         else:
-            # ============================================
             # CHAT PATH WITH CONVERSATION MEMORY
-            # ============================================
             conversation_context = conversation_manager.get_conversation_context(session_id)
 
             if len(conversation_context) > 1:
@@ -417,7 +439,7 @@ async def cleanup_expired_conversations():
 
 
 # ============================================
-# QUERY HISTORY ENDPOINTS (NEW!)
+# QUERY HISTORY ENDPOINTS
 # ============================================
 
 @app.get("/history")
@@ -427,38 +449,12 @@ async def get_query_history(
     offset: int = 0,
     search: Optional[str] = None
 ):
-    """
-    Get query history for a session
-
-    Args:
-        session_id: User session ID
-        limit: Max results (default 20)
-        offset: Pagination offset
-        search: Optional search term
-    """
+    """Get query history for a session"""
     history = query_history.get_history(
         session_id=session_id,
         limit=limit,
         offset=offset,
         search=search
-    )
-
-    return {
-        "session_id": session_id,
-        "count": len(history),
-        "queries": history
-    }
-
-
-@app.post("/history/search")
-async def search_query_history(request: HistorySearchRequest, session_id: str):
-    """Advanced history search with filters"""
-    history = query_history.get_history(
-        session_id=session_id,
-        limit=request.limit,
-        offset=request.offset,
-        search=request.search,
-        tables_filter=request.tables_filter
     )
 
     return {
@@ -495,8 +491,17 @@ async def clear_query_history(session_id: str):
 
 
 # ============================================
-# FAVORITES ENDPOINTS (NEW!)
+# FAVORITES ENDPOINTS
 # ============================================
+
+class FavoriteRequest(BaseModel):
+    query_id: Optional[str] = None
+    question: Optional[str] = None
+    sql: Optional[str] = None
+    tables: Optional[List[str]] = None
+    favorite_name: Optional[str] = None
+    tags: Optional[List[str]] = None
+
 
 @app.get("/favorites")
 async def get_favorites(
@@ -517,13 +522,7 @@ async def get_favorites(
 
 @app.post("/favorites")
 async def add_favorite(request: FavoriteRequest, session_id: Optional[str] = None):
-    """
-    Add a query to favorites
-
-    Can either:
-    1. Mark existing query as favorite (provide query_id)
-    2. Create new favorite (provide question + sql)
-    """
+    """Add a query to favorites"""
     record = query_history.add_to_favorites(
         query_id=request.query_id,
         session_id=session_id,
@@ -560,68 +559,10 @@ async def remove_favorite(query_id: str):
     }
 
 
-@app.get("/favorites/{query_id}")
-async def get_favorite(query_id: str):
-    """Get a specific favorite query"""
-    query = query_history.get_query_by_id(query_id)
-
-    if not query:
-        raise HTTPException(status_code=404, detail="Query not found")
-
-    return query
-
-
-# ============================================
-# SUGGESTIONS ENDPOINT (NEW!)
-# ============================================
-
-@app.get("/suggestions")
-async def get_suggestions(
-    session_id: str,
-    tables: str  # Comma-separated table names
-):
-    """
-    Get query suggestions based on current context
-
-    Args:
-        session_id: User session
-        tables: Currently selected tables (comma-separated)
-    """
-    table_list = [t.strip() for t in tables.split(',') if t.strip()]
-
-    suggestions = query_history.get_suggested_queries(
-        session_id=session_id,
-        current_tables=table_list,
-        limit=5
-    )
-
-    recent_tables = query_history.get_recent_tables(session_id, limit=5)
-
-    return {
-        "suggestions": suggestions,
-        "recent_tables": recent_tables
-    }
-
-
-# ============================================
-# HISTORY STATS ENDPOINT (NEW!)
-# ============================================
-
 @app.get("/history/stats")
 async def get_history_stats():
     """Get query history statistics"""
     return query_history.get_stats()
-
-
-@app.post("/history/cleanup")
-async def cleanup_old_history():
-    """Manually trigger cleanup of old history"""
-    removed = query_history.cleanup_old_history()
-
-    return {
-        "message": f"✅ Cleaned up {removed} old history entries",
-        "removed_count": removed
-    }
 
 
 if __name__ == "__main__":
