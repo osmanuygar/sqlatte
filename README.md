@@ -365,7 +365,14 @@ llm:
 
 ## Changelog
 
-### v0.2.0 (Latest) - Conversation Memory
+### v0.3.0 (Latest) - Conversation Memory
+- 📥 Export query results to CSV with one click
+- 📊 Interactive charts (Pie, Bar, Line, Doughnut)
+- 📜 Track and replay your recent queries
+- ⭐ Save frequently used queries for quick access
+
+
+### v0.2.0  - Conversation Memory
 - 🧠 Added conversation memory system
 - 💬 Session-based chat tracking
 - 🎯 Context-aware responses

@@ -1,3 +1,8 @@
+"""
+SQLatte API - Enhanced with Query History & Favorites
+"""
+
+import time
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -16,6 +21,7 @@ if PROJECT_ROOT not in sys.path:
 from src.core.config_loader import ConfigLoader
 from src.core.provider_factory import ProviderFactory
 from src.core.conversation_manager import conversation_manager
+from src.core.query_history import query_history
 
 # Load configuration
 CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
@@ -29,7 +35,7 @@ db_provider = ProviderFactory.create_db_provider(config)
 app = FastAPI(
     title=config['app']['name'],
     version=config['app']['version'],
-    description="☕ Serving perfect SQL queries with conversation memory"
+    description="☕ Serving perfect SQL queries with conversation memory & query history"
 )
 
 # CORS
@@ -47,11 +53,14 @@ if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-# Request/Response Models
+# ============================================
+# REQUEST/RESPONSE MODELS
+# ============================================
+
 class QueryRequest(BaseModel):
     question: str
     table_schema: str = ""
-    session_id: Optional[str] = None  # NEW: Session tracking
+    session_id: Optional[str] = None
 
 
 class SQLQueryResponse(BaseModel):
@@ -61,21 +70,42 @@ class SQLQueryResponse(BaseModel):
     data: List[List[Any]]
     row_count: int
     explanation: str
-    session_id: str  # NEW: Return session ID
+    session_id: str
+    query_id: Optional[str] = None  # NEW: For history tracking
 
 
 class ChatResponse(BaseModel):
     response_type: str = "chat"
     message: str
     intent_info: Optional[dict] = None
-    session_id: str  # NEW: Return session ID
+    session_id: str
+
+
+# NEW: History & Favorites Models
+class FavoriteRequest(BaseModel):
+    query_id: Optional[str] = None  # Mark existing query as favorite
+    question: Optional[str] = None  # Or create new favorite
+    sql: Optional[str] = None
+    tables: Optional[List[str]] = None
+    favorite_name: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class HistorySearchRequest(BaseModel):
+    search: Optional[str] = None
+    tables_filter: Optional[List[str]] = None
+    limit: int = 20
+    offset: int = 0
 
 
 # Union response type
 QueryResponse = SQLQueryResponse | ChatResponse
 
 
-# Routes
+# ============================================
+# MAIN ROUTES
+# ============================================
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     """Serve frontend"""
@@ -104,7 +134,8 @@ async def health_check():
             "info": db_provider.get_connection_info(),
             "healthy": db_provider.health_check()
         },
-        "conversations": conversation_manager.get_stats()  # NEW: Conversation stats
+        "conversations": conversation_manager.get_stats(),
+        "query_history": query_history.get_stats()  # NEW
     }
 
 
@@ -163,17 +194,11 @@ async def get_multiple_schemas(request: dict):
 @app.post("/query")
 async def process_query(request: QueryRequest):
     """
-    Intelligent query processor with CONVERSATION MEMORY
-
-    Flow:
-    1. Get or create session
-    2. Add user message to conversation history
-    3. Get conversation context for LLM
-    4. Determine intent (SQL or chat)
-    5. Process query with context
-    6. Add assistant response to conversation history
+    Intelligent query processor with CONVERSATION MEMORY & QUERY HISTORY
     """
     try:
+        start_time = time.time()
+
         # ============================================
         # SESSION MANAGEMENT
         # ============================================
@@ -191,8 +216,18 @@ async def process_query(request: QueryRequest):
         if not schema_info:
             schema_info = "No schema provided."
 
+        # Extract tables from schema (simple parsing)
+        selected_tables = []
+        if schema_info != "No schema provided.":
+            for line in schema_info.split('\n'):
+                if line.startswith('Table:'):
+                    table_name = line.replace('Table:', '').strip()
+                    if '.' in table_name:
+                        table_name = table_name.split('.')[-1]
+                    selected_tables.append(table_name)
+
         # ============================================
-        # DETERMINE INTENT (with conversation context)
+        # DETERMINE INTENT
         # ============================================
         intent_result = llm_provider.determine_intent(
             request.question,
@@ -203,12 +238,9 @@ async def process_query(request: QueryRequest):
         # ROUTE BASED ON INTENT
         # ============================================
         if intent_result["intent"] == "sql" and intent_result["confidence"] > 0.6:
-            # SQL Query path
             if schema_info == "No schema provided.":
-                # User wants SQL but no tables selected
                 response_message = "☕ I'd love to help you query your data! But first, please select one or more tables from the dropdown above so I know what data we're working with."
 
-                # Add assistant response to conversation
                 conversation_manager.add_message(
                     session_id,
                     role="assistant",
@@ -226,13 +258,11 @@ async def process_query(request: QueryRequest):
             # ============================================
             # GENERATE SQL WITH CONVERSATION CONTEXT
             # ============================================
-            # Get recent conversation for context
             conversation_context = conversation_manager.get_conversation_context(session_id)
 
-            # Build enhanced prompt with conversation history
-            if len(conversation_context) > 1:  # If there's history
+            if len(conversation_context) > 1:
                 context_summary = "\n\nRecent conversation:\n"
-                for msg in conversation_context[-5:]:  # Last 5 messages
+                for msg in conversation_context[-5:]:
                     if msg['role'] == 'user':
                         context_summary += f"User: {msg['content']}\n"
                     elif msg['role'] == 'assistant':
@@ -254,6 +284,20 @@ async def process_query(request: QueryRequest):
             # Execute query
             columns, data = db_provider.execute_query(sql_query)
 
+            execution_time = (time.time() - start_time) * 1000  # ms
+
+            # ============================================
+            # ADD TO QUERY HISTORY (NEW!)
+            # ============================================
+            history_record = query_history.add_query(
+                session_id=session_id,
+                question=request.question,
+                sql=sql_query,
+                tables=selected_tables,
+                row_count=len(data),
+                execution_time_ms=execution_time
+            )
+
             # Add assistant response to conversation
             conversation_manager.add_message(
                 session_id,
@@ -262,7 +306,8 @@ async def process_query(request: QueryRequest):
                 metadata={
                     "response_type": "sql",
                     "row_count": len(data),
-                    "columns": columns
+                    "columns": columns,
+                    "query_id": history_record.id
                 }
             )
 
@@ -273,19 +318,17 @@ async def process_query(request: QueryRequest):
                 data=data,
                 row_count=len(data),
                 explanation=explanation,
-                session_id=session_id
+                session_id=session_id,
+                query_id=history_record.id  # NEW: Return query ID
             )
 
         else:
             # ============================================
             # CHAT PATH WITH CONVERSATION MEMORY
             # ============================================
-            # Get conversation context
             conversation_context = conversation_manager.get_conversation_context(session_id)
 
-            # Enhanced chat prompt with conversation history
             if len(conversation_context) > 1:
-                # Build conversation context for LLM
                 context_text = "Recent conversation:\n"
                 for msg in conversation_context[-5:]:
                     role_label = "User" if msg['role'] == 'user' else "You (Assistant)"
@@ -295,13 +338,11 @@ async def process_query(request: QueryRequest):
             else:
                 enhanced_question = request.question
 
-            # Generate chat response
             chat_response = llm_provider.generate_chat_response(
                 enhanced_question,
                 schema_info
             )
 
-            # Add assistant response to conversation
             conversation_manager.add_message(
                 session_id,
                 role="assistant",
@@ -321,8 +362,9 @@ async def process_query(request: QueryRequest):
 
 
 # ============================================
-# CONVERSATION MANAGEMENT ENDPOINTS (NEW!)
+# CONVERSATION MANAGEMENT ENDPOINTS
 # ============================================
+
 @app.get("/conversation/stats")
 async def get_conversation_stats():
     """Get conversation manager statistics"""
@@ -371,6 +413,214 @@ async def cleanup_expired_conversations():
     return {
         "message": f"✅ Cleaned up {cleaned} expired sessions",
         "cleaned_count": cleaned
+    }
+
+
+# ============================================
+# QUERY HISTORY ENDPOINTS (NEW!)
+# ============================================
+
+@app.get("/history")
+async def get_query_history(
+    session_id: str,
+    limit: int = 20,
+    offset: int = 0,
+    search: Optional[str] = None
+):
+    """
+    Get query history for a session
+
+    Args:
+        session_id: User session ID
+        limit: Max results (default 20)
+        offset: Pagination offset
+        search: Optional search term
+    """
+    history = query_history.get_history(
+        session_id=session_id,
+        limit=limit,
+        offset=offset,
+        search=search
+    )
+
+    return {
+        "session_id": session_id,
+        "count": len(history),
+        "queries": history
+    }
+
+
+@app.post("/history/search")
+async def search_query_history(request: HistorySearchRequest, session_id: str):
+    """Advanced history search with filters"""
+    history = query_history.get_history(
+        session_id=session_id,
+        limit=request.limit,
+        offset=request.offset,
+        search=request.search,
+        tables_filter=request.tables_filter
+    )
+
+    return {
+        "session_id": session_id,
+        "count": len(history),
+        "queries": history
+    }
+
+
+@app.delete("/history/{query_id}")
+async def delete_from_history(query_id: str, session_id: str):
+    """Delete a query from history"""
+    success = query_history.delete_query(query_id, session_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Query not found")
+
+    return {
+        "message": "✅ Query deleted from history",
+        "query_id": query_id
+    }
+
+
+@app.post("/history/clear/{session_id}")
+async def clear_query_history(session_id: str):
+    """Clear all history for a session (keeps favorites)"""
+    removed = query_history.clear_history(session_id)
+
+    return {
+        "message": f"✅ Cleared {removed} queries from history",
+        "session_id": session_id,
+        "removed_count": removed
+    }
+
+
+# ============================================
+# FAVORITES ENDPOINTS (NEW!)
+# ============================================
+
+@app.get("/favorites")
+async def get_favorites(
+    limit: int = 50,
+    search: Optional[str] = None
+):
+    """Get all favorites"""
+    favorites = query_history.get_favorites(
+        limit=limit,
+        search=search
+    )
+
+    return {
+        "count": len(favorites),
+        "favorites": favorites
+    }
+
+
+@app.post("/favorites")
+async def add_favorite(request: FavoriteRequest, session_id: Optional[str] = None):
+    """
+    Add a query to favorites
+
+    Can either:
+    1. Mark existing query as favorite (provide query_id)
+    2. Create new favorite (provide question + sql)
+    """
+    record = query_history.add_to_favorites(
+        query_id=request.query_id,
+        session_id=session_id,
+        question=request.question,
+        sql=request.sql,
+        tables=request.tables,
+        favorite_name=request.favorite_name,
+        tags=request.tags
+    )
+
+    if not record:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not add favorite. Provide either query_id or question+sql"
+        )
+
+    return {
+        "message": "✅ Added to favorites",
+        "favorite": record.to_dict()
+    }
+
+
+@app.delete("/favorites/{query_id}")
+async def remove_favorite(query_id: str):
+    """Remove a query from favorites"""
+    success = query_history.remove_from_favorites(query_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Favorite not found")
+
+    return {
+        "message": "✅ Removed from favorites",
+        "query_id": query_id
+    }
+
+
+@app.get("/favorites/{query_id}")
+async def get_favorite(query_id: str):
+    """Get a specific favorite query"""
+    query = query_history.get_query_by_id(query_id)
+
+    if not query:
+        raise HTTPException(status_code=404, detail="Query not found")
+
+    return query
+
+
+# ============================================
+# SUGGESTIONS ENDPOINT (NEW!)
+# ============================================
+
+@app.get("/suggestions")
+async def get_suggestions(
+    session_id: str,
+    tables: str  # Comma-separated table names
+):
+    """
+    Get query suggestions based on current context
+
+    Args:
+        session_id: User session
+        tables: Currently selected tables (comma-separated)
+    """
+    table_list = [t.strip() for t in tables.split(',') if t.strip()]
+
+    suggestions = query_history.get_suggested_queries(
+        session_id=session_id,
+        current_tables=table_list,
+        limit=5
+    )
+
+    recent_tables = query_history.get_recent_tables(session_id, limit=5)
+
+    return {
+        "suggestions": suggestions,
+        "recent_tables": recent_tables
+    }
+
+
+# ============================================
+# HISTORY STATS ENDPOINT (NEW!)
+# ============================================
+
+@app.get("/history/stats")
+async def get_history_stats():
+    """Get query history statistics"""
+    return query_history.get_stats()
+
+
+@app.post("/history/cleanup")
+async def cleanup_old_history():
+    """Manually trigger cleanup of old history"""
+    removed = query_history.cleanup_old_history()
+
+    return {
+        "message": f"✅ Cleaned up {removed} old history entries",
+        "removed_count": removed
     }
 
 
