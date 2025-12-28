@@ -372,8 +372,14 @@
                     </div>
                     <div class="form-group">
                         <label>Model</label>
-                        <input type="text" id="anthropic-model" placeholder="claude-sonnet-4-20250514">
-                        <small>e.g., claude-sonnet-4-20250514, claude-opus-4-20250514, claude-3-5-sonnet-20241022</small>
+                        <input type="text" id="anthropic-model" list="anthropic-models" placeholder="claude-sonnet-4-20250514">
+                        <datalist id="anthropic-models">
+                            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                            <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                            <option value="claude-sonnet-4-20241022">Claude Sonnet 4 (Oct)</option>
+                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                        </datalist>
+                        <small>Enter any Anthropic model name</small>
                     </div>
                 </div>
 
@@ -385,8 +391,14 @@
                     </div>
                     <div class="form-group">
                         <label>Model</label>
-                        <input type="text" id="gemini-model" placeholder="gemini-pro">
-                        <small>e.g., gemini-pro, gemini-1.5-pro, gemini-1.5-flash, gemini-2.0-flash-exp</small>
+                        <input type="text" id="gemini-model" list="gemini-models" placeholder="gemini-pro">
+                        <datalist id="gemini-models">
+                            <option value="gemini-pro">Gemini Pro</option>
+                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
+                        </datalist>
+                        <small>Enter any Gemini model name</small>
                     </div>
                 </div>
 
@@ -399,12 +411,17 @@
                     <div class="form-group">
                         <label>Location</label>
                         <input type="text" id="vertexai-location" placeholder="us-central1">
-                        <small>e.g., us-central1, europe-west1, asia-southeast1</small>
                     </div>
                     <div class="form-group">
                         <label>Model</label>
-                        <input type="text" id="vertexai-model" placeholder="gemini-pro">
-                        <small>e.g., gemini-pro, gemini-1.5-pro, gemini-1.5-flash</small>
+                        <input type="text" id="vertexai-model" list="vertexai-models" placeholder="gemini-2.0-flash-exp">
+                        <datalist id="vertexai-models">
+                            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
+                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                            <option value="gemini-pro">Gemini Pro</option>
+                        </datalist>
+                        <small>Enter any Vertex AI model name</small>
                     </div>
                     <div class="form-group">
                         <label>Credentials Path</label>
@@ -586,18 +603,24 @@
 
             if (llmProvider === 'anthropic') {
                 const anthropicConfig = config.llm?.anthropic || {};
-                document.getElementById('anthropic-api-key').value = anthropicConfig.api_key || '';
+                // Don't load API key (it's masked), leave empty
+                document.getElementById('anthropic-api-key').value = '';
+                document.getElementById('anthropic-api-key').placeholder = anthropicConfig.api_key === '***masked***' ? 'API key set (unchanged)' : 'Enter API key';
                 document.getElementById('anthropic-model').value = anthropicConfig.model || 'claude-sonnet-4-20250514';
             } else if (llmProvider === 'gemini') {
                 const geminiConfig = config.llm?.gemini || {};
-                document.getElementById('gemini-api-key').value = geminiConfig.api_key || '';
+                // Don't load API key (it's masked), leave empty
+                document.getElementById('gemini-api-key').value = '';
+                document.getElementById('gemini-api-key').placeholder = geminiConfig.api_key === '***masked***' ? 'API key set (unchanged)' : 'Enter API key';
                 document.getElementById('gemini-model').value = geminiConfig.model || 'gemini-pro';
             } else if (llmProvider === 'vertexai') {
                 const vertexConfig = config.llm?.vertexai || {};
                 document.getElementById('vertexai-project').value = vertexConfig.project_id || '';
                 document.getElementById('vertexai-location').value = vertexConfig.location || 'us-central1';
-                document.getElementById('vertexai-model').value = vertexConfig.model || 'gemini-pro';
-                document.getElementById('vertexai-credentials').value = vertexConfig.credentials_path || '';
+                document.getElementById('vertexai-model').value = vertexConfig.model || 'gemini-2.0-flash-exp';
+                // Don't load credentials path (it might be masked), leave empty
+                document.getElementById('vertexai-credentials').value = '';
+                document.getElementById('vertexai-credentials').placeholder = vertexConfig.credentials_path === '***masked***' ? 'Credentials set (unchanged)' : 'Enter path or leave empty';
             }
 
             updateLLMFields();
@@ -611,7 +634,9 @@
                 document.getElementById('trino-host').value = trinoConfig.host || '';
                 document.getElementById('trino-port').value = trinoConfig.port || 8080;
                 document.getElementById('trino-user').value = trinoConfig.user || '';
-                document.getElementById('trino-password').value = trinoConfig.password || '';
+                // Don't load password (it's masked), leave empty
+                document.getElementById('trino-password').value = '';
+                document.getElementById('trino-password').placeholder = trinoConfig.password === '***masked***' ? 'Password set (unchanged)' : 'Enter password';
                 document.getElementById('trino-catalog').value = trinoConfig.catalog || 'hive';
                 document.getElementById('trino-schema').value = trinoConfig.schema || 'default';
                 document.getElementById('trino-http-scheme').value = trinoConfig.http_scheme || 'https';
@@ -621,7 +646,9 @@
                 document.getElementById('pg-port').value = pgConfig.port || 5432;
                 document.getElementById('pg-database').value = pgConfig.database || '';
                 document.getElementById('pg-user').value = pgConfig.user || '';
-                document.getElementById('pg-password').value = pgConfig.password || '';
+                // Don't load password (it's masked), leave empty
+                document.getElementById('pg-password').value = '';
+                document.getElementById('pg-password').placeholder = pgConfig.password === '***masked***' ? 'Password set (unchanged)' : 'Enter password';
                 document.getElementById('pg-schema').value = pgConfig.schema || 'public';
             } else if (dbProvider === 'mysql') {
                 const mysqlConfig = config.database?.mysql || {};
@@ -629,7 +656,9 @@
                 document.getElementById('mysql-port').value = mysqlConfig.port || 3306;
                 document.getElementById('mysql-database').value = mysqlConfig.database || '';
                 document.getElementById('mysql-user').value = mysqlConfig.user || '';
-                document.getElementById('mysql-password').value = mysqlConfig.password || '';
+                // Don't load password (it's masked), leave empty - placeholder shows it exists
+                document.getElementById('mysql-password').value = '';
+                document.getElementById('mysql-password').placeholder = mysqlConfig.password === '***masked***' ? 'Password set (unchanged)' : 'Enter password';
             }
 
             updateDBFields();
@@ -731,20 +760,20 @@
             if (provider === 'anthropic') {
                 return {
                     api_key: document.getElementById('anthropic-api-key').value,
-                    model: document.getElementById('anthropic-model').value || 'claude-sonnet-4-20250514',
+                    model: document.getElementById('anthropic-model').value,
                     max_tokens: 1000
                 };
             } else if (provider === 'gemini') {
                 return {
                     api_key: document.getElementById('gemini-api-key').value,
-                    model: document.getElementById('gemini-model').value || 'gemini-pro',
+                    model: document.getElementById('gemini-model').value,
                     max_tokens: 1000
                 };
             } else if (provider === 'vertexai') {
                 return {
                     project_id: document.getElementById('vertexai-project').value,
-                    location: document.getElementById('vertexai-location').value || 'us-central1',
-                    model: document.getElementById('vertexai-model').value || 'gemini-pro',
+                    location: document.getElementById('vertexai-location').value,
+                    model: document.getElementById('vertexai-model').value,
                     credentials_path: document.getElementById('vertexai-credentials').value,
                     max_tokens: 1000
                 };

@@ -15,5 +15,6 @@ mysql-connector-python>=8.2.0  # MySQL
 pydantic
 pyyaml==6.0.1
 python-dotenv==1.0.0
+ruamel.yaml>=0.18.0
 
 

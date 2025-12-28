@@ -28,9 +28,20 @@ from src.api.admin_routes import router as admin_router
 CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
 config = config_manager.load_from_file(CONFIG_PATH)
 
-# Create providers
-llm_provider = ProviderFactory.create_llm_provider(config)
-db_provider = ProviderFactory.create_db_provider(config)
+# Create providers - using function to allow reloading
+def get_current_providers():
+    """Get current LLM and DB providers"""
+    current_config = config_manager.get_config()
+    llm = ProviderFactory.create_llm_provider(current_config)
+    db = ProviderFactory.create_db_provider(current_config)
+    return llm, db
+
+# Initialize providers
+llm_provider, db_provider = get_current_providers()
+
+print(f"✅ Initial providers loaded:")
+print(f"   LLM: {llm_provider.get_model_name()}")
+print(f"   DB: {db_provider.get_connection_info()['type']}")
 
 # ============================================
 # DYNAMIC PROVIDER RELOAD
@@ -38,25 +49,43 @@ db_provider = ProviderFactory.create_db_provider(config)
 def reload_providers():
     """
     Reload providers with current configuration
-    Call this after config updates to apply changes
+    This updates the global llm_provider and db_provider
     """
     global llm_provider, db_provider
 
+    print("\n🔄 Reloading providers...")
     current_config = config_manager.get_config()
 
     try:
         # Recreate LLM provider
-        llm_provider = ProviderFactory.create_llm_provider(current_config)
-        print("✅ LLM provider reloaded")
+        new_llm = ProviderFactory.create_llm_provider(current_config)
+        llm_provider = new_llm
+        print(f"✅ LLM provider reloaded: {llm_provider.get_model_name()}")
     except Exception as e:
         print(f"⚠️ Failed to reload LLM provider: {e}")
+        raise
 
     try:
         # Recreate Database provider
-        db_provider = ProviderFactory.create_db_provider(current_config)
-        print("✅ Database provider reloaded")
+        new_db = ProviderFactory.create_db_provider(current_config)
+        db_provider = new_db
+        print(f"✅ Database provider reloaded: {db_provider.get_connection_info()['type']}")
     except Exception as e:
         print(f"⚠️ Failed to reload Database provider: {e}")
+        raise
+
+    print("🎉 Provider reload complete!\n")
+
+    return {
+        "llm": {
+            "provider": current_config['llm']['provider'],
+            "model": llm_provider.get_model_name()
+        },
+        "database": {
+            "provider": current_config['database']['provider'],
+            "info": db_provider.get_connection_info()
+        }
+    }
 
 
 # Initialize FastAPI

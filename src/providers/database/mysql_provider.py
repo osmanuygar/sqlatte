@@ -1,10 +1,11 @@
 """
-MySQL Database Provider
+MySQL Database Provider - Enhanced with Debug Logging
 """
 
 import mysql.connector
 from mysql.connector import Error
 from typing import List, Tuple, Any
+import socket
 from src.core.db_provider import DatabaseProvider
 
 
@@ -26,9 +27,31 @@ class MySQLProvider(DatabaseProvider):
 
         self.connection = None
 
+        # Debug: Log config
+        print(f"\n🔍 [MySQL] Config loaded:")
+        print(f"   Host: {self.host}")
+        print(f"   Port: {self.port}")
+        print(f"   Database: {self.database}")
+        print(f"   User: {self.user}")
+        print(f"   Password: {'*' * len(self.password) if self.password else '(empty)'}")
+
     def connect(self):
-        """Establish MySQL connection"""
+        """Establish MySQL connection with detailed error logging"""
         try:
+            # Debug: Resolve host to IP
+            try:
+                resolved_ip = socket.gethostbyname(self.host)
+                print(f"\n🌐 [MySQL] Host resolution:")
+                print(f"   Input host: {self.host}")
+                print(f"   Resolved IP: {resolved_ip}")
+                print(f"   MySQL will see connection from: {resolved_ip}")
+            except Exception as resolve_error:
+                print(f"\n⚠️  [MySQL] Host resolution warning: {resolve_error}")
+                resolved_ip = self.host
+
+            # Attempt connection
+            print(f"\n🔌 [MySQL] Connecting to {self.host}:{self.port}...")
+
             self.connection = mysql.connector.connect(
                 host=self.host,
                 port=self.port,
@@ -40,8 +63,35 @@ class MySQLProvider(DatabaseProvider):
                 autocommit=self.autocommit,
                 connect_timeout=10
             )
+
+            print(f"✅ [MySQL] Connection successful!")
             return self.connection
+
         except Error as e:
+            error_code = e.errno if hasattr(e, 'errno') else 'Unknown'
+            error_msg = str(e)
+
+            print(f"\n❌ [MySQL] Connection failed!")
+            print(f"   Error code: {error_code}")
+            print(f"   Error message: {error_msg}")
+
+            # Parse error for helpful messages
+            if '1045' in str(error_code) or 'Access denied' in error_msg:
+                print(f"\n💡 [MySQL] Access Denied Troubleshooting:")
+                print(f"   1. User '{self.user}' doesn't have permission from IP: {resolved_ip}")
+                print(f"   2. Check MySQL grants:")
+                print(f"      SELECT user, host FROM mysql.user WHERE user='{self.user}';")
+                print(f"   3. Grant access from this IP:")
+                print(f"      GRANT ALL PRIVILEGES ON {self.database}.* TO '{self.user}'@'{resolved_ip}' IDENTIFIED BY 'password';")
+                print(f"      -- OR grant from anywhere (less secure):")
+                print(f"      GRANT ALL PRIVILEGES ON {self.database}.* TO '{self.user}'@'%' IDENTIFIED BY 'password';")
+                print(f"      FLUSH PRIVILEGES;")
+            elif '2003' in str(error_code) or 'Can\'t connect' in error_msg:
+                print(f"\n💡 [MySQL] Connection Refused:")
+                print(f"   1. MySQL server not running")
+                print(f"   2. Firewall blocking port {self.port}")
+                print(f"   3. Wrong host: {self.host}")
+
             raise Exception(f"MySQL connection failed: {str(e)}")
 
     def get_tables(self) -> List[str]:
@@ -186,15 +236,23 @@ class MySQLProvider(DatabaseProvider):
     def health_check(self) -> bool:
         """Check MySQL connection health"""
         try:
+            print(f"\n🏥 [MySQL] Health check starting...")
             conn = self.connect()
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
-            cursor.fetchone()
+            result = cursor.fetchone()
             cursor.close()
             conn.close()
-            return True
+
+            if result:
+                print(f"✅ [MySQL] Health check passed!")
+                return True
+            else:
+                print(f"❌ [MySQL] Health check failed: No result")
+                return False
+
         except Exception as e:
-            print(f"MySQL health check failed: {e}")
+            print(f"❌ [MySQL] Health check failed: {e}")
             return False
 
     def get_connection_info(self) -> dict:
