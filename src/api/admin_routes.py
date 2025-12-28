@@ -10,9 +10,73 @@ from typing import Dict, Any, Optional
 import os
 
 from src.core.config_manager import config_manager
+from src.core.provider_factory import ProviderFactory
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+# ============================================
+# PROVIDER RELOAD HELPER (Avoids Circular Import!)
+# ============================================
+def reload_app_providers():
+    """
+    Reload app providers without circular import
+    Imports app module locally and updates its global providers
+    """
+    try:
+        # Import locally to avoid circular dependency at module load time
+        import src.api.app as app_module
+
+        # Get current config
+        current_config = config_manager.get_config()
+
+        print("\n🔄 [ADMIN] Reloading providers...")
+
+        # Recreate LLM provider
+        try:
+            new_llm = ProviderFactory.create_llm_provider(current_config)
+            app_module.llm_provider = new_llm
+            llm_name = new_llm.get_model_name()
+            print(f"✅ [ADMIN] LLM provider reloaded: {llm_name}")
+        except Exception as llm_error:
+            print(f"❌ [ADMIN] LLM reload failed: {llm_error}")
+            raise Exception(f"LLM provider creation failed: {str(llm_error)}")
+
+        # Recreate DB provider
+        try:
+            new_db = ProviderFactory.create_db_provider(current_config)
+            app_module.db_provider = new_db
+            db_type = new_db.get_connection_info()['type']
+            print(f"✅ [ADMIN] DB provider reloaded: {db_type}")
+        except Exception as db_error:
+            print(f"❌ [ADMIN] DB reload failed: {db_error}")
+            raise Exception(f"Database provider creation failed: {str(db_error)}")
+
+        print("🎉 [ADMIN] Provider reload complete!\n")
+
+        return {
+            "success": True,
+            "llm": {
+                "provider": current_config['llm']['provider'],
+                "model": llm_name
+            },
+            "database": {
+                "provider": current_config['database']['provider'],
+                "info": app_module.db_provider.get_connection_info()
+            }
+        }
+    except Exception as e:
+        print(f"❌ [ADMIN] Provider reload failed: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return error info instead of raising exception
+        return {
+            "success": False,
+            "error": str(e),
+            "llm": None,
+            "database": None
+        }
 
 
 # ============================================
@@ -156,15 +220,33 @@ async def update_config(request: ConfigUpdateRequest):
 async def reset_config():
     """Reset runtime overrides and reload from file"""
     try:
+        # Reset to file config
         config = config_manager.reset_to_file()
+
+        # Reload providers
+        reload_result = reload_app_providers()
+
+        # Check if reload was successful
+        if not reload_result.get("success", False):
+            return {
+                "success": False,
+                "message": f"Config reset but provider reload failed: {reload_result.get('error', 'Unknown error')}",
+                "config": config_manager.get_safe_config(),
+                "reloaded": reload_result
+            }
+
         safe_config = config_manager.get_safe_config()
 
         return {
             "success": True,
             "message": "Configuration reset to file defaults",
-            "config": safe_config
+            "config": safe_config,
+            "reloaded": reload_result
         }
     except Exception as e:
+        print(f"❌ [ADMIN] Config reset error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -202,20 +284,38 @@ async def update_llm_config(request: LLMConfigRequest):
     ```
     """
     try:
+        # Update config
         updated_config = config_manager.update_llm_config(
             provider=request.provider,
             provider_config=request.config
         )
 
+        # Save to file if requested
         if request.persist:
             config_manager._save_to_file()
 
+        # Reload providers
+        reload_result = reload_app_providers()
+
+        # Check if reload was successful
+        if not reload_result.get("success", False):
+            return {
+                "success": False,
+                "message": f"Config updated but provider reload failed: {reload_result.get('error', 'Unknown error')}",
+                "config": config_manager.get_safe_config(),
+                "reloaded": reload_result
+            }
+
         return {
             "success": True,
-            "message": f"LLM provider updated to {request.provider}",
-            "config": config_manager.get_safe_config()
+            "message": f"LLM provider updated to {request.provider}" + (" and saved to file" if request.persist else ""),
+            "config": config_manager.get_safe_config(),
+            "reloaded": reload_result
         }
     except Exception as e:
+        print(f"❌ [ADMIN] LLM update error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -256,20 +356,38 @@ async def update_database_config(request: DatabaseConfigRequest):
     ```
     """
     try:
+        # Update config
         updated_config = config_manager.update_database_config(
             provider=request.provider,
             provider_config=request.config
         )
 
+        # Save to file if requested
         if request.persist:
             config_manager._save_to_file()
 
+        # Reload providers
+        reload_result = reload_app_providers()
+
+        # Check if reload was successful
+        if not reload_result.get("success", False):
+            return {
+                "success": False,
+                "message": f"Config updated but provider reload failed: {reload_result.get('error', 'Unknown error')}",
+                "config": config_manager.get_safe_config(),
+                "reloaded": reload_result
+            }
+
         return {
             "success": True,
-            "message": f"Database provider updated to {request.provider}",
-            "config": config_manager.get_safe_config()
+            "message": f"Database provider updated to {request.provider}" + (" and saved to file" if request.persist else ""),
+            "config": config_manager.get_safe_config(),
+            "reloaded": reload_result
         }
     except Exception as e:
+        print(f"❌ [ADMIN] Database update error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

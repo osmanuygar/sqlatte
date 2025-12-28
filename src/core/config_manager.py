@@ -113,7 +113,26 @@ class ConfigManager:
         provider: str,
         provider_config: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Update LLM provider configuration"""
+        """
+        Update LLM provider configuration
+
+        IMPORTANT: Preserves original api_key if masked value is sent
+        """
+        # 🔒 API_KEY FIX: If api_key is masked, use existing api_key
+        if 'api_key' in provider_config:
+            if provider_config['api_key'] == '***masked***' or not provider_config['api_key']:
+                # Get current config
+                current_config = self.get_config()
+                current_llm_config = current_config.get('llm', {}).get(provider, {})
+
+                if 'api_key' in current_llm_config:
+                    print(f"🔒 [ConfigManager] API key masked, preserving original value")
+                    provider_config['api_key'] = current_llm_config['api_key']
+                else:
+                    # No existing api_key, remove the masked value
+                    print(f"⚠️  [ConfigManager] No existing API key, removing masked value")
+                    provider_config.pop('api_key', None)
+
         updates = {
             'llm': {
                 'provider': provider,
@@ -127,7 +146,26 @@ class ConfigManager:
         provider: str,
         provider_config: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Update Database provider configuration"""
+        """
+        Update Database provider configuration
+
+        IMPORTANT: Preserves original password if masked value is sent
+        """
+        # 🔒 PASSWORD FIX: If password is masked, use existing password
+        if 'password' in provider_config:
+            if provider_config['password'] == '***masked***' or not provider_config['password']:
+                # Get current config
+                current_config = self.get_config()
+                current_db_config = current_config.get('database', {}).get(provider, {})
+
+                if 'password' in current_db_config:
+                    print(f"🔒 [ConfigManager] Password masked, preserving original value")
+                    provider_config['password'] = current_db_config['password']
+                else:
+                    # No existing password, remove the masked value
+                    print(f"⚠️  [ConfigManager] No existing password, removing masked value")
+                    provider_config.pop('password', None)
+
         updates = {
             'database': {
                 'provider': provider,
@@ -183,6 +221,7 @@ class ConfigManager:
     ) -> Dict[str, Any]:
         """
         Test a provider configuration before applying
+        WITH ENHANCED DEBUG LOGGING
 
         Args:
             provider_type: 'llm' or 'database'
@@ -192,6 +231,19 @@ class ConfigManager:
         Returns:
             Test result with status and message
         """
+        # 🔍 DEBUG: Log what we received
+        print(f"\n{'='*60}")
+        print(f"🧪 [TEST CONNECTION] Starting...")
+        print(f"   Type: {provider_type}")
+        print(f"   Provider: {provider}")
+        print(f"   Config received from browser:")
+        for key, value in config.items():
+            if 'password' in key.lower() or 'api_key' in key.lower():
+                print(f"      {key}: {'*' * len(str(value)) if value else '(empty)'}")
+            else:
+                print(f"      {key}: {value}")
+        print(f"{'='*60}\n")
+
         try:
             if provider_type == 'llm':
                 return self._test_llm(provider, config)
@@ -203,6 +255,7 @@ class ConfigManager:
                     'message': f'Unknown provider type: {provider_type}'
                 }
         except Exception as e:
+            print(f"❌ [TEST CONNECTION] Exception: {e}")
             return {
                 'success': False,
                 'message': f'Test failed: {str(e)}'
@@ -236,7 +289,7 @@ class ConfigManager:
             }
 
     def _test_database(self, provider: str, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Test Database provider connection"""
+        """Test Database provider connection WITH ENHANCED LOGGING"""
         from src.core.provider_factory import ProviderFactory
 
         test_config = {
@@ -246,16 +299,31 @@ class ConfigManager:
             }
         }
 
+        print(f"🔌 [TEST DB] Creating {provider} provider instance...")
+        print(f"   Using config:")
+        for key, value in config.items():
+            if 'password' in key.lower():
+                print(f"      {key}: {'*' * len(str(value)) if value else '(empty)'}")
+            else:
+                print(f"      {key}: {value}")
+
         try:
             db_provider = ProviderFactory.create_db_provider(test_config)
+
+            print(f"🏥 [TEST DB] Running health check...")
             is_healthy = db_provider.health_check()
 
             tables = []
             if is_healthy:
                 try:
+                    print(f"📊 [TEST DB] Fetching table list...")
                     tables = db_provider.get_tables()
-                except:
+                    print(f"✅ [TEST DB] Found {len(tables)} tables")
+                except Exception as table_error:
+                    print(f"⚠️  [TEST DB] Could not fetch tables: {table_error}")
                     pass
+
+            print(f"{'✅' if is_healthy else '❌'} [TEST DB] Final result: {is_healthy}")
 
             return {
                 'success': is_healthy,
@@ -265,6 +333,10 @@ class ConfigManager:
                 'table_count': len(tables)
             }
         except Exception as e:
+            print(f"❌ [TEST DB] Exception occurred: {e}")
+            import traceback
+            traceback.print_exc()
+
             return {
                 'success': False,
                 'message': f'Connection failed: {str(e)}'
