@@ -28,6 +28,8 @@
 - 🧠 **Conversation Memory** - Remembers chat history per session (in-memory)
 - 🎯 **Context-Aware Responses** - Understands follow-up questions
 - 📱 **Widget-Based UI** - Fullscreen modal with modern, responsive design
+- ⚙️ **Admin Panel** - Runtime configuration without restart (NEW!)
+- 🎨 **SQL Syntax Highlighting** - Beautiful colored SQL queries (NEW!)
 - ⚡ **Fast & Simple** - Single YAML config file, no complex setup
 - 🐳 **Docker Ready** - Easy deployment with Docker & Docker Compose
 
@@ -78,6 +80,9 @@ python run.py
 
 # Open in browser
 http://localhost:8000
+
+# Access Admin Panel (NEW!)
+http://localhost:8000/admin
 ```
 
 **That's it!** 🎉
@@ -114,7 +119,7 @@ Execute       Return
           ↓
     Add Response to History
           ↓
-    Return to User
+    Return to User 
 ```
 
 ---
@@ -132,6 +137,9 @@ docker-compose up -d
 
 # 3. Open browser
 http://localhost:8000
+
+# 4. Access admin panel
+http://localhost:8000/admin
 ```
 
 ### Using Dockerfile
@@ -247,6 +255,9 @@ window.SQLatteWidget.clearChat();
 
 // Get current session ID
 const sessionId = window.SQLatteWidget.getSessionId();
+
+// Copy SQL to clipboard (NEW!)
+window.SQLatteWidget.copySQL('sql-element-id');
 ```
 
 ---
@@ -361,18 +372,23 @@ llm:
 
 ---
 
----
-
 ## Changelog
 
-### v0.3.0 (Latest) - UI Improvements
+### v0.4.0 (Latest) - Admin Panel & SQL Highlighting
+- Admin Configuration Panel** - Runtime configuration management without restart
+- Update LLM provider & model on-the-fly
+- Change database connections in real-time
+- Test connections before applying
+- Save changes to config.yaml or keep in-memory
+- SQL Syntax Highlighting - Beautiful colored SQL queries
+
+### v0.3.0 - UI Improvements
 - 📥 Export query results to CSV with one click
 - 📊 Interactive charts (Pie, Bar, Line, Doughnut)
 - 📜 Track and replay your recent queries
 - ⭐ Save frequently used queries for quick access
 
-
-### v0.2.0  - Conversation Memory
+### v0.2.0 - Conversation Memory
 - 🧠 Added conversation memory system
 - 💬 Session-based chat tracking
 - 🎯 Context-aware responses
@@ -394,7 +410,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-
 ## 📧 Contact
 
 - **GitHub:** [@osmanuygar](https://github.com/osmanuygar)
@@ -404,7 +419,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <p align="center">
   <strong>Made with ❤️ and ☕</strong><br>
-  <sub>Transform your data queries with the power of AI and conversation memory</sub>
+  <sub>Transform your data queries with the power of AI, conversation memory, and beautiful syntax highlighting</sub>
 </p>
 
 ---

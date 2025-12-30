@@ -28,15 +28,126 @@
     let selectedTables = [];
     let currentSchema = '';
     let sessionId = null;
-
-    // NEW: History & Favorites state
     let queryHistory = [];
     let favorites = [];
     let isHistoryPanelOpen = false;
     let isFavoritesPanelOpen = false;
 
-    // Results cache for CSV export
+    // Results cache
     window.sqlatteResultsCache = {};
+
+    /**
+     * ============================================
+     * SQL SYNTAX HIGHLIGHTING - NEW!
+     * ============================================
+     */
+
+    function highlightSQL(sql) {
+        if (!sql) return '';
+
+        // Escape HTML first
+        let highlighted = sql
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        // SQL Keywords
+        const keywords = [
+            'SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'FULL',
+            'ON', 'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN', 'IS', 'NULL',
+            'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET',
+            'AS', 'DISTINCT', 'ALL', 'ANY', 'SOME', 'EXISTS',
+            'UNION', 'INTERSECT', 'EXCEPT',
+            'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER',
+            'TABLE', 'INDEX', 'VIEW', 'DATABASE', 'SCHEMA',
+            'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+            'WITH', 'RECURSIVE', 'OVER', 'PARTITION BY'
+        ];
+
+        // SQL Functions
+        const functions = [
+            'COUNT', 'SUM', 'AVG', 'MIN', 'MAX',
+            'DATE', 'NOW', 'CURRENT_DATE', 'CURRENT_TIME', 'CURRENT_TIMESTAMP',
+            'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND',
+            'CONCAT', 'SUBSTRING', 'TRIM', 'LTRIM', 'RTRIM',
+            'UPPER', 'LOWER', 'LENGTH', 'REPLACE',
+            'ROUND', 'FLOOR', 'CEIL', 'ABS', 'SQRT', 'POWER',
+            'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'LAG', 'LEAD'
+        ];
+
+        // Comments (-- style)
+        highlighted = highlighted.replace(/(--.*$)/gm, '<span class="sql-comment">$1</span>');
+
+        // Comments (/* */ style)
+        highlighted = highlighted.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="sql-comment">$1</span>');
+
+        // Strings
+        highlighted = highlighted.replace(/('(?:[^']|'')*')/g, '<span class="sql-string">$1</span>');
+
+        // Numbers
+        highlighted = highlighted.replace(/\b(\d+\.?\d*)\b/g, '<span class="sql-number">$1</span>');
+
+        // Functions
+        functions.forEach(func => {
+            const regex = new RegExp(`\\b(${func})\\b`, 'gi');
+            highlighted = highlighted.replace(regex, '<span class="sql-function">$1</span>');
+        });
+
+        // Keywords
+        keywords.forEach(keyword => {
+            const regex = new RegExp(`\\b(${keyword.replace(' ', '\\s+')})\\b`, 'gi');
+            highlighted = highlighted.replace(regex, '<span class="sql-keyword">$1</span>');
+        });
+
+        return highlighted;
+    }
+
+    function copySQLAction(sqlId) {
+        const sqlElement = document.getElementById(sqlId);
+        if (!sqlElement) return;
+
+        const rawSQL = sqlElement.getAttribute('data-raw-sql');
+        if (rawSQL) {
+            const decoded = decodeHTMLEntities(rawSQL);
+            copyToClipboard(decoded);
+        }
+    }
+
+    function decodeHTMLEntities(text) {
+        const textarea = document.createElement('textarea');
+        textarea.innerHTML = text;
+        return textarea.value;
+    }
+
+    function copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('📋 Copied to clipboard!', 'success');
+            }).catch(err => {
+                console.error('Copy failed:', err);
+                fallbackCopy(text);
+            });
+        } else {
+            fallbackCopy(text);
+        }
+    }
+
+    function fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            showToast('📋 Copied to clipboard!', 'success');
+        } catch (err) {
+            console.error('Fallback copy failed:', err);
+            showToast('❌ Copy failed', 'error');
+        }
+        document.body.removeChild(textarea);
+    }
 
     /**
      * CSV EXPORT FUNCTIONALITY
@@ -103,7 +214,6 @@
             setTimeout(() => document.body.removeChild(toast), 300);
         }, 3000);
     }
-
 
     /**
      * CHART.JS LOADER & VISUALIZATION
@@ -330,7 +440,6 @@
         if (sqlatteModal) sqlatteModal.classList.remove('sqlatte-modal-hidden-for-chart');
     }
 
-
     /**
      * SESSION MANAGEMENT
      */
@@ -354,13 +463,9 @@
         localStorage.removeItem('sqlatte_session_id');
     }
 
-
     /**
-     * ============================================
-     * QUERY HISTORY & FAVORITES (NEW!)
-     * ============================================
+     * QUERY HISTORY & FAVORITES
      */
-
     async function loadHistory() {
         if (!sessionId) return;
 
@@ -445,14 +550,12 @@
     }
 
     function useQuery(query) {
-        // Fill input with the question
         const input = document.getElementById('sqlatte-input');
         if (input) {
             input.value = query.question;
             input.focus();
         }
 
-        // Select the tables if available
         if (query.tables && query.tables.length > 0) {
             const select = document.getElementById('sqlatte-table-select');
             if (select) {
@@ -463,7 +566,6 @@
             }
         }
 
-        // Close panels
         closeHistoryPanel();
         closeFavoritesPanel();
 
@@ -621,9 +723,8 @@
         return str.length > len ? str.substring(0, len) + '...' : str;
     }
 
-
     /**
-     * Create widget
+     * CREATE WIDGET
      */
     function createWidget() {
         if (document.getElementById('sqlatte-widget')) return;
@@ -685,7 +786,7 @@
     }
 
     /**
-     * Create modal - WITH HISTORY & FAVORITES TOOLBAR
+     * CREATE MODAL
      */
     function createModal() {
         const modal = document.createElement('div');
@@ -715,7 +816,6 @@
                 </div>
             </div>
 
-            <!-- NEW: History & Favorites Toolbar -->
             <div class="sqlatte-modal-toolbar-extended">
                 <div class="sqlatte-toolbar-buttons">
                     <button id="sqlatte-history-btn" class="sqlatte-toolbar-btn" onclick="SQLatteWidget.toggleHistory()" title="Query History">
@@ -734,7 +834,6 @@
                 </div>
             </div>
 
-            <!-- History Panel (Slide-out) -->
             <div id="sqlatte-history-panel" class="sqlatte-slide-panel">
                 <div class="sqlatte-panel-header">
                     <h4>📜 Query History</h4>
@@ -748,7 +847,6 @@
                 </div>
             </div>
 
-            <!-- Favorites Panel (Slide-out) -->
             <div id="sqlatte-favorites-panel" class="sqlatte-slide-panel">
                 <div class="sqlatte-panel-header">
                     <h4>⭐ Favorites</h4>
@@ -814,7 +912,6 @@
                 if (input) input.focus();
             }, 300);
 
-            // Load history & favorites when modal opens
             if (sessionId) {
                 loadHistory();
                 loadFavorites();
@@ -957,7 +1054,10 @@
         chatArea.scrollTop = chatArea.scrollHeight;
     }
 
-    function formatTable(columns, data, queryId = null) {
+    /**
+     * FORMAT TABLE WITH SQL HIGHLIGHTING - UPDATED!
+     */
+    function formatTable(columns, data, queryId = null, sql = null, explanation = null) {
         if (!data || data.length === 0) {
             return '<div class="text-sm" style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
         }
@@ -965,9 +1065,37 @@
         const resultId = 'result-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         window.sqlatteResultsCache[resultId] = { columns, data };
 
+        let html = '';
+
+        // Explanation
+        if (explanation) {
+            html += `<div class="sqlatte-explanation"><strong>💡</strong> ${escapeHtml(explanation)}</div>`;
+        }
+
+        // SQL Code Block with Highlighting - NEW!
+        if (sql) {
+            const sqlId = 'sql-' + resultId;
+            html += `
+                <div class="sqlatte-sql-container">
+                    <div class="sqlatte-sql-toolbar">
+                        <span class="sqlatte-sql-label">📝 SQL Query</span>
+                        <div class="sqlatte-sql-actions">
+                            <button onclick="SQLatteWidget.copySQL('${sqlId}')" title="Copy SQL">
+                                📋 Copy
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sqlatte-sql-code" id="${sqlId}" data-raw-sql="${escapeHtml(sql).replace(/"/g, '&quot;')}">
+                        <pre><code>${highlightSQL(sql)}</code></pre>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Results
         const detection = detectChartType(columns, data);
 
-        let html = '<div class="sqlatte-results-container">';
+        html += '<div class="sqlatte-results-container">';
 
         html += `<div class="sqlatte-results-toolbar">`;
         html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">📥 CSV</button>`;
@@ -976,7 +1104,6 @@
             html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize">📊 Chart</button>`;
         }
 
-        // NEW: Add to favorites button
         if (queryId) {
             html += `<button class="sqlatte-fav-btn" onclick="SQLatteWidget.addToFavorites('${queryId}')" title="Add to Favorites">⭐ Save</button>`;
         }
@@ -1017,6 +1144,9 @@
         return div.innerHTML;
     }
 
+    /**
+     * SEND MESSAGE - UPDATED WITH SQL INFO!
+     */
     async function sendMessage() {
         const input = document.getElementById('sqlatte-input');
         const sendBtn = document.getElementById('sqlatte-send-btn');
@@ -1060,12 +1190,14 @@
             if (result.response_type === 'chat') {
                 responseHTML = `<div class="sqlatte-chat-message">${renderHTML(result.message)}</div>`;
             } else if (result.response_type === 'sql' || result.sql) {
-                if (result.explanation) {
-                    responseHTML += `<div class="sqlatte-explanation"><strong>💡</strong> ${escapeHtml(result.explanation)}</div>`;
-                }
-
-                responseHTML += `<div class="sqlatte-sql-code">${escapeHtml(result.sql)}</div>`;
-                responseHTML += formatTable(result.columns, result.data, result.query_id);
+                // NEW: Pass SQL and explanation to formatTable
+                responseHTML = formatTable(
+                    result.columns,
+                    result.data,
+                    result.query_id,
+                    result.sql,
+                    result.explanation
+                );
             } else {
                 const msg = result.message || JSON.stringify(result);
                 responseHTML = `<div class="sqlatte-chat-message">${msg.includes('<') ? renderHTML(msg) : escapeHtml(msg)}</div>`;
@@ -1073,7 +1205,6 @@
 
             addMessage('assistant', responseHTML);
 
-            // Refresh history after successful query
             if (result.query_id) {
                 loadHistory();
             }
@@ -1089,7 +1220,7 @@
     }
 
     /**
-     * Inject styles - WITH HISTORY & FAVORITES STYLES
+     * INJECT STYLES - WITH SQL HIGHLIGHTING CSS!
      */
     function injectStyles() {
         if (document.getElementById('sqlatte-widget-styles')) return;
@@ -1097,7 +1228,7 @@
         const style = document.createElement('style');
         style.id = 'sqlatte-widget-styles';
         style.textContent = `
-/* SQLatte Widget Styles - With History & Favorites */
+/* SQLatte Widget Styles - WITH SQL HIGHLIGHTING */
 
 .sqlatte-widget {
     position: fixed;
@@ -1254,7 +1385,7 @@
     background: rgba(255, 255, 255, 0.2);
 }
 
-/* NEW: Extended Toolbar with History & Favorites */
+/* Toolbar */
 .sqlatte-modal-toolbar-extended {
     padding: 10px 16px;
     background: #242424;
@@ -1330,7 +1461,7 @@
     color: #707070;
 }
 
-/* Slide-out Panels for History & Favorites */
+/* Slide-out Panels */
 .sqlatte-slide-panel {
     position: absolute;
     top: 105px;
@@ -1662,19 +1793,123 @@
     border: none;
 }
 
-/* SQL Code */
-.sqlatte-sql-code {
+/* ============================================ */
+/* SQL SYNTAX HIGHLIGHTING - NEW! */
+/* ============================================ */
+
+.sqlatte-sql-container {
     background: #000;
-    color: #00ff00;
-    padding: 12px;
-    border-radius: 6px;
-    margin: 8px 0;
-    overflow-x: auto;
-    font-family: 'Courier New', monospace;
-    font-size: 11px;
+    border-radius: 8px;
+    margin: 12px 0;
     border: 1px solid #1a1a1a;
+    overflow: hidden;
 }
 
+.sqlatte-sql-toolbar {
+    background: #1a1a1a;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #333;
+}
+
+.sqlatte-sql-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #D4A574;
+}
+
+.sqlatte-sql-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.sqlatte-sql-toolbar button {
+    padding: 6px 12px;
+    background: #333;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.sqlatte-sql-toolbar button:hover {
+    background: #3d3d3d;
+    border-color: #D4A574;
+    transform: translateY(-1px);
+}
+
+.sqlatte-sql-code {
+    max-height: 350px;
+    overflow-x: auto;
+    overflow-y: auto;
+    background: #000;
+}
+
+.sqlatte-sql-code pre {
+    margin: 0;
+    padding: 14px 16px;
+    font-family: 'Courier New', 'Consolas', 'Monaco', 'Menlo', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #e0e0e0;
+}
+
+.sqlatte-sql-code code {
+    font-family: inherit;
+    font-size: inherit;
+    background: none;
+    padding: 0;
+}
+
+/* Syntax Token Colors */
+.sql-keyword {
+    color: #66d9ef;
+    font-weight: bold;
+}
+
+.sql-function {
+    color: #fd971f;
+    font-weight: 600;
+}
+
+.sql-string {
+    color: #a6e22e;
+}
+
+.sql-number {
+    color: #ae81ff;
+}
+
+.sql-comment {
+    color: #75715e;
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.sqlatte-sql-code::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.sqlatte-sql-code::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.sqlatte-sql-code::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+.sqlatte-sql-code::-webkit-scrollbar-thumb:hover {
+    background: #444;
+}
+
+/* Explanation */
 .sqlatte-explanation {
     color: #a0a0a0;
     font-size: 12px;
@@ -2012,6 +2247,15 @@
     .sqlatte-toolbar-tables {
         width: 100%;
     }
+
+    .sqlatte-sql-code {
+        max-height: 250px;
+    }
+
+    .sqlatte-sql-code pre {
+        font-size: 11px;
+        padding: 12px;
+    }
 }
 
 .text-xs { font-size: 11px; }
@@ -2045,7 +2289,10 @@
         closeChart: closeChart,
         getSessionId: function() { return sessionId; },
 
-        // NEW: History & Favorites API
+        // SQL Actions - NEW!
+        copySQL: copySQLAction,
+
+        // History & Favorites
         toggleHistory: toggleHistoryPanel,
         toggleFavorites: toggleFavoritesPanel,
         closeHistoryPanel: closeHistoryPanel,
