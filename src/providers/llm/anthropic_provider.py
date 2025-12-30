@@ -142,7 +142,7 @@ Rules:
    - Date filters MUST use dt column in format: dt = '20251218' or dt BETWEEN '20251201' AND '20251218'
    - For "recent", "latest", "today", "last" queries → use last 2 days: dt >= (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
    - For "yesterday" → use dt = '20251218' (current date - 1)
-   - For specific date range → convert to dt format (e.g., "last week" → dt >= '20251211')
+   - For specific date range → convert to dt format (e.g., "last week" → (datetime.now() - timedelta(days=7)).strftime('%Y%m%d'))
    - ⚠️ NEVER query without dt filter unless explicitly asked for "all time" data
 9. If 'datetime' column exists alongside 'dt', use 'dt' for filtering (faster) and 'datetime' for display
 10. Example optimized query: 
