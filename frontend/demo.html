@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLatte Demo - Normal vs Auth Widget</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .demo-container {
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .demo-header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        .demo-header h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .demo-header p {
+            font-size: 20px;
+            opacity: 0.9;
+        }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+        }
+
+        .demo-card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .demo-card h2 {
+            font-size: 24px;
+            margin-bottom: 12px;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .demo-card p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .demo-features {
+            list-style: none;
+            margin-bottom: 20px;
+        }
+
+        .demo-features li {
+            padding: 8px 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .demo-features li:before {
+            content: "✓";
+            color: #10b981;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .demo-btn {
+            width: 100%;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .demo-btn-primary {
+            background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+            color: white;
+        }
+
+        .demo-btn-secondary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .demo-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .demo-note {
+            background: rgba(102, 126, 234, 0.1);
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        .demo-footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: auto;
+        }
+
+        .status-standard {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .status-pro {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <div class="demo-header">
+            <h1>☕ SQLatte Demo</h1>
+            <p>Choose your widget: Standard or Authentication</p>
+        </div>
+
+        <div class="demo-grid">
+            <!-- Standard Widget -->
+            <div class="demo-card">
+                <h2>
+                    <span>🔓</span>
+                    Standard Widget
+                    <span class="status-badge status-standard">Free</span>
+                </h2>
+                <p>
+                    Uses pre-configured database from backend config.
+                    Perfect for internal apps or single-tenant deployments.
+                </p>
+
+                <ul class="demo-features">
+                    <li>No login required</li>
+                    <li>Backend-configured DB</li>
+                    <li>Shared connection</li>
+                    <li>Instant access</li>
+                    <li>Conversation memory</li>
+                    <li>Query history</li>
+                </ul>
+
+                <button class="demo-btn demo-btn-primary" onclick="openStandardWidget()">
+                    <svg width="20" height="20" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 60 70 L 68 145 Q 68 152 75 152 L 125 152 Q 132 152 132 145 L 140 70 Z"
+                              fill="currentColor"/>
+                        <ellipse cx="100" cy="70" rx="40" ry="9" fill="currentColor"/>
+                    </svg>
+                    Open Standard Widget
+                </button>
+
+                <div class="demo-note">
+                    <strong>💡 Use when:</strong><br>
+                    Single database, internal team, trusted environment
+                </div>
+            </div>
+
+            <!-- Auth Widget -->
+            <div class="demo-card">
+                <h2>
+                    <span>🔐</span>
+                    Auth Widget
+                    <span class="status-badge status-pro">Pro</span>
+                </h2>
+                <p>
+                    Users provide their own credentials. Each user connects to their own database.
+                    Perfect for multi-tenant SaaS or external access.
+                </p>
+
+                <ul class="demo-features">
+                    <li>Login required</li>
+                    <li>User provides credentials</li>
+                    <li>Isolated connections</li>
+                    <li>Session-based auth</li>
+                    <li>Thread-safe</li>
+                    <li>Multi-tenant ready</li>
+                </ul>
+
+                <button class="demo-btn demo-btn-secondary" onclick="openAuthWidget()">
+                    <svg width="20" height="20" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 60 70 L 68 145 Q 68 152 75 152 L 125 152 Q 132 152 132 145 L 140 70 Z"
+                              fill="currentColor"/>
+                        <ellipse cx="100" cy="70" rx="40" ry="9" fill="currentColor"/>
+                    </svg>
+                    Open Auth Widget
+                </button>
+
+                <div class="demo-note">
+                    <strong>💡 Use when:</strong><br>
+                    Multiple users, external access, SaaS application
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-footer">
+            <p>Made with ❤️ and ☕ by SQLatte Team</p>
+            <p style="margin-top: 10px;">
+                <a href="https://github.com/osmanuygar/sqlatte" style="color: white; text-decoration: none;">
+                    ⭐ Star on GitHub
+                </a>
+            </p>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- STANDARD WIDGET -->
+    <!-- ============================================ -->
+    <script src="http://localhost:8000/static/js/sqlatte-badge.js"></script>
+    <script>
+        // Configure standard widget
+        window.addEventListener('load', () => {
+            if (window.SQLatteWidget) {
+                window.SQLatteWidget.configure({
+                    position: 'bottom-right',
+                    fullscreen: true,
+                    apiBase: 'http://localhost:8000'
+                });
+            }
+        });
+
+        function openStandardWidget() {
+            if (window.SQLatteWidget) {
+                window.SQLatteWidget.open();
+            } else {
+                alert('Standard widget is loading... Please try again.');
+            }
+        }
+    </script>
+
+    <!-- ============================================ -->
+    <!-- AUTH WIDGET -->
+    <!-- ============================================ -->
+    <script src="http://localhost:8000/static/js/sqlatte-badge-auth.js"></script>
+    <script>
+        // Configure auth widget
+        window.addEventListener('load', () => {
+            if (window.SQLatteAuthWidget) {
+                window.SQLatteAuthWidget.configure({
+                    position: 'bottom-left',  // Different position!
+                    fullscreen: true,
+                    apiBase: 'http://localhost:8000'
+                });
+            }
+        });
+
+        function openAuthWidget() {
+            if (window.SQLatteAuthWidget) {
+                // Auth widget will open login modal
+                const badge = document.querySelector('.sqlatte-widget.sqlatte-widget-bottom-left .sqlatte-badge-btn');
+                if (badge) {
+                    badge.click();
+                }
+            } else {
+                alert('Auth widget is loading... Please try again.');
+            }
+        }
+    </script>
+</body>
+</html>

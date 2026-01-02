@@ -1,8 +1,10 @@
 """
-SQLatte API - Enhanced with Query History & Favorites + Admin Configuration
+SQLatte API - Optimized with Async Processing & Thread Pool
 """
 
 import time
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -23,10 +25,26 @@ from src.core.provider_factory import ProviderFactory
 from src.core.conversation_manager import conversation_manager
 from src.core.query_history import query_history
 from src.api.admin_routes import router as admin_router
+from src.api.demo_routes import router as demo_router
+
+# Plugin system
+from src.plugins.base_plugin import plugin_manager
+from src.plugins.auth_plugin import create_auth_plugin
 
 # Load configuration from file
 CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
 config = config_manager.load_from_file(CONFIG_PATH)
+
+# ============================================
+# THREAD POOL FOR ASYNC OPERATIONS
+# ============================================
+# Increased workers for concurrent requests
+MAIN_EXECUTOR = ThreadPoolExecutor(
+    max_workers=20,  # 👈 INCREASED from implicit default
+    thread_name_prefix="sqlatte-main"
+)
+
+print(f"✅ Thread pool initialized: 20 workers")
 
 # Create providers - using function to allow reloading
 def get_current_providers():
@@ -88,11 +106,31 @@ def reload_providers():
     }
 
 
+# ============================================
+# PLUGIN SYSTEM INITIALIZATION
+# ============================================
+def initialize_plugins(app: FastAPI):
+    """Initialize and register plugins"""
+    plugins_config = config.get('plugins', {})
+
+    # Auth plugin
+    if plugins_config.get('auth', {}).get('enabled', False):
+        print("\n🔐 Initializing Auth Plugin...")
+        auth_config = plugins_config['auth']
+        auth_plugin = create_auth_plugin(auth_config)
+        plugin_manager.register_plugin(auth_plugin)
+
+    # Initialize all registered plugins
+    plugin_manager.initialize_all(app)
+
+    print("✅ Plugin system initialized\n")
+
+
 # Initialize FastAPI
 app = FastAPI(
     title=config['app']['name'],
     version=config['app']['version'],
-    description="☕ Serving perfect SQL queries with conversation memory, query history & runtime configuration"
+    description="☕ Serving perfect SQL queries with async processing"
 )
 
 # CORS
@@ -109,8 +147,12 @@ STATIC_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static')
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Include admin routes
+# Initialize plugin system
+initialize_plugins(app)
+
+# Include routers
 app.include_router(admin_router)
+app.include_router(demo_router)
 
 
 # ============================================
@@ -146,6 +188,109 @@ QueryResponse = SQLQueryResponse | ChatResponse
 
 
 # ============================================
+# ASYNC QUERY PROCESSOR (NON-BLOCKING!)
+# ============================================
+
+def _process_query_sync(
+    question: str,
+    schema_info: str,
+    session_id: str,
+    selected_tables: List[str]
+):
+    """
+    Synchronous query processing (runs in thread pool)
+    Creates NEW provider instances to avoid thread conflicts
+    """
+    try:
+        # CREATE NEW PROVIDERS for this request (thread-safe!)
+        current_config = config_manager.get_config()
+        llm = ProviderFactory.create_llm_provider(current_config)
+        db = ProviderFactory.create_db_provider(current_config)
+
+        print(f"🔄 [Thread {id(llm)}] Processing: {question[:50]}...")
+
+        # Determine intent
+        intent_result = llm.determine_intent(question, schema_info)
+
+        # Route based on intent
+        if intent_result["intent"] == "sql" and intent_result["confidence"] > 0.6:
+            if schema_info == "No schema provided.":
+                return {
+                    "type": "chat",
+                    "message": "☕ Please select one or more tables first.",
+                    "intent_info": intent_result
+                }
+
+            # Get conversation context
+            conversation_context = conversation_manager.get_conversation_context(session_id)
+
+            if len(conversation_context) > 1:
+                context_summary = "\n\nRecent conversation:\n"
+                for msg in conversation_context[-5:]:
+                    if msg['role'] == 'user':
+                        context_summary += f"User: {msg['content']}\n"
+                    elif msg['role'] == 'assistant':
+                        context_summary += f"Assistant: {msg['content'][:100]}...\n"
+
+                enhanced_question = f"{question}\n\nContext: {context_summary}"
+            else:
+                enhanced_question = question
+
+            # Generate SQL
+            sql_query, explanation = llm.generate_sql(enhanced_question, schema_info)
+
+            if not sql_query:
+                return {
+                    "type": "chat",
+                    "message": "Failed to generate SQL. Please rephrase.",
+                    "intent_info": intent_result
+                }
+
+            # Execute query
+            columns, data = db.execute_query(sql_query)
+
+            print(f"✅ [Thread {id(llm)}] Query executed: {len(data)} rows")
+
+            return {
+                "type": "sql",
+                "sql": sql_query,
+                "columns": columns,
+                "data": data,
+                "row_count": len(data),
+                "explanation": explanation,
+                "tables": selected_tables
+            }
+
+        else:
+            # Chat response
+            conversation_context = conversation_manager.get_conversation_context(session_id)
+
+            if len(conversation_context) > 1:
+                context_text = "Recent conversation:\n"
+                for msg in conversation_context[-5:]:
+                    role_label = "User" if msg['role'] == 'user' else "Assistant"
+                    context_text += f"{role_label}: {msg['content']}\n"
+
+                enhanced_question = f"{context_text}\n\nCurrent: {question}"
+            else:
+                enhanced_question = question
+
+            chat_response = llm.generate_chat_response(enhanced_question, schema_info)
+
+            return {
+                "type": "chat",
+                "message": chat_response,
+                "intent_info": intent_result
+            }
+
+    except Exception as e:
+        print(f"❌ [Thread {id(llm) if 'llm' in locals() else 'unknown'}] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+
+# ============================================
 # MAIN ROUTES
 # ============================================
 
@@ -178,7 +323,11 @@ async def health_check():
             "healthy": db_provider.health_check()
         },
         "conversations": conversation_manager.get_stats(),
-        "query_history": query_history.get_stats()
+        "query_history": query_history.get_stats(),
+        "thread_pool": {
+            "workers": 20,
+            "active": MAIN_EXECUTOR._threads.__len__() if hasattr(MAIN_EXECUTOR, '_threads') else 0
+        }
     }
 
 
@@ -195,11 +344,7 @@ async def get_config():
 
 @app.post("/reload-providers")
 async def trigger_reload_providers():
-    """
-    Reload providers after configuration change
-
-    ⚠️ Call this endpoint after updating config via /admin
-    """
+    """Reload providers after configuration change"""
     try:
         reload_providers()
 
@@ -215,9 +360,14 @@ async def trigger_reload_providers():
 
 @app.get("/tables")
 async def list_tables():
-    """List available tables"""
+    """List available tables (async)"""
     try:
-        tables = db_provider.get_tables()
+        # Run in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        tables = await loop.run_in_executor(
+            MAIN_EXECUTOR,
+            db_provider.get_tables
+        )
         return {"tables": tables}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
@@ -225,9 +375,14 @@ async def list_tables():
 
 @app.get("/schema/{table_name}")
 async def get_schema(table_name: str):
-    """Get table schema"""
+    """Get table schema (async)"""
     try:
-        schema = db_provider.get_table_schema(table_name)
+        loop = asyncio.get_event_loop()
+        schema = await loop.run_in_executor(
+            MAIN_EXECUTOR,
+            db_provider.get_table_schema,
+            table_name
+        )
         return {"table": table_name, "schema": schema}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
@@ -235,16 +390,25 @@ async def get_schema(table_name: str):
 
 @app.post("/schema/multiple")
 async def get_multiple_schemas(request: dict):
-    """Get schemas for multiple tables (for JOINs)"""
+    """Get schemas for multiple tables (async)"""
     try:
         table_names = request.get("tables", [])
         if not table_names:
             raise HTTPException(status_code=400, detail="No tables provided")
 
-        combined_schema = ""
-        for table in table_names:
-            schema = db_provider.get_table_schema(table)
-            combined_schema += schema + "\n\n"
+        # Process in parallel!
+        loop = asyncio.get_event_loop()
+        tasks = [
+            loop.run_in_executor(
+                MAIN_EXECUTOR,
+                db_provider.get_table_schema,
+                table
+            )
+            for table in table_names
+        ]
+
+        schemas = await asyncio.gather(*tasks)
+        combined_schema = "\n\n".join(schemas)
 
         return {
             "tables": table_names,
@@ -257,7 +421,8 @@ async def get_multiple_schemas(request: dict):
 @app.post("/query")
 async def process_query(request: QueryRequest):
     """
-    Intelligent query processor with CONVERSATION MEMORY & QUERY HISTORY
+    ASYNC query processor - NON-BLOCKING!
+    Multiple requests can run in parallel
     """
     try:
         start_time = time.time()
@@ -265,7 +430,7 @@ async def process_query(request: QueryRequest):
         # SESSION MANAGEMENT
         session_id, session = conversation_manager.get_or_create_session(request.session_id)
 
-        # Add user message to conversation history
+        # Add user message
         conversation_manager.add_message(
             session_id,
             role="user",
@@ -273,11 +438,9 @@ async def process_query(request: QueryRequest):
             metadata={"table_schema": request.table_schema}
         )
 
-        schema_info = request.table_schema
-        if not schema_info:
-            schema_info = "No schema provided."
+        schema_info = request.table_schema if request.table_schema else "No schema provided."
 
-        # Extract tables from schema
+        # Extract tables
         selected_tables = []
         if schema_info != "No schema provided.":
             for line in schema_info.split('\n'):
@@ -287,128 +450,72 @@ async def process_query(request: QueryRequest):
                         table_name = table_name.split('.')[-1]
                     selected_tables.append(table_name)
 
-        # DETERMINE INTENT
-        intent_result = llm_provider.determine_intent(
+        # ASYNC PROCESSING IN THREAD POOL (NON-BLOCKING!)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            MAIN_EXECUTOR,
+            _process_query_sync,
             request.question,
-            schema_info
+            schema_info,
+            session_id,
+            selected_tables
         )
 
-        # ROUTE BASED ON INTENT
-        if intent_result["intent"] == "sql" and intent_result["confidence"] > 0.6:
-            if schema_info == "No schema provided.":
-                response_message = "☕ I'd love to help you query your data! But first, please select one or more tables from the dropdown above so I know what data we're working with."
+        execution_time = (time.time() - start_time) * 1000
 
-                conversation_manager.add_message(
-                    session_id,
-                    role="assistant",
-                    content=response_message,
-                    metadata={"response_type": "chat"}
-                )
-
-                return ChatResponse(
-                    response_type="chat",
-                    message=response_message,
-                    intent_info=intent_result,
-                    session_id=session_id
-                )
-
-            # GENERATE SQL WITH CONVERSATION CONTEXT
-            conversation_context = conversation_manager.get_conversation_context(session_id)
-
-            if len(conversation_context) > 1:
-                context_summary = "\n\nRecent conversation:\n"
-                for msg in conversation_context[-5:]:
-                    if msg['role'] == 'user':
-                        context_summary += f"User: {msg['content']}\n"
-                    elif msg['role'] == 'assistant':
-                        context_summary += f"Assistant: {msg['content'][:100]}...\n"
-
-                enhanced_question = f"{request.question}\n\nContext: User is continuing a conversation. {context_summary}"
-            else:
-                enhanced_question = request.question
-
-            # Generate SQL
-            sql_query, explanation = llm_provider.generate_sql(
-                enhanced_question,
-                schema_info
-            )
-
-            if not sql_query:
-                raise HTTPException(status_code=400, detail="Failed to generate SQL")
-
-            # Execute query
-            columns, data = db_provider.execute_query(sql_query)
-
-            execution_time = (time.time() - start_time) * 1000  # ms
-
-            # ADD TO QUERY HISTORY
+        # Handle result
+        if result["type"] == "sql":
+            # Add to history
             history_record = query_history.add_query(
                 session_id=session_id,
                 question=request.question,
-                sql=sql_query,
+                sql=result["sql"],
                 tables=selected_tables,
-                row_count=len(data),
+                row_count=result["row_count"],
                 execution_time_ms=execution_time
             )
 
-            # Add assistant response to conversation
+            # Add to conversation
             conversation_manager.add_message(
                 session_id,
                 role="assistant",
-                content=f"SQL Query: {sql_query}\n\nExplanation: {explanation}",
+                content=f"SQL: {result['sql']}\n\nExplanation: {result['explanation']}",
                 metadata={
                     "response_type": "sql",
-                    "row_count": len(data),
-                    "columns": columns,
+                    "row_count": result["row_count"],
+                    "columns": result["columns"],
                     "query_id": history_record.id
                 }
             )
 
             return SQLQueryResponse(
                 response_type="sql",
-                sql=sql_query,
-                columns=columns,
-                data=data,
-                row_count=len(data),
-                explanation=explanation,
+                sql=result["sql"],
+                columns=result["columns"],
+                data=result["data"],
+                row_count=result["row_count"],
+                explanation=result["explanation"],
                 session_id=session_id,
                 query_id=history_record.id
             )
 
-        else:
-            # CHAT PATH WITH CONVERSATION MEMORY
-            conversation_context = conversation_manager.get_conversation_context(session_id)
-
-            if len(conversation_context) > 1:
-                context_text = "Recent conversation:\n"
-                for msg in conversation_context[-5:]:
-                    role_label = "User" if msg['role'] == 'user' else "You (Assistant)"
-                    context_text += f"{role_label}: {msg['content']}\n"
-
-                enhanced_question = f"{context_text}\n\nUser's current question: {request.question}\n\nProvide a helpful response that takes into account the conversation history."
-            else:
-                enhanced_question = request.question
-
-            chat_response = llm_provider.generate_chat_response(
-                enhanced_question,
-                schema_info
-            )
-
+        else:  # chat
             conversation_manager.add_message(
                 session_id,
                 role="assistant",
-                content=chat_response,
+                content=result["message"],
                 metadata={"response_type": "chat"}
             )
 
             return ChatResponse(
                 response_type="chat",
-                message=chat_response,
-                intent_info=intent_result,
+                message=result["message"],
+                intent_info=result.get("intent_info"),
                 session_id=session_id
             )
 
     except Exception as e:
+        print(f"❌ Query error: {e}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
@@ -592,6 +699,18 @@ async def remove_favorite(query_id: str):
 async def get_history_stats():
     """Get query history statistics"""
     return query_history.get_stats()
+
+
+# ============================================
+# SHUTDOWN
+# ============================================
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    print("\n Shutting down SQLatte...")
+    MAIN_EXECUTOR.shutdown(wait=True)
+    print("✅ Thread pool closed")
 
 
 if __name__ == "__main__":
