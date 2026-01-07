@@ -20,6 +20,7 @@
 
 ##  Features
 
+
 ### Core Features
 - 🤖 **AI-Powered** - Uses Anthropic Claude, Google Gemini, or Google Vertex AI
 - 🗄️ **Multi-Database Support** - Trino, PostgreSQL, MySQL, and more
@@ -28,8 +29,9 @@
 - 🧠 **Conversation Memory** - Remembers chat history per session (in-memory)
 - 🎯 **Context-Aware Responses** - Understands follow-up questions
 - 📱 **Widget-Based UI** - Fullscreen modal with modern, responsive design
-- ⚙️ **Admin Panel** - Runtime configuration without restart (NEW!)
-- 🎨 **SQL Syntax Highlighting** - Beautiful colored SQL queries (NEW!)
+- ⚙️ **Admin Panel** - Runtime configuration without restart
+- 🎨 **SQL Syntax Highlighting** - Beautiful colored SQL queries
+- 🔌 **Plugin System** - Extensible architecture for custom functionality
 - ⚡ **Fast & Simple** - Single YAML config file, no complex setup
 - 🐳 **Docker Ready** - Easy deployment with Docker & Docker Compose
 
@@ -89,6 +91,131 @@ http://localhost:8000/admin
 
 
 ---
+
+## 🔌 Plugin System
+
+SQLatte features a powerful plugin architecture that allows you to extend functionality without modifying core code.
+
+### Available Plugins
+
+#### 🔐 Authentication Plugin
+
+The Authentication Plugin enables multi-tenant deployments with user-specific database connections.
+
+**Features:**
+- User login with database credentials
+- Session-based authentication
+- Per-user database connections
+- Thread-safe connection pooling
+- Session management with automatic cleanup
+
+**Configuration:**
+
+```yaml
+# config/config.yaml
+plugins:
+  auth:
+    enabled: true
+    session_ttl_minutes: 480  # 8 hours
+    max_workers: 40  # Thread pool for concurrent users
+
+    # Database Provider Configuration (Server-side only)
+    db_provider: "trino"
+    db_host: "trino_hostname"
+    db_port: 443
+
+    # Catalog/Schema Restrictions
+    # Empty lists = allow all, filled lists = restrict to specified
+    allowed_catalogs:
+      - "hive"
+      - "impala"
+    
+    allowed_schemas:
+      - "default"
+      - "production"
+    
+    # Database Type Restrictions
+    allowed_db_types:
+      - "trino"
+```
+
+**Usage:**
+
+```html
+<!-- Load auth widget -->
+<script src="http://localhost:8000/static/js/sqlatte-badge-auth.js"></script>
+
+<script>
+window.addEventListener('load', () => {
+    window.SQLatteAuthWidget.configure({
+        position: 'bottom-left',
+        fullscreen: true,
+        apiBase: 'http://localhost:8000'
+    });
+});
+</script>
+```
+### Creating Custom Plugins
+
+SQLatte's plugin system is built on a base plugin class that provides hooks for:
+- Custom route registration
+- Request/response middleware
+- Authentication extension
+- Database provider integration
+
+**Example Plugin Structure:**
+
+```python
+from src.plugins.base_plugin import BasePlugin
+from fastapi import FastAPI
+
+class MyCustomPlugin(BasePlugin):
+    def __init__(self, config):
+        super().__init__(config)
+        # Initialize your plugin
+    
+    def initialize(self, app: FastAPI):
+        """Called on startup"""
+        print("🔌 Initializing My Custom Plugin...")
+    
+    def register_routes(self, app: FastAPI):
+        """Register custom endpoints"""
+        @app.get("/my-plugin/hello")
+        async def hello():
+            return {"message": "Hello from my plugin!"}
+    
+    async def before_request(self, request):
+        """Hook before each request"""
+        # Add custom logic
+        return None
+    
+    async def after_request(self, request, response):
+        """Hook after each request"""
+        # Modify response if needed
+        return response
+    
+    def shutdown(self):
+        """Cleanup on shutdown"""
+        print("🔌 Shutting down My Custom Plugin...")
+```
+
+**Plugin Registration:**
+
+```python
+# src/api/app.py
+from src.plugins.plugin_manager import plugin_manager
+from my_plugin import MyCustomPlugin
+
+# Register plugin
+config = {"enabled": True, ...}
+plugin = MyCustomPlugin(config)
+plugin_manager.register_plugin(plugin)
+```
+
+---
+
+
+
 
 ## 🎨 Architecture
 
@@ -193,6 +320,32 @@ You can easily add the SQLatte widget to **any existing website**.
 </html>
 ```
 
+### Method 2: Auth Widget (User-Specific DB Connections)
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>My SaaS Application</h1>
+    
+    <!-- Load auth widget -->
+    <script src="http://YOUR-SQLATTE-SERVER:8000/static/js/sqlatte-badge-auth.js"></script>
+    
+    <!-- Configure -->
+    <script>
+        window.addEventListener('load', () => {
+            window.SQLatteAuthWidget.configure({
+                fullscreen: true,
+                position: 'bottom-left',
+                apiBase: 'http://YOUR-SQLATTE-SERVER:8000'
+            });
+        });
+    </script>
+</body>
+</html>
+```
+
+
 #### CORS Configuration
 
 If your website and SQLatte are on **different domains**, configure CORS in `config/config.yaml`:
@@ -260,6 +413,32 @@ const sessionId = window.SQLatteWidget.getSessionId();
 window.SQLatteWidget.copySQL('sql-element-id');
 ```
 
+### Auth Widget API
+
+```javascript
+// Authentication
+window.SQLatteAuthWidget.handleLogin(credentials);
+window.SQLatteAuthWidget.logout();
+
+// Modal Controls
+window.SQLatteAuthWidget.closeLoginModal();
+window.SQLatteAuthWidget.closeChatModal();
+
+// Query Operations
+window.SQLatteAuthWidget.sendMessage(question);
+window.SQLatteAuthWidget.handleTableChange();
+
+// Configuration
+window.SQLatteAuthWidget.configure({
+    position: 'bottom-left',
+    fullscreen: true,
+    apiBase: 'http://your-backend:8000',
+    storageKey: 'sqlatte_auth_session'
+});
+
+// Get Config
+const config = window.SQLatteAuthWidget.getConfig();
+```
 ---
 
 ## 🗄️ Supported Databases
@@ -319,6 +498,19 @@ database:
 ```
 </details>
 
+## Features Comparison
+
+| Feature | Standard Widget | Auth Widget |
+|---------|----------------|-------------|
+| **Authentication** | None (backend config) | Login required |
+| **Database Connection** | Shared | Per-user |
+| **Use Case** | Internal apps, single tenant | Multi-tenant SaaS |
+| **Configuration** | config.yaml | User provides credentials |
+| **Setup Time** | 1 minute | 5 minutes |
+| **Security** | Backend credentials | Session-based isolation |
+| **Session Management** | Simple session ID | Full authentication flow |
+| **Multi-tenancy** | ❌ | ✅ |
+
 ---
 
 ## 🤖 Supported LLM Providers
@@ -371,37 +563,15 @@ llm:
 </details>
 
 ---
+## 🤝 Contributing
 
-## Changelog
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-### v0.4.0 (Latest) - Admin Panel & SQL Highlighting
-- Admin Configuration Panel** - Runtime configuration management without restart
-- Update LLM provider & model on-the-fly
-- Change database connections in real-time
-- Test connections before applying
-- Save changes to config.yaml or keep in-memory
-- SQL Syntax Highlighting - Beautiful colored SQL queries
-
-### v0.3.0 - UI Improvements
-- 📥 Export query results to CSV with one click
-- 📊 Interactive charts (Pie, Bar, Line, Doughnut)
-- 📜 Track and replay your recent queries
-- ⭐ Save frequently used queries for quick access
-
-### v0.2.0 - Conversation Memory
-- 🧠 Added conversation memory system
-- 💬 Session-based chat tracking
-- 🎯 Context-aware responses
-- 🗑️ Clear chat functionality
-- 📊 Conversation analytics endpoints
-
-### v0.1.0 - Initial Release
-- 🤖 Multi-LLM support (Anthropic, Gemini, Vertex AI)
-- 🗄️ Multi-database support (Trino, PostgreSQL, MySQL)
-- 💬 Smart chat interface
-- 🔗 Multi-table JOIN support
-- 📱 Embeddable widget
-
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 ---
 
 ## 📄 License
