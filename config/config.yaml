@@ -10,18 +10,36 @@ app:
   port: 8000
 
 # ============================================
-# PLUGIN SYSTEM
+# UTHENTICATION PLUGIN
 # ============================================
 plugins:
-  # Authentication Plugin - Login-based widget
   auth:
-    enabled: false  # Set to true to enable login widget
+    enabled: true
     session_ttl_minutes: 480  # 8 hours
-    max_workers: 10  # Thread pool size for DB connections
+    max_workers: 40  # Thread pool for concurrent users
+
+    # Database Provider Configuration
+    # Users will NOT see this - it's server-side only
+    db_provider: "trino"  # Options: trino, postgresql, mysql
+    db_host: "trino_hostname"
+    db_port: 443
+
+    # Catalog/Schema Restrictions
+    # If empty lists, all catalogs/schemas are allowed
+    # If filled, only these will be available in login form
+    allowed_catalogs:
+      - "hive"
+      - "impala"
+      - "test"
+
+    allowed_schemas:
+      - "test"
+      - "cloudflare"
+      - "test"
+
+    # Database Type Restrictions
     allowed_db_types:
-      - trino
-      - postgresql
-      - mysql
+      - "trino"
 
 
 # LLM Provider Configuration
