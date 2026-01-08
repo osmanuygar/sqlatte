@@ -1,16 +1,3 @@
-/**
- * SQLatte Auth Widget - Enhanced Version
- * With ALL features from standard widget + config-based restrictions
- *
- * Features:
- * - Full authentication with config-based DB/catalog/schema restrictions
- * - SQL syntax highlighting
- * - Query history & favorites
- * - Data visualization (charts)
- * - CSV export
- * - All standard widget capabilities
- */
-
 (function() {
     'use strict';
 
@@ -846,144 +833,189 @@
     }
 
     function generateChart(columns, data, resultId, dimension, metrics, chartType) {
-        // Validate input data
-        if (!data || !Array.isArray(data) || data.length === 0) {
-            console.error('❌ Invalid data for chart:', data);
-            alert('No data available for charting');
-            return;
-        }
 
-        if (!columns || !Array.isArray(columns) || columns.length === 0) {
-            console.error('❌ Invalid columns for chart:', columns);
-            alert('No columns available for charting');
-            return;
-        }
+    // =====================
+    // VALIDATIONS
+    // =====================
+    if (!data || !Array.isArray(data) || data.length === 0) {
+        console.error('❌ Invalid data for chart:', data);
+        alert('No data available for charting');
+        return;
+    }
 
-        if (!dimension || !metrics || metrics.length === 0) {
-            console.error('❌ Invalid dimension/metrics:', { dimension, metrics });
-            alert('Please select dimension and metrics');
-            return;
-        }
+    if (!columns || !Array.isArray(columns) || columns.length === 0) {
+        console.error('❌ Invalid columns for chart:', columns);
+        alert('No columns available for charting');
+        return;
+    }
 
-        console.log('✅ Generating chart:', {
-            dimension,
-            metrics,
-            chartType,
-            dataRows: data.length,
-            sampleData: data[0]
-        });
+    if (!dimension || !metrics || metrics.length === 0) {
+        console.error('❌ Invalid dimension/metrics:', { dimension, metrics });
+        alert('Please select dimension and metrics');
+        return;
+    }
 
-        if (typeof Chart === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-            script.onload = () => generateChart(columns, data, resultId, dimension, metrics, chartType);
-            document.head.appendChild(script);
-            return;
-        }
+    // =====================
+    // LOAD CHART.JS IF NEEDED
+    // =====================
+    if (typeof Chart === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+        script.onload = () =>
+            generateChart(columns, data, resultId, dimension, metrics, chartType);
+        document.head.appendChild(script);
+        return;
+    }
 
-        const labels = data.map(row => {
-            const val = row[dimension];
-            return val !== null && val !== undefined ? String(val) : 'N/A';
-        });
-        const datasets = metrics.map((metric, idx) => {
-            const colors = [
-                '#D4A574', '#8B6F47', '#A67C52', '#10b981', '#3b82f6',
-                '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'
-            ];
+    // =====================
+    // RANDOM COLOR GENERATOR
+    // =====================
+    function randomColor(alpha = 0.85) {
+        const r = Math.floor(Math.random() * 156) + 50;
+        const g = Math.floor(Math.random() * 156) + 50;
+        const b = Math.floor(Math.random() * 156) + 50;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
 
+    // =====================
+    // LABELS
+    // =====================
+    const labels = data.map(row => {
+        const val = row[dimension];
+        return val !== null && val !== undefined ? String(val) : 'N/A';
+    });
+
+    // =====================
+    // DATASETS
+    // =====================
+    let datasets;
+
+    if (chartType === 'pie') {
+        const metric = metrics[0]; // pie için tek metric
+        datasets = [{
+            label: metric,
+            data: data.map(row => Number(row[metric]) || 0),
+            backgroundColor: labels.map(() => randomColor(0.9)),
+            borderColor: '#1a1a1a',
+            borderWidth: 2
+        }];
+    } else {
+        datasets = metrics.map(metric => {
+            const color = randomColor();
             return {
                 label: metric,
-                data: data.map(row => {
-                    const val = row[metric];
-                    return typeof val === 'number' ? val : parseFloat(val) || 0;
-                }),
-                backgroundColor: colors[idx % colors.length],
-                borderColor: colors[idx % colors.length],
+                data: data.map(row => Number(row[metric]) || 0),
+                backgroundColor: chartType === 'line' ? color : color,
+                borderColor: color,
                 borderWidth: 2,
-                fill: chartType === 'line' ? false : true
+                fill: chartType !== 'line',
+                tension: chartType === 'line' ? 0.4 : 0
             };
         });
+    }
 
-        const chartModal = document.createElement('div');
-        chartModal.style.cssText = `
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            background: rgba(0, 0, 0, 0.95) !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            z-index: 999999 !important;
-            padding: 20px !important;
-        `;
+    // =====================
+    // MODAL UI
+    // =====================
+    const chartModal = document.createElement('div');
+    chartModal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.95);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999999;
+        padding: 20px;
+    `;
 
-        const chartContainer = document.createElement('div');
-        chartContainer.style.cssText = `
-            background: #1a1a1a;
-            padding: 24px;
-            border-radius: 12px;
-            max-width: 1200px;
-            width: 100%;
-            max-height: 90vh;
-            overflow-y: auto;
-        `;
+    const chartContainer = document.createElement('div');
+    chartContainer.style.cssText = `
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+        padding: 24px;
+        border-radius: 12px;
+        max-width: 1200px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+    `;
 
-        chartContainer.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0; color: #D4A574;">
-                    📊 ${dimension} vs ${metrics.join(', ')}
-                </h3>
-                <button id="close-chart" style="background: #333; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
-                    Close
-                </button>
-            </div>
-            <div style="position: relative; height: 500px;">
-                <canvas id="chart-canvas-${resultId}"></canvas>
-            </div>
-        `;
+    chartContainer.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <h3 style="margin:0;color:#e5e5e5;">
+                📊 ${dimension} vs ${metrics.join(', ')}
+            </h3>
+            <button id="close-chart"
+                style="background:#333;color:white;border:none;padding:8px 16px;
+                border-radius:6px;cursor:pointer;">
+                Close
+            </button>
+        </div>
+        <div style="position:relative;height:500px;">
+            <canvas id="chart-canvas-${resultId}"></canvas>
+        </div>
+    `;
 
-        chartModal.appendChild(chartContainer);
-        document.body.appendChild(chartModal);
+    chartModal.appendChild(chartContainer);
+    document.body.appendChild(chartModal);
 
-        const ctx = document.getElementById(`chart-canvas-${resultId}`).getContext('2d');
-        new Chart(ctx, {
-            type: chartType === 'pie' ? 'pie' : (chartType === 'line' ? 'line' : 'bar'),
-            data: {
-                labels: labels,
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: true,
-                        labels: { color: '#e0e0e0' }
-                    }
+    // =====================
+    // CHART INIT
+    // =====================
+    const ctx = document
+        .getElementById(`chart-canvas-${resultId}`)
+        .getContext('2d');
+
+    new Chart(ctx, {
+        type: chartType === 'pie'
+            ? 'pie'
+            : chartType === 'line'
+                ? 'line'
+                : 'bar',
+        data: {
+            labels,
+            datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#e0e0e0' }
                 },
-                scales: chartType !== 'pie' ? {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { color: '#e0e0e0' },
-                        grid: { color: '#333' }
-                    },
-                    x: {
-                        ticks: { color: '#e0e0e0' },
-                        grid: { color: '#333' }
+                tooltip: chartType === 'pie' ? {
+                    callbacks: {
+                        label: ctx => {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            const value = ctx.raw;
+                            const pct = total ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${ctx.label}: ${value} (${pct}%)`;
+                        }
                     }
                 } : {}
-            }
-        });
+            },
+            scales: chartType !== 'pie' ? {
+                x: {
+                    ticks: { color: '#e0e0e0' },
+                    grid: { color: '#333' }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: '#e0e0e0' },
+                    grid: { color: '#333' }
+                }
+            } : {}
+        }
+    });
 
-        document.getElementById('close-chart').onclick = () => chartModal.remove();
-        chartModal.onclick = (e) => {
-            if (e.target === chartModal) chartModal.remove();
-        };
-    }
+    // =====================
+    // CLOSE HANDLERS
+    // =====================
+    document.getElementById('close-chart').onclick = () => chartModal.remove();
+    chartModal.onclick = e => {
+        if (e.target === chartModal) chartModal.remove();
+    };
+}
 
 
     function normalizeRows(columns, data) {
@@ -1267,11 +1299,15 @@ function visualizeData(resultId) {
     function openLoginModal() {
         const modal = document.getElementById('sqlatte-auth-login-modal');
         if (modal) modal.classList.add('sqlatte-auth-modal-open');
+        const badge = document.querySelector('.sqlatte-badge-btn');
+        if (badge) badge.style.display = 'none';
     }
 
     function closeLoginModal() {
         const modal = document.getElementById('sqlatte-auth-login-modal');
         if (modal) modal.classList.remove('sqlatte-auth-modal-open');
+        const badge = document.querySelector('.sqlatte-badge-btn');
+        if (badge) badge.style.display = 'flex';
     }
 
     function openChatModal() {
@@ -1283,6 +1319,8 @@ function visualizeData(resultId) {
             }
             modal.classList.add('sqlatte-auth-modal-open');
             isModalOpen = true;
+            const badge = document.querySelector('.sqlatte-badge-btn');
+            if (badge) badge.style.display = 'none';
             setTimeout(() => {
                 const input = document.getElementById('sqlatte-auth-input');
                 if (input) input.focus();
@@ -2007,9 +2045,6 @@ function visualizeData(resultId) {
     z-index: 999999 !important;
 }
 
-
-
-        /* Hide badge when modal is open - CLEAN FIX */
         .sqlatte-auth-modal.sqlatte-auth-modal-open ~ .sqlatte-widget .sqlatte-badge-btn {
             display: none !important;
         }
@@ -2018,9 +2053,7 @@ function visualizeData(resultId) {
         document.head.appendChild(style);
     }
 
-    // ============================================
-    // INITIALIZATION
-    // ============================================
+
     function init() {
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', createWidget);
@@ -2088,9 +2121,6 @@ function visualizeData(resultId) {
         }
     };
 
-
-
-// FULLSCREEN ENFORCEMENT - Runs immediately
 (function forceFullscreen() {
     const observer = new MutationObserver((mutations) => {
         // Force fullscreen on ALL modals
@@ -2121,8 +2151,6 @@ function visualizeData(resultId) {
                 console.log('✅ Fullscreen enforced on modal');
             }
         });
-
-        // Also check for chart modals
         const chartModals = document.querySelectorAll('.sqlatte-chart-config-modal, .sqlatte-chart-display-modal');
         chartModals.forEach(modal => {
             modal.style.zIndex = '999999';
