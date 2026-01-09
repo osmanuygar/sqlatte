@@ -1029,6 +1029,63 @@
         }
     }
 
+    /**
+     * Convert markdown text to formatted HTML
+     * Safely handles chat messages without affecting SQL tables
+     */
+    function markdownToHtml(text) {
+        if (!text) return '';
+        if (text.includes('<table') || text.includes('<div class="sqlatte')) {
+            return text;
+        }
+
+        let html = text;
+
+        // 1. Code blocks (```language\ncode```) - Process FIRST
+        html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+            return `<pre class="sqlatte-code-block"><code class="language-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`;
+        });
+
+        // 2. Inline code (`code`)
+        html = html.replace(/`([^`]+)`/g, '<code class="sqlatte-inline-code">$1</code>');
+
+        // 3. Bold (**text** or __text__)
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+        // 4. Italic (*text* or _text_) - Careful with asterisks
+        html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
+
+        // 5. Links [text](url)
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="sqlatte-link">$1</a>');
+
+        // 6. Headings
+        html = html.replace(/^### (.+)$/gm, '<h3 class="sqlatte-h3">$1</h3>');
+        html = html.replace(/^## (.+)$/gm, '<h2 class="sqlatte-h2">$1</h2>');
+        html = html.replace(/^# (.+)$/gm, '<h1 class="sqlatte-h1">$1</h1>');
+
+        // 7. Unordered lists (- item or * item)
+        html = html.replace(/^\s*[-*]\s+(.+)$/gm, '<li class="sqlatte-li">$1</li>');
+        html = html.replace(/(<li class="sqlatte-li">.*?<\/li>\n?)+/g, '<ul class="sqlatte-ul">$&</ul>');
+
+        // 8. Blockquotes (> text)
+        html = html.replace(/^>\s+(.+)$/gm, '<blockquote class="sqlatte-blockquote">$1</blockquote>');
+
+        // 9. Paragraphs - Only if not already formatted
+        if (!html.includes('<table') && !html.includes('<pre')) {
+            html = html.split('\n\n').map(para => {
+                para = para.trim();
+                if (!para) return '';
+                // Skip if already wrapped in HTML
+                if (para.startsWith('<')) return para;
+                return `<p class="sqlatte-paragraph">${para.replace(/\n/g, '<br>')}</p>`;
+            }).filter(p => p).join('\n');
+        }
+
+        return html;
+    }
+
     function addMessage(role, content) {
         const chatArea = document.getElementById('sqlatte-chat-area');
         if (!chatArea) return;
@@ -1069,7 +1126,8 @@
 
         // Explanation
         if (explanation) {
-            html += `<div class="sqlatte-explanation"><strong>💡</strong> ${escapeHtml(explanation)}</div>`;
+            const formattedExplanation = markdownToHtml(explanation);
+            html += `<div class="sqlatte-explanation"><strong>💡 Explanation:</strong><br>${formattedExplanation}</div>`;
         }
 
         // SQL Code Block with Highlighting - NEW!
@@ -1188,7 +1246,8 @@
             let responseHTML = '';
 
             if (result.response_type === 'chat') {
-                responseHTML = `<div class="sqlatte-chat-message">${renderHTML(result.message)}</div>`;
+                const formattedMessage = markdownToHtml(result.message);
+                responseHTML = `<div class="sqlatte-chat-message">${formattedMessage}</div>`;
             } else if (result.response_type === 'sql' || result.sql) {
                 // NEW: Pass SQL and explanation to formatTable
                 responseHTML = formatTable(
@@ -1200,7 +1259,8 @@
                 );
             } else {
                 const msg = result.message || JSON.stringify(result);
-                responseHTML = `<div class="sqlatte-chat-message">${msg.includes('<') ? renderHTML(msg) : escapeHtml(msg)}</div>`;
+                const formattedMsg = markdownToHtml(msg);
+                responseHTML = `<div class="sqlatte-chat-message">${formattedMsg}</div>`;
             }
 
             addMessage('assistant', responseHTML);
@@ -1459,6 +1519,162 @@
 .sqlatte-toolbar-tables small {
     font-size: 10px;
     color: #707070;
+}
+
+/* ============================================ */
+/* MARKDOWN FORMATTING STYLES */
+/* ============================================ */
+
+/* Paragraphs */
+.sqlatte-paragraph {
+    margin: 0 0 12px 0;
+    line-height: 1.6;
+    color: #e0e0e0;
+}
+
+.sqlatte-paragraph:last-child {
+    margin-bottom: 0;
+}
+
+/* Headings */
+.sqlatte-h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #D4A574;
+    margin: 16px 0 12px 0;
+    border-bottom: 2px solid #333;
+    padding-bottom: 8px;
+}
+
+.sqlatte-h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #D4A574;
+    margin: 14px 0 10px 0;
+}
+
+.sqlatte-h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #A67C52;
+    margin: 12px 0 8px 0;
+}
+
+/* Bold & Italic */
+.sqlatte-message-content strong {
+    color: #D4A574;
+    font-weight: 600;
+}
+
+.sqlatte-message-content em {
+    color: #A67C52;
+    font-style: italic;
+}
+
+/* Inline Code */
+.sqlatte-inline-code {
+    background: #1a1a1a;
+    color: #66d9ef;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    border: 1px solid #333;
+}
+
+/* Code Blocks */
+.sqlatte-code-block {
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 12px 0;
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.sqlatte-code-block code {
+    color: #e0e0e0;
+}
+
+/* Lists */
+.sqlatte-ul {
+    margin: 8px 0 12px 20px;
+    padding: 0;
+    color: #e0e0e0;
+    list-style-type: disc;
+}
+
+.sqlatte-li {
+    margin: 4px 0;
+    line-height: 1.5;
+}
+
+.sqlatte-ul .sqlatte-li::marker {
+    color: #D4A574;
+}
+
+/* Links */
+.sqlatte-link {
+    color: #4a9eff;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.sqlatte-link:hover {
+    color: #6bb3ff;
+    border-bottom-color: #4a9eff;
+}
+
+/* Blockquotes */
+.sqlatte-blockquote {
+    border-left: 3px solid #D4A574;
+    padding-left: 12px;
+    margin: 12px 0;
+    color: #a0a0a0;
+    font-style: italic;
+    background: rgba(212, 165, 116, 0.05);
+    padding: 8px 12px;
+    border-radius: 0 4px 4px 0;
+}
+
+/* Chat Message Container - Enhanced */
+.sqlatte-chat-message {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.sqlatte-chat-message p:last-child,
+.sqlatte-chat-message .sqlatte-paragraph:last-child {
+    margin-bottom: 0;
+}
+
+.sqlatte-chat-message code {
+    word-break: break-all;
+}
+
+/* Message Content Improvements */
+.sqlatte-message-content {
+    max-width: 85%;
+    background: #242424;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #e0e0e0;
+    word-wrap: break-word;
+}
+
+.sqlatte-message-content > *:first-child {
+    margin-top: 0;
+}
+
+.sqlatte-message-content > *:last-child {
+    margin-bottom: 0;
 }
 
 /* Slide-out Panels */
