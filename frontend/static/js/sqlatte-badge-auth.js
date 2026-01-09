@@ -750,7 +750,10 @@
             // Handle responses
             if (data.response_type === 'chat' || data.intent_info?.intent === 'chat') {
                 const chatMessage = data.message || 'I can help you!';
-                addMessage('assistant', chatMessage);
+                const formattedMessage = markdownToHtml(chatMessage);
+                addMessage('assistant', formattedMessage);
+
+                console.log('✅ Chat response displayed');
             } else if (data.error) {
                 addMessage('assistant', `<div class="sqlatte-error">❌ ${escapeHtml(data.error)}</div>`);
             } else {
@@ -1159,7 +1162,8 @@
 
         // Explanation
         if (explanation) {
-            html += `<div class="sqlatte-explanation"><strong>💡</strong> ${escapeHtml(explanation)}</div>`;
+            const formattedExplanation = markdownToHtml(explanation);
+            html += `<div class="sqlatte-explanation"><strong>💡 Explanation:</strong><br>${formattedExplanation}</div>`;
         }
 
         // SQL Code with Highlighting
@@ -1523,6 +1527,57 @@ function visualizeData(resultId) {
     }
 
 */
+
+    function markdownToHtml(text) {
+        if (!text) return '';
+
+        let html = text;
+
+        // Code blocks (```code```)
+        html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+            return `<pre class="sqlatte-code-block"><code class="language-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`;
+        });
+
+        // Inline code (`code`)
+        html = html.replace(/`([^`]+)`/g, '<code class="sqlatte-inline-code">$1</code>');
+
+        // Bold (**text** or __text__)
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+        // Italic (*text* or _text_)
+        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+
+        // Links [text](url)
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="sqlatte-link">$1</a>');
+
+        // Headings (### text)
+        html = html.replace(/^### (.+)$/gm, '<h3 class="sqlatte-h3">$1</h3>');
+        html = html.replace(/^## (.+)$/gm, '<h2 class="sqlatte-h2">$1</h2>');
+        html = html.replace(/^# (.+)$/gm, '<h1 class="sqlatte-h1">$1</h1>');
+
+        // Unordered lists (- item or * item)
+        html = html.replace(/^\s*[-*]\s+(.+)$/gm, '<li class="sqlatte-li">$1</li>');
+        html = html.replace(/(<li class="sqlatte-li">.*<\/li>\n?)+/g, '<ul class="sqlatte-ul">$&</ul>');
+
+        // Ordered lists (1. item)
+        html = html.replace(/^\s*\d+\.\s+(.+)$/gm, '<li class="sqlatte-li">$1</li>');
+
+        // Blockquotes (> text)
+        html = html.replace(/^>\s+(.+)$/gm, '<blockquote class="sqlatte-blockquote">$1</blockquote>');
+
+        // Line breaks (double newline = paragraph)
+        html = html.split('\n\n').map(para => {
+            // Skip if already wrapped in HTML tag
+            if (para.trim().startsWith('<')) return para;
+            return `<p class="sqlatte-paragraph">${para.replace(/\n/g, '<br>')}</p>`;
+        }).join('\n');
+
+        return html;
+    }
+
+    // Enhanced escapeHtml to handle special characters better
     function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
@@ -2045,6 +2100,8 @@ function visualizeData(resultId) {
     background: #0f0f0f;
 }
 
+
+
 /* Chat Area */
 .sqlatte-chat-area {
     flex: 1;
@@ -2494,19 +2551,141 @@ function visualizeData(resultId) {
 }
 
 .sqlatte-message-content {
-    flex: 1;
     background: #1a1a1a;
     padding: 12px;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.6;
     color: #e0e0e0;
+    word-wrap: break-word;
 }
+
+.sqlatte-message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.sqlatte-message-content code {
+    word-break: break-all;
+}
+
 
 .sqlatte-message-user .sqlatte-message-content {
     background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
 }
+/* ============================================ */
+/* MARKDOWN FORMATTING STYLES */
+/* ============================================ */
 
+/* Paragraphs */
+.sqlatte-paragraph {
+    margin: 0 0 12px 0;
+    line-height: 1.6;
+    color: #e0e0e0;
+}
+
+/* Headings */
+.sqlatte-h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #D4A574;
+    margin: 16px 0 12px 0;
+    border-bottom: 2px solid #333;
+    padding-bottom: 8px;
+}
+
+.sqlatte-h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #D4A574;
+    margin: 14px 0 10px 0;
+}
+
+.sqlatte-h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #A67C52;
+    margin: 12px 0 8px 0;
+}
+
+/* Bold & Italic */
+strong {
+    color: #D4A574;
+    font-weight: 600;
+}
+
+em {
+    color: #A67C52;
+    font-style: italic;
+}
+
+/* Inline Code */
+.sqlatte-inline-code {
+    background: #252525;
+    color: #66d9ef;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    border: 1px solid #333;
+}
+
+/* Code Blocks */
+.sqlatte-code-block {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 12px 0;
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.sqlatte-code-block code {
+    color: #e0e0e0;
+}
+
+/* Lists */
+.sqlatte-ul {
+    margin: 8px 0 12px 20px;
+    padding: 0;
+    color: #e0e0e0;
+}
+
+.sqlatte-li {
+    margin: 4px 0;
+    line-height: 1.5;
+}
+
+.sqlatte-ul .sqlatte-li::marker {
+    color: #D4A574;
+}
+
+/* Links */
+.sqlatte-link {
+    color: #4a9eff;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.sqlatte-link:hover {
+    color: #6bb3ff;
+    border-bottom-color: #4a9eff;
+}
+
+/* Blockquotes */
+.sqlatte-blockquote {
+    border-left: 3px solid #D4A574;
+    padding-left: 12px;
+    margin: 12px 0;
+    color: #a0a0a0;
+    font-style: italic;
+    background: rgba(212, 165, 116, 0.05);
+    padding: 8px 12px;
+    border-radius: 0 4px 4px 0;
+}
 /* SQL Code Highlighting */
 .sqlatte-sql-container {
     background: #000;
