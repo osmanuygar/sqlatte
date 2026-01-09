@@ -28,14 +28,82 @@
     let userInfo = null;
     let selectedTables = [];
     let currentSchema = '';
-    let queryHistory = [];
-    let favorites = [];
+    let configData = null; // Server config (allowed DBs, catalogs, schemas)
+    let conversationHistory = [];
+    let showConversationHistory = false;
     let isHistoryPanelOpen = false;
     let isFavoritesPanelOpen = false;
-    let configData = null; // Server config (allowed DBs, catalogs, schemas)
+    let queryHistory = [];
+    let favorites = [];
 
     // Results cache
     window.sqlatteAuthResultsCache = {};
+
+    // YENİ FONKSIYON: Load conversation history
+    async function loadConversationHistory() {
+        if (!sessionId) return;
+
+        try {
+            const response = await fetch(`${AUTH_WIDGET_CONFIG.apiBase}/auth/conversation/history`, {
+                headers: {'X-Session-ID': sessionId}
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                conversationHistory = data.messages || [];
+                console.log(`📜 Loaded ${conversationHistory.length} messages`);
+            }
+        } catch (error) {
+            console.error('Failed to load history:', error);
+        }
+    }
+
+    async function clearConversation() {
+        if (!confirm('Clear conversation history?')) return;
+
+        try {
+            const response = await fetch(`${AUTH_WIDGET_CONFIG.apiBase}/auth/conversation/clear`, {
+                method: 'POST',
+                headers: {'X-Session-ID': sessionId}
+            });
+
+            if (response.ok) {
+                // Clear chat area
+                const chatArea = document.getElementById('sqlatte-auth-chat-area');
+                if (chatArea) {
+                    chatArea.innerHTML = `
+                        <div class="sqlatte-empty-state">
+                            <svg width="48" height="48" viewBox="0 0 200 200">
+                                <path d="M 60 70 L 68 145 Q 68 152 75 152 L 125 152 Q 132 152 132 145 L 140 70 Z"
+                                      fill="#D4A574" opacity="0.3"/>
+                                <ellipse cx="100" cy="70" rx="40" ry="9" fill="#D4A574" opacity="0.3"/>
+                            </svg>
+                            <h3>Conversation Cleared! ☕</h3>
+                            <p>Start a fresh conversation.</p>
+                        </div>
+                    `;
+                }
+                showToast('✅ Conversation cleared', 'success');
+            }
+        } catch (error) {
+            console.error('Failed to clear:', error);
+            showToast('❌ Failed to clear', 'error');
+        }
+    }
+
+    // YENİ FONKSIYON: Toggle history panel
+    function toggleConversationHistory() {
+        showConversationHistory = !showConversationHistory;
+        const panel = document.getElementById('conversation-history-panel');
+
+        if (showConversationHistory) {
+            loadConversationHistory();
+            panel.style.display = 'flex';
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
 
     // ============================================
     // CONFIG LOADING
@@ -415,52 +483,80 @@
 
         modal.innerHTML = `
             <div class="sqlatte-modal-content ${AUTH_WIDGET_CONFIG.fullscreen ? 'sqlatte-modal-fullscreen' : ''}">
+
                 <!-- Header -->
-                <div class="sqlatte-auth-header">
+                <div class="sqlatte-modal-header">
                     <div class="sqlatte-modal-title">
-                        <span>☕ SQLatte Assistant</span>
-                        <span id="sqlatte-auth-user-badge" class="sqlatte-auth-user-badge"></span>
+                        <svg width="24" height="24" viewBox="0 0 200 200">
+                            <defs>
+                                <linearGradient id="auth-cup" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#A67C52;stop-opacity:1" />
+                                    <stop offset="100%" style="stop-color:#8B6F47;stop-opacity:1" />
+                                </linearGradient>
+                            </defs>
+                            <path d="M 60 70 L 68 145 Q 68 152 75 152 L 125 152 Q 132 152 132 145 L 140 70 Z" fill="url(#auth-cup)"/>
+                            <ellipse cx="100" cy="70" rx="40" ry="9" fill="#D4A574"/>
+                        </svg>
+                        <span>🔐 SQLatte</span>
+                        <span id="sqlatte-auth-user-badge" class="sqlatte-user-badge">👤 User</span>
                     </div>
-                    <div style="display: flex; gap: 8px;">
+                    <div class="sqlatte-modal-actions">
+                        <button class="sqlatte-modal-btn" onclick="SQLatteAuthWidget.toggleHistory()" title="History">
+                            📜
+                        </button>
+                        <button class="sqlatte-modal-btn" onclick="SQLatteAuthWidget.toggleFavorites()" title="Favorites">
+                            ⭐
+                        </button>
+                        <button class="sqlatte-modal-btn" onclick="SQLatteAuthWidget.clearConversation()" title="Clear Conversation">
+                            🗑️
+                        </button>
                         <button class="sqlatte-modal-btn" onclick="SQLatteAuthWidget.logout()" title="Logout">
                             🚪
                         </button>
-                        <button class="sqlatte-auth-close" onclick="SQLatteAuthWidget.closeChatModal()">✕</button>
+                        <button class="sqlatte-modal-close" onclick="SQLatteAuthWidget.closeChatModal()" title="Close">
+                            ✕
+                        </button>
                     </div>
                 </div>
 
-                <!-- Table Selection -->
-                <div class="sqlatte-table-select-container">
-                    <select id="sqlatte-auth-table-select" multiple
-                            onchange="SQLatteAuthWidget.handleTableChange()"
-                            class="sqlatte-table-select">
-                        <option disabled>Loading tables...</option>
-                    </select>
+                <!-- Toolbar with Table Selection -->
+                <div class="sqlatte-modal-toolbar-extended">
+                    <div class="sqlatte-toolbar-search">
+                        <input type="text"
+                               id="sqlatte-auth-table-search"
+                               placeholder="🔍 Search tables..."
+                               oninput="SQLatteAuthWidget.filterTables(this.value)"/>
+                    </div>
+                    <div class="sqlatte-toolbar-tables">
+                        <label>📊 Tables:</label>
+                        <select id="sqlatte-auth-table-select"
+                                multiple
+                                onchange="SQLatteAuthWidget.handleTableChange()">
+                            <option value="">Loading...</option>
+                        </select>
+                        <small>Ctrl+Click for multiple</small>
+                    </div>
                 </div>
 
-                <!-- History & Favorites Buttons -->
-                <div class="sqlatte-history-buttons">
-                    <button class="sqlatte-history-btn" onclick="SQLatteAuthWidget.toggleHistory()">
-                        📜 History
-                    </button>
-                    <button class="sqlatte-favorites-btn" onclick="SQLatteAuthWidget.toggleFavorites()">
-                        ⭐ Favorites
-                    </button>
-                </div>
+                <!-- Modal Body -->
+                <div class="sqlatte-modal-body">
+                    <div id="sqlatte-auth-history-panel" class="sqlatte-slide-panel" style="display: none;">
+                        <div class="sqlatte-panel-empty">Loading...</div>
+                    </div>
 
-                <!-- History Panel -->
-                <div id="sqlatte-auth-history-panel" class="sqlatte-panel" style="display: none;"></div>
-
-                <!-- Favorites Panel -->
-                <div id="sqlatte-auth-favorites-panel" class="sqlatte-panel" style="display: none;"></div>
-
-                <!-- Chat Area -->
-                <div id="sqlatte-auth-chat-area" class="sqlatte-chat-area">
-                    <div class="sqlatte-empty-state">
-                        <div class="sqlatte-empty-icon">☕</div>
-                        <div class="sqlatte-empty-title">Welcome to SQLatte!</div>
-                        <div class="sqlatte-empty-text">
-                            Ask me anything about your database. I can help you write queries, analyze data, and more.
+                    <div id="sqlatte-auth-favorites-panel" class="sqlatte-slide-panel" style="display: none;">
+                        <div class="sqlatte-panel-empty">Loading...</div>
+                    </div>
+                    <div id="sqlatte-auth-chat-area" class="sqlatte-chat-area">
+                        <div class="sqlatte-empty-state">
+                            <svg width="48" height="48" viewBox="0 0 200 200">
+                                <path d="M 60 70 L 68 145 Q 68 152 75 152 L 125 152 Q 132 152 132 145 L 140 70 Z"
+                                      fill="#D4A574" opacity="0.3"/>
+                                <ellipse cx="100" cy="70" rx="40" ry="9" fill="#D4A574" opacity="0.3"/>
+                            </svg>
+                            <h3>Welcome to SQLatte! ☕</h3>
+                            <p>Select tables above, then ask me anything.</p>
+                            <p class="text-xs">I can help you write queries and analyze data.</p>
                         </div>
                     </div>
                 </div>
@@ -468,7 +564,7 @@
                 <!-- Input Area -->
                 <div class="sqlatte-input-container">
                     <textarea id="sqlatte-auth-input"
-                              placeholder="Ask a question... (e.g., 'Show me customers')"
+                              placeholder="Ask a question... (e.g., 'Show me top 10 customers')"
                               rows="2"></textarea>
                     <button id="sqlatte-auth-send-btn" onclick="SQLatteAuthWidget.sendMessage()">
                         Send →
@@ -496,6 +592,8 @@
     // ============================================
     // TABLE MANAGEMENT
     // ============================================
+    let allTables = []; // Store all tables globally
+
     async function loadTablesAuth() {
         if (!sessionId) return;
 
@@ -510,17 +608,34 @@
             if (!response.ok) throw new Error('Failed to load tables');
 
             const data = await response.json();
-            const tables = data.tables || [];
+            allTables = data.tables || []; // Store globally
 
-            select.innerHTML = tables.length > 0
-                ? tables.map(t => `<option value="${t}">${t}</option>`).join('')
-                : '<option disabled>No tables available</option>';
+            updateTableList(allTables);
 
         } catch (error) {
             console.error('Error loading tables:', error);
             select.innerHTML = '<option disabled>Error loading tables</option>';
         }
     }
+
+    function updateTableList(tables) {
+        const select = document.getElementById('sqlatte-auth-table-select');
+        if (!select) return;
+
+        if (tables.length === 0) {
+            select.innerHTML = '<option disabled>No tables available</option>';
+        } else {
+            select.innerHTML = tables.map(t => `<option value="${t}">${t}</option>`).join('');
+        }
+    }
+
+    function filterTables(searchTerm) {
+        const filtered = allTables.filter(table =>
+            table.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        updateTableList(filtered);
+    }
+
 
     async function handleTableChange() {
         const select = document.getElementById('sqlatte-auth-table-select');
@@ -625,27 +740,18 @@
 
             const data = await response.json();
 
-            // Remove loading message
+            // Response handling (MEVCUT KOD - DEĞİŞMEDİ)
+            // Remove loading
             const chatArea = document.getElementById('sqlatte-auth-chat-area');
             const messages = chatArea.querySelectorAll('.sqlatte-message-assistant');
             const lastMsg = messages[messages.length - 1];
             if (lastMsg) lastMsg.remove();
 
-            // Handle chat responses (no SQL/results)
+            // Handle responses
             if (data.response_type === 'chat' || data.intent_info?.intent === 'chat') {
-                const chatMessage = data.message || data.explanation || 'I can help you with database queries!';
-
-                // Add assistant message
+                const chatMessage = data.message || 'I can help you!';
                 addMessage('assistant', chatMessage);
-
-                console.log('✅ Chat response displayed:', data.response_type);
-                input.disabled = false;
-                sendBtn.disabled = false;
-                return; // Don't try to render SQL/results
-            }
-
-
-            if (data.error) {
+            } else if (data.error) {
                 addMessage('assistant', `<div class="sqlatte-error">❌ ${escapeHtml(data.error)}</div>`);
             } else {
                 const formatted = formatTable(
@@ -656,10 +762,14 @@
                     data.explanation
                 );
                 addMessage('assistant', formatted);
-
-                // Add to history
                 saveToHistory(question, data);
             }
+
+            // YENİ: Reload conversation history
+            if (showConversationHistory) {
+                await loadConversationHistory();
+            }
+
 
         } catch (error) {
             console.error('Query error:', error);
@@ -673,6 +783,8 @@
             sendBtn.disabled = false;
             input.focus();
         }
+
+
     }
 
     // ============================================
@@ -1097,15 +1209,23 @@
     // ============================================
     // HISTORY & FAVORITES
     // ============================================
-    function saveToHistory(question, result) {
-        queryHistory.unshift({
-            id: Date.now(),
-            question,
-            sql: result.sql,
-            timestamp: new Date().toISOString()
-        });
+    function saveToHistory(question, data) {
+        if (!data.sql) return;
 
-        if (queryHistory.length > 50) queryHistory.pop();
+        const historyItem = {
+            id: Date.now().toString(),
+            question: question,
+            sql: data.sql,
+            timestamp: new Date().toISOString()
+        };
+
+        queryHistory.push(historyItem);
+
+        // Keep last 50
+        if (queryHistory.length > 50) {
+            queryHistory = queryHistory.slice(-50);
+        }
+
         localStorage.setItem('sqlatte_auth_history', JSON.stringify(queryHistory));
     }
 
@@ -1125,10 +1245,17 @@
         const panel = document.getElementById('sqlatte-auth-history-panel');
 
         if (isHistoryPanelOpen) {
+            // Close favorites if open
+            if (isFavoritesPanelOpen) {
+                toggleFavorites();
+            }
+
             renderHistoryPanel();
-            panel.style.display = 'block';
+            panel.style.display = 'flex';
+            console.log('📜 History panel opened');
         } else {
             panel.style.display = 'none';
+            console.log('📜 History panel closed');
         }
     }
 
@@ -1136,31 +1263,69 @@
         const panel = document.getElementById('sqlatte-auth-history-panel');
         if (!panel) return;
 
+        // Load from localStorage
+        const stored = localStorage.getItem('sqlatte_auth_history');
+        if (stored) {
+            try {
+                queryHistory = JSON.parse(stored);
+            } catch (e) {
+                queryHistory = [];
+            }
+        }
+
         if (queryHistory.length === 0) {
-            panel.innerHTML = '<div class="sqlatte-empty-panel">No history yet</div>';
+            panel.innerHTML = `
+                <div class="sqlatte-panel-header">
+                    <h3>📜 Query History</h3>
+                    <button onclick="SQLatteAuthWidget.toggleHistory()">✕</button>
+                </div>
+                <div class="sqlatte-panel-empty">
+                    <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;">📜</div>
+                    <p style="color: #888; margin: 0;">No history yet</p>
+                    <small style="color: #666; font-size: 11px;">Your queries will appear here</small>
+                </div>
+            `;
             return;
         }
 
-        panel.innerHTML = `
+        let html = `
             <div class="sqlatte-panel-header">
-                <h3>📜 Query History</h3>
-                <button onclick="SQLatteAuthWidget.clearHistory()">Clear</button>
+                <h3>📜 History (${queryHistory.length})</h3>
+                <div style="display: flex; gap: 8px;">
+                    <button onclick="SQLatteAuthWidget.clearHistory()" title="Clear All" style="padding: 4px 8px;">Clear</button>
+                    <button onclick="SQLatteAuthWidget.toggleHistory()" style="padding: 4px 8px;">✕</button>
+                </div>
             </div>
             <div class="sqlatte-panel-list">
-                ${queryHistory.map(item => `
-                    <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuery('${escapeHtml(item.sql)}')">
-                        <div class="sqlatte-history-question">${escapeHtml(item.question)}</div>
-                        <div class="sqlatte-history-time">${new Date(item.timestamp).toLocaleString()}</div>
-                    </div>
-                `).join('')}
-            </div>
         `;
+
+        // Reverse to show newest first
+        queryHistory.slice().reverse().forEach((item) => {
+            const safeSQL = escapeHtml(item.sql || '').replace(/'/g, "\\'");
+            const safeQuestion = escapeHtml(item.question || 'Unnamed query');
+            const date = new Date(item.timestamp).toLocaleString();
+
+            html += `
+                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuery('${safeSQL}')">
+                    <div class="sqlatte-history-question">${safeQuestion}</div>
+                    <div class="sqlatte-history-time">${date}</div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        panel.innerHTML = html;
     }
 
+
+
     function clearHistory() {
+        if (!confirm('Clear all query history?')) return;
+
         queryHistory = [];
         localStorage.removeItem('sqlatte_auth_history');
         renderHistoryPanel();
+        showToast('✅ History cleared', 'success');
     }
 
     function toggleFavorites() {
@@ -1168,10 +1333,17 @@
         const panel = document.getElementById('sqlatte-auth-favorites-panel');
 
         if (isFavoritesPanelOpen) {
+            // Close history if open
+            if (isHistoryPanelOpen) {
+                toggleHistory();
+            }
+
             renderFavoritesPanel();
             panel.style.display = 'block';
+            console.log('⭐ Favorites panel opened');
         } else {
             panel.style.display = 'none';
+            console.log('⭐ Favorites panel closed');
         }
     }
 
@@ -1179,23 +1351,114 @@
         const panel = document.getElementById('sqlatte-auth-favorites-panel');
         if (!panel) return;
 
+        // Load from localStorage
+        const stored = localStorage.getItem('sqlatte_auth_favorites');
+        if (stored) {
+            favorites = JSON.parse(stored);
+        }
+
         if (favorites.length === 0) {
-            panel.innerHTML = '<div class="sqlatte-empty-panel">No favorites yet</div>';
+            panel.innerHTML = `
+                <div class="sqlatte-panel-header">
+                    <h3>⭐ Favorites</h3>
+                    <button onclick="SQLatteAuthWidget.toggleFavorites()">✕</button>
+                </div>
+                <div class="sqlatte-panel-empty">
+                    <div style="font-size: 48px; margin-bottom: 16px;">⭐</div>
+                    <p>No favorites yet</p>
+                    <small>Save queries to access them quickly</small>
+                </div>
+            `;
             return;
         }
 
-        panel.innerHTML = `
+        let html = `
             <div class="sqlatte-panel-header">
-                <h3>⭐ Favorites</h3>
+                <h3>⭐ Favorites (${favorites.length})</h3>
+                <button onclick="SQLatteAuthWidget.toggleFavorites()">✕</button>
             </div>
             <div class="sqlatte-panel-list">
-                ${favorites.map(item => `
-                    <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuery('${escapeHtml(item.sql)}')">
-                        <div class="sqlatte-history-question">${escapeHtml(item.name)}</div>
-                    </div>
-                `).join('')}
-            </div>
         `;
+
+        favorites.forEach((item) => {
+            html += `
+                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuery(\`${escapeHtml(item.sql).replace(/`/g, '\\`')}\`)">
+                    <div class="sqlatte-history-question">${escapeHtml(item.name || item.question)}</div>
+                    <button onclick="event.stopPropagation(); SQLatteAuthWidget.removeFavorite('${item.id}')"
+                            style="position: absolute; right: 10px; top: 10px; background: transparent; border: none; cursor: pointer; font-size: 16px;">
+                        🗑️
+                    </button>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        panel.innerHTML = html;
+    }
+
+    function removeFavorite(id) {
+        favorites = favorites.filter(f => f.id !== id);
+        localStorage.setItem('sqlatte_auth_favorites', JSON.stringify(favorites));
+        renderFavoritesPanel();
+        showToast('✅ Removed from favorites', 'success');
+    }
+
+    function rerunQuery(sql) {
+        const input = document.getElementById('sqlatte-auth-input');
+        if (input) {
+            input.value = `Run this SQL: ${sql}`;
+            input.focus();
+        }
+    }
+
+
+    function renderHistoryPanel() {
+        const panel = document.getElementById('sqlatte-auth-history-panel');
+        if (!panel) return;
+
+        // Load from localStorage
+        const stored = localStorage.getItem('sqlatte_auth_history');
+        if (stored) {
+            queryHistory = JSON.parse(stored);
+        }
+
+        if (queryHistory.length === 0) {
+            panel.innerHTML = `
+                <div class="sqlatte-panel-header">
+                    <h3>📜 Query History</h3>
+                    <button onclick="SQLatteAuthWidget.toggleHistory()">✕</button>
+                </div>
+                <div class="sqlatte-panel-empty">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📜</div>
+                    <p>No history yet</p>
+                    <small>Your queries will appear here</small>
+                </div>
+            `;
+            return;
+        }
+
+        let html = `
+            <div class="sqlatte-panel-header">
+                <h3>📜 History (${queryHistory.length})</h3>
+                <div style="display: flex; gap: 8px;">
+                    <button onclick="SQLatteAuthWidget.clearHistory()" title="Clear All">🗑️</button>
+                    <button onclick="SQLatteAuthWidget.toggleHistory()">✕</button>
+                </div>
+            </div>
+            <div class="sqlatte-panel-list">
+        `;
+
+        queryHistory.slice().reverse().forEach((item, index) => {
+            html += `
+                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuery(\`${escapeHtml(item.sql).replace(/`/g, '\\`')}\`)">
+                    <div class="sqlatte-history-question">${escapeHtml(item.question)}</div>
+                    <div class="sqlatte-history-time">${new Date(item.timestamp).toLocaleString()}</div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        panel.innerHTML = html;
     }
 
     // ============================================
@@ -1511,7 +1774,387 @@ function visualizeData(resultId) {
     max-height: 100vh !important;
     border-radius: 0 !important;
 }
+/* ============================================ */
+/* AUTH MODAL - COMPLETE STYLES */
+/* ============================================ */
 
+/* Header */
+.sqlatte-modal-header {
+    background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sqlatte-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: white;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.sqlatte-user-badge {
+    padding: 4px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #fff;
+    margin-left: auto;
+}
+
+.sqlatte-modal-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.sqlatte-modal-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sqlatte-modal-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
+}
+
+.sqlatte-modal-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sqlatte-modal-close:hover {
+    background: rgba(255, 77, 77, 0.8);
+}
+
+/* Toolbar Extended */
+.sqlatte-modal-toolbar-extended {
+    padding: 12px 16px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Search Input */
+.sqlatte-toolbar-search {
+    display: flex;
+}
+
+.sqlatte-toolbar-search input {
+    flex: 1;
+    padding: 8px 12px;
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.sqlatte-toolbar-search input:focus {
+    outline: none;
+    border-color: #D4A574;
+    box-shadow: 0 0 0 2px rgba(212, 165, 116, 0.2);
+}
+
+.sqlatte-toolbar-search input::placeholder {
+    color: #666;
+}
+
+/* Tables Dropdown */
+.sqlatte-toolbar-tables {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.sqlatte-toolbar-tables label {
+    font-size: 12px;
+    color: #D4A574;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.sqlatte-toolbar-tables select {
+    flex: 1;
+    min-width: 250px;
+    max-height: 120px;
+    padding: 8px 12px;
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.sqlatte-toolbar-tables select:focus {
+    outline: none;
+    border-color: #D4A574;
+    box-shadow: 0 0 0 2px rgba(212, 165, 116, 0.2);
+}
+
+.sqlatte-toolbar-tables select option {
+    padding: 6px;
+    background: #0a0a0a;
+    color: #e0e0e0;
+}
+
+.sqlatte-toolbar-tables select option:checked {
+    background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+    color: white;
+}
+
+.sqlatte-toolbar-tables small {
+    font-size: 10px;
+    color: #666;
+    font-style: italic;
+}
+
+/* Slide Panel */
+.sqlatte-slide-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 300px;
+    max-width: 80%;
+    height: 100%;
+    background: #1a1a1a;
+    border-right: 2px solid #333;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.sqlatte-panel-header {
+    padding: 14px 16px;
+    background: #252525;
+    border-bottom: 2px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sqlatte-panel-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #D4A574;
+    font-weight: 600;
+}
+
+.sqlatte-panel-header button {
+    background: transparent;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 8px;
+    transition: all 0.2s;
+}
+
+.sqlatte-panel-header button:hover {
+    background: #333;
+    border-color: #D4A574;
+}
+
+.sqlatte-panel-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.sqlatte-panel-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: #666;
+    text-align: center;
+}
+
+.sqlatte-history-item {
+    padding: 12px;
+    margin-bottom: 8px;
+    background: #252525;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid #D4A574;
+    position: relative;
+}
+
+.sqlatte-history-item:hover {
+    background: #2a2a2a;
+    transform: translateX(4px);
+}
+
+.sqlatte-history-question {
+    font-size: 12px;
+    color: #e0e0e0;
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
+
+.sqlatte-history-time {
+    font-size: 10px;
+    color: #666;
+}
+
+/* Modal Body */
+.sqlatte-modal-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0f0f0f;
+}
+
+/* Chat Area */
+.sqlatte-chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sqlatte-chat-area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sqlatte-chat-area::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.sqlatte-chat-area::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+}
+
+/* Empty State */
+.sqlatte-empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: #666;
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.sqlatte-empty-state svg {
+    margin-bottom: 16px;
+}
+
+.sqlatte-empty-state h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: #e0e0e0;
+}
+
+.sqlatte-empty-state p {
+    font-size: 14px;
+    color: #888;
+    margin: 4px 0;
+}
+
+.sqlatte-empty-state .text-xs {
+    font-size: 12px;
+    color: #666;
+}
+
+/* Input Container */
+.sqlatte-input-container {
+    padding: 16px;
+    background: #0a0a0a;
+    border-top: 1px solid #333;
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.sqlatte-input-container textarea {
+    flex: 1;
+    padding: 10px 14px;
+    background: #000;
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    min-height: 44px;
+    max-height: 120px;
+}
+
+.sqlatte-input-container textarea:focus {
+    outline: none;
+    border-color: #D4A574;
+    box-shadow: 0 0 0 2px rgba(212, 165, 116, 0.2);
+}
+
+.sqlatte-input-container button {
+    padding: 10px 24px;
+    background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    min-height: 44px;
+}
+
+.sqlatte-input-container button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(212, 165, 116, 0.3);
+}
+
+.sqlatte-input-container button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
 /* Headers */
 .sqlatte-auth-header {
     background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
@@ -1627,7 +2270,97 @@ function visualizeData(resultId) {
     border-radius: 4px;
     margin-top: 12px;
 }
+/* History Panel */
+.history-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 320px;
+    background: #1a1a1a;
+    border-left: 2px solid #333;
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+    transition: transform 0.3s;
+}
 
+.history-header {
+    padding: 16px;
+    background: #252525;
+    border-bottom: 2px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.history-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #D4A574;
+}
+
+.history-header button {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.history-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.history-item {
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #252525;
+    border-radius: 6px;
+    font-size: 12px;
+    border-left: 3px solid #D4A574;
+}
+
+.history-item.user {
+    border-left-color: #667eea;
+}
+
+.history-item-role {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #D4A574;
+}
+
+.history-item-content {
+    color: #e0e0e0;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.history-item-time {
+    margin-top: 6px;
+    font-size: 10px;
+    color: #666;
+}
+
+.icon-btn {
+    background: transparent;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.icon-btn:hover {
+    background: #333;
+    border-color: #D4A574;
+}
 /* Table Selection */
 .sqlatte-table-select-container {
     padding: 12px 16px;
@@ -2077,22 +2810,21 @@ function visualizeData(resultId) {
         closeLoginModal: closeLoginModal,
         openChatModal: openChatModal,
         closeChatModal: closeChatModal,
+        toggleHistory: toggleConversationHistory,
+        clearConversation: clearConversation,
+        loadHistory: loadConversationHistory,
 
         // Chat
         sendMessage: sendMessage,
         handleTableChange: handleTableChange,
-
-        // History & Favorites
+        filterTables: filterTables,
+        clearConversation: clearConversation,
+        filterTables: filterTables,
         toggleHistory: toggleHistory,
         toggleFavorites: toggleFavorites,
         clearHistory: clearHistory,
-        rerunQuery: (sql) => {
-            const input = document.getElementById('sqlatte-auth-input');
-            if (input) {
-                input.value = sql;
-                sendMessage();
-            }
-        },
+        removeFavorite: removeFavorite,
+        rerunQuery: rerunQuery,
 
         // Utilities
         copySQLAction: copySQLAction,

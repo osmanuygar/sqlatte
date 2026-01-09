@@ -12,6 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from src.plugins.base_plugin import BasePlugin
 from src.plugins.session_manager import auth_session_manager
+from src.core.conversation_manager import conversation_manager
+from datetime import datetime
 from src.core.provider_factory import ProviderFactory
 
 
@@ -343,66 +345,127 @@ class AuthPlugin(BasePlugin):
 
         @app.post("/auth/query")
         async def execute_query(
-            request: dict,
-            session_id: str = Header(..., alias="X-Session-ID")
+                request: dict,
+                session_id: str = Header(..., alias="X-Session-ID")
         ):
             """
-            Execute SQL query with user's database connection
-
-            ENHANCED: Returns structured data for charts, CSV export, etc.
+            Execute SQL query with CONVERSATION MEMORY
             """
             try:
+                from src.core.conversation_manager import conversation_manager
+
+                # 1. Validate auth session
                 session = self.session_manager.get_session(session_id)
-
                 if not session:
-                    raise HTTPException(
-                        status_code=401,
-                        detail="Session expired or invalid"
-                    )
+                    raise HTTPException(401, "Session expired or invalid")
 
-                # Support both old and new request formats
                 question = request.get('question', '')
                 table_schema = request.get('table_schema', '') or request.get('schema', '')
 
                 if not question:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Question is required"
-                    )
+                    raise HTTPException(400, "Question is required")
 
+                # 2. Get or create conversation session
+                if not session.conversation_id:
+                    conv_id = conversation_manager.create_session()
+                    session.conversation_id = conv_id
+                    print(f"🆕 Conversation session created: {conv_id[:8]}... for user: {session.username}")
+                else:
+                    conv_id = session.conversation_id
+
+                # 3. Add user message to conversation
+                conversation_manager.add_message(
+                    conv_id,
+                    role="user",
+                    content=question,
+                    metadata={"username": session.username}
+                )
+
+                # 4. Execute query WITH conversation_id  👈 DEĞİŞİKLİK
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
                     self.executor,
                     self._execute_query_for_session,
                     session.db_config,
                     question,
-                    table_schema
+                    table_schema,
+                    conv_id  # 👈 CONVERSATION ID GEÇIR
                 )
 
+                # 5. Add assistant response to conversation
+                if "error" in result:
+                    content = result["error"]
+                    metadata = {"type": "error"}
+                elif "sql" in result:
+                    content = f"Generated SQL with {len(result.get('data', []))} rows"
+                    metadata = {
+                        "type": "sql",
+                        "sql": result["sql"],
+                        "row_count": len(result.get("data", []))
+                    }
+                elif "response_type" in result and result["response_type"] == "chat":
+                    content = result["message"]
+                    metadata = {"type": "chat"}
+                else:
+                    content = str(result)
+                    metadata = {"type": "unknown"}
+
+                conversation_manager.add_message(
+                    conv_id,
+                    role="assistant",
+                    content=content,
+                    metadata=metadata
+                )
+
+                # 6. Return result
+                result["conversation_id"] = conv_id
                 return result
 
             except HTTPException:
                 raise
             except Exception as e:
-                print(f"❌ Error executing query: {e}")
+                print(f"❌ Query execution error: {e}")
                 import traceback
                 traceback.print_exc()
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Query execution failed: {str(e)}"
-                )
+                raise HTTPException(500, f"Query failed: {str(e)}")
 
-        print(f"   ✅ Auth routes registered:")
-        print(f"      GET  /auth/config (NEW)")
-        print(f"      POST /auth/login")
-        print(f"      POST /auth/logout")
-        print(f"      POST /auth/validate")
-        print(f"      GET  /auth/session-info")
-        print(f"      GET  /auth/stats")
-        print(f"      GET  /auth/tables")
-        print(f"      GET  /auth/schema/{{table_name}}")
-        print(f"      POST /auth/schema/multiple (NEW)")
-        print(f"      POST /auth/query")
+        @app.get("/auth/conversation/history")
+        async def get_conversation_history(
+                session_id: str = Header(..., alias="X-Session-ID"),
+                limit: int = 50
+        ):
+            """Get conversation history for authenticated user"""
+            session = self.session_manager.get_session(session_id)
+            if not session:
+                raise HTTPException(401, "Session expired")
+
+            if not session.conversation_id:
+                return {"messages": [], "total": 0}
+
+            history = conversation_manager.get_session_history(session.conversation_id)
+
+            return {
+                "messages": history[-limit:] if limit else history,
+                "total": len(history),
+                "conversation_id": session.conversation_id
+            }
+
+        # YENİ ENDPOINT: Clear conversation
+        @app.post("/auth/conversation/clear")
+        async def clear_conversation(
+                session_id: str = Header(..., alias="X-Session-ID")
+        ):
+            """Clear conversation history"""
+            session = self.session_manager.get_session(session_id)
+            if not session:
+                raise HTTPException(401, "Session expired")
+
+            if session.conversation_id:
+                conversation_manager.clear_session(session.conversation_id)
+                print(f"🗑️ Conversation cleared for: {session.username}")
+
+            return {"message": "Conversation cleared", "success": True}
+
 
     def _build_db_config(self, request: LoginRequest) -> Dict[str, Any]:
         """Build database config from login request"""
@@ -496,18 +559,18 @@ class AuthPlugin(BasePlugin):
             raise
 
     def _execute_query_for_session(
-        self,
-        db_config: Dict[str, Any],
-        question: str,
-        table_schema: str
+            self,
+            db_config: Dict[str, Any],
+            question: str,
+            table_schema: str,
+            conversation_id: str = None  # 👈 YENİ PARAMETRE
     ) -> Dict[str, Any]:
         """
-        Execute query for a session's DB connection
-
-        ENHANCED: Returns structured format for all features
+        Execute query with CONVERSATION CONTEXT support
         """
         try:
             from src.core.config_manager import config_manager
+            from src.core.conversation_manager import conversation_manager  # 👈 YENİ
 
             wrapped_db_config = {'database': db_config}
             db_provider = ProviderFactory.create_db_provider(wrapped_db_config)
@@ -528,8 +591,25 @@ class AuthPlugin(BasePlugin):
                         "error": "☕ Please select one or more tables first to query your data."
                     }
 
-                # Generate SQL
-                sql_query, explanation = llm_provider.generate_sql(question, schema_info)
+                # 👇 YENİ: Get conversation context
+                enhanced_question = question
+                if conversation_id:
+                    conv_context = conversation_manager.get_conversation_context(conversation_id)
+                    if len(conv_context) > 1:  # Has history
+                        context_summary = "\n\nRecent conversation:\n"
+                        for msg in conv_context[-5:]:  # Last 5 messages
+                            if msg['role'] == 'user':
+                                context_summary += f"User: {msg['content']}\n"
+                            elif msg['role'] == 'assistant':
+                                # Truncate long responses
+                                content = msg['content'][:100]
+                                context_summary += f"Assistant: {content}...\n"
+
+                        enhanced_question = f"{question}\n\nContext from previous messages: {context_summary}"
+                        print(f"💬 Using conversation context ({len(conv_context)} messages)")
+
+                # Generate SQL with context
+                sql_query, explanation = llm_provider.generate_sql(enhanced_question, schema_info)
 
                 print(f"📝 Generated SQL: {sql_query[:100]}...")
 
@@ -543,18 +623,29 @@ class AuthPlugin(BasePlugin):
 
                 print(f"✅ Query executed: {len(data)} rows returned")
 
-                # ENHANCED: Return structured format
                 return {
-                        "sql": sql_query,
+                    "sql": sql_query,
                     "columns": columns,
                     "data": data,
-                        "explanation": explanation,
-                    "query_id": None  # Can be added for history tracking
+                    "explanation": explanation,
+                    "query_id": None
                 }
 
             else:
-                # Chat response
-                chat_response = llm_provider.generate_chat_response(question, schema_info)
+                # 👇 YENİ: Chat response with context
+                enhanced_question = question
+                if conversation_id:
+                    conv_context = conversation_manager.get_conversation_context(conversation_id)
+                    if len(conv_context) > 1:
+                        context_text = "Previous conversation:\n"
+                        for msg in conv_context[-5:]:
+                            role_label = "User" if msg['role'] == 'user' else "Assistant"
+                            context_text += f"{role_label}: {msg['content']}\n"
+
+                        enhanced_question = f"{context_text}\n\nCurrent question: {question}"
+                        print(f"💬 Chat with context ({len(conv_context)} messages)")
+
+                chat_response = llm_provider.generate_chat_response(enhanced_question, schema_info)
 
                 return {
                     "response_type": "chat",
