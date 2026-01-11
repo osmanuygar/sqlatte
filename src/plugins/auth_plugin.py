@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from src.plugins.base_plugin import BasePlugin
 from src.plugins.session_manager import auth_session_manager
 from src.core.conversation_manager import conversation_manager
-from datetime import datetime
+import time
 from src.core.provider_factory import ProviderFactory
 
 
@@ -351,8 +351,12 @@ class AuthPlugin(BasePlugin):
             """
             Execute SQL query with CONVERSATION MEMORY
             """
+            start_time = time.time()
+            session = None
+            selected_tables = []
             try:
                 from src.core.conversation_manager import conversation_manager
+                from src.core.query_history import query_history
 
                 # 1. Validate auth session
                 session = self.session_manager.get_session(session_id)
@@ -364,6 +368,15 @@ class AuthPlugin(BasePlugin):
 
                 if not question:
                     raise HTTPException(400, "Question is required")
+
+                # Extract tables from schema
+                if table_schema:
+                    for line in table_schema.split('\n'):
+                        if line.startswith('Table:'):
+                            table_name = line.replace('Table:', '').strip()
+                            if '.' in table_name:
+                                table_name = table_name.split('.')[-1]
+                            selected_tables.append(table_name)
 
                 # 2. Get or create conversation session
                 if not session.conversation_id:
@@ -381,7 +394,7 @@ class AuthPlugin(BasePlugin):
                     metadata={"username": session.username}
                 )
 
-                # 4. Execute query WITH conversation_id  👈 DEĞİŞİKLİK
+                # 4. Execute query WITH conversation_id
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
                     self.executor,
@@ -391,11 +404,24 @@ class AuthPlugin(BasePlugin):
                     table_schema,
                     conv_id  # 👈 CONVERSATION ID GEÇIR
                 )
+                execution_time = (time.time() - start_time) * 1000
 
                 # 5. Add assistant response to conversation
                 if "error" in result:
                     content = result["error"]
                     metadata = {"type": "error"}
+                    query_history.add_query(
+                        session_id=session_id,
+                        question=question,
+                        sql="",
+                        tables=selected_tables,
+                        row_count=0,
+                        execution_time_ms=execution_time,
+                        success=False,
+                        error_message=result["error"],
+                        widget_type="auth",
+                        user_id=session.username
+                    )
                 elif "sql" in result:
                     content = f"Generated SQL with {len(result.get('data', []))} rows"
                     metadata = {
@@ -403,6 +429,17 @@ class AuthPlugin(BasePlugin):
                         "sql": result["sql"],
                         "row_count": len(result.get("data", []))
                     }
+                    query_history.add_query(
+                        session_id=session_id,
+                        question=question,
+                        sql=result["sql"],
+                        tables=selected_tables,
+                        row_count=len(result.get("data", [])),
+                        execution_time_ms=execution_time,
+                        success=True,
+                        widget_type="auth",
+                        user_id=session.username
+                    )
                 elif "response_type" in result and result["response_type"] == "chat":
                     content = result["message"]
                     metadata = {"type": "chat"}
@@ -424,10 +461,30 @@ class AuthPlugin(BasePlugin):
             except HTTPException:
                 raise
             except Exception as e:
-                print(f"❌ Query execution error: {e}")
+                execution_time = (time.time() - start_time) * 1000
+
+                # ← YENİ: Track unexpected errors
+                from src.core.query_history import query_history
+                query_history.add_query(
+                    session_id=session_id,
+                    question=request.get('question', ''),
+                    sql="",
+                    tables=[],
+                    row_count=0,
+                    execution_time_ms=execution_time,
+                    success=False,
+                    error_message=str(e),
+                    widget_type="auth",
+                    user_id=session.username if 'session' in locals() else None
+                )
+
+                print(f"❌ Auth query error: {e}")
                 import traceback
                 traceback.print_exc()
-                raise HTTPException(500, f"Query failed: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Query execution failed: {str(e)}"
+                )
 
         @app.get("/auth/conversation/history")
         async def get_conversation_history(

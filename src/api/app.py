@@ -26,6 +26,8 @@ from src.core.conversation_manager import conversation_manager
 from src.core.query_history import query_history
 from src.api.admin_routes import router as admin_router
 from src.api.demo_routes import router as demo_router
+from src.api.analytics_routes import router as analytics_router
+
 
 # Plugin system
 from src.plugins.base_plugin import plugin_manager
@@ -153,7 +155,7 @@ initialize_plugins(app)
 # Include routers
 app.include_router(admin_router)
 app.include_router(demo_router)
-
+app.include_router(analytics_router)
 
 # ============================================
 # REQUEST/RESPONSE MODELS
@@ -342,6 +344,17 @@ async def get_config():
     }
 
 
+@app.get("/analytics", response_class=HTMLResponse)
+async def analytics_dashboard():
+    """Analytics Dashboard"""
+    dashboard_path = os.path.join(PROJECT_ROOT, 'frontend', 'analytics_dashboard.html')
+
+    if not os.path.exists(dashboard_path):
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    with open(dashboard_path, 'r', encoding='utf-8') as f:
+        return f.read()
+
 @app.post("/reload-providers")
 async def trigger_reload_providers():
     """Reload providers after configuration change"""
@@ -472,7 +485,10 @@ async def process_query(request: QueryRequest):
                 sql=result["sql"],
                 tables=selected_tables,
                 row_count=result["row_count"],
-                execution_time_ms=execution_time
+                execution_time_ms=execution_time,
+                success=True,
+                widget_type="default",
+                user_id=None
             )
 
             # Add to conversation
@@ -515,6 +531,21 @@ async def process_query(request: QueryRequest):
             )
 
     except Exception as e:
+        execution_time = (time.time() - start_time) * 1000
+
+        # ← YENİ: Log failed queries to analytics
+        query_history.add_query(
+            session_id=session_id,
+            question=request.question,
+            sql="",  # No SQL generated on error
+            tables=selected_tables,
+            row_count=0,
+            execution_time_ms=execution_time,
+            success=False,  # ← YENİ
+            error_message=str(e),  # ← YENİ
+            widget_type="default",  # ← YENİ
+            user_id=None  # ← YENİ
+        )
         print(f"❌ Query error: {e}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 

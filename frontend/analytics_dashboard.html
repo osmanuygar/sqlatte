@@ -1,0 +1,747 @@
+<!-- frontend/analytics_dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLatte Analytics Dashboard</title>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #e0e0e0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .dashboard-header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 30px 20px;
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+
+        .dashboard-header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .dashboard-header p {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .time-filter {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .time-filter button {
+            padding: 10px 20px;
+            background: #2a2a2a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #e0e0e0;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .time-filter button:hover {
+            background: #333;
+            border-color: #D4A574;
+        }
+
+        .time-filter button.active {
+            background: #D4A574;
+            border-color: #D4A574;
+            color: #0a0a0a;
+            font-weight: 600;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 25px;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            border-color: #D4A574;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .metric-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #D4A574;
+            margin-bottom: 5px;
+        }
+
+        .metric-subtitle {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .metric-change {
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        .metric-change.positive {
+            color: #4ade80;
+        }
+
+        .metric-change.negative {
+            color: #f87171;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 25px;
+        }
+
+        .chart-card h3 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #D4A574;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .table-card {
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+
+        .table-card h3 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #D4A574;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px;
+            background: #1a1a1a;
+            color: #D4A574;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #333;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #222;
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background: #1a1a1a;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #4ade8033;
+            color: #4ade80;
+        }
+
+        .badge-warning {
+            background: #fbbf2433;
+            color: #fbbf24;
+        }
+
+        .badge-danger {
+            background: #f8717133;
+            color: #f87171;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .error {
+            background: #f8717133;
+            border: 1px solid #f87171;
+            color: #f87171;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #D4A574;
+            border: none;
+            color: #0a0a0a;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(212, 165, 116, 0.3);
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(212, 165, 116, 0.5);
+        }
+
+        .refresh-btn:active {
+            transform: scale(0.95);
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .refresh-btn.loading {
+            animation: spin 1s linear infinite;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="dashboard-header">
+        <h1>☕ SQLatte Analytics Dashboard</h1>
+        <p id="last-updated">Loading...</p>
+    </div>
+
+    <!-- Time Filter -->
+    <div class="time-filter">
+        <button onclick="setTimeRange(1)" data-hours="1">Last Hour</button>
+        <button onclick="setTimeRange(24)" data-hours="24" class="active">Last 24 Hours</button>
+        <button onclick="setTimeRange(168)" data-hours="168">Last 7 Days</button>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="metrics-grid" id="metrics-grid">
+        <div class="loading">Loading metrics...</div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+        <div class="chart-card">
+            <h3>📈 Query Volume Over Time</h3>
+            <div class="chart-container">
+                <canvas id="hourlyChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>🎯 Success vs Failed Queries</h3>
+            <div class="chart-container">
+                <canvas id="successChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>🔧 Widget Comparison</h3>
+            <div class="chart-container">
+                <canvas id="widgetChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>⚡ Response Time Distribution</h3>
+            <div class="chart-container">
+                <canvas id="performanceChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tables -->
+    <div class="table-card">
+        <h3>🔥 Most Queried Tables</h3>
+        <table id="top-tables-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Table Name</th>
+                    <th>Query Count</th>
+                    <th>Percentage</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="4" class="loading">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="table-card" id="top-users-card" style="display: none;">
+        <h3>👥 Top Users (Auth Widget)</h3>
+        <table id="top-users-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>User ID</th>
+                    <th>Queries</th>
+                    <th>Success Rate</th>
+                    <th>Avg Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="5" class="loading">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="table-card" id="errors-card" style="display: none;">
+        <h3>❌ Recent Errors</h3>
+        <table id="errors-table">
+            <thead>
+                <tr>
+                    <th>Error Type</th>
+                    <th>Count</th>
+                    <th>Percentage</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="3" class="loading">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Refresh Button -->
+    <button class="refresh-btn" onclick="loadDashboard()" title="Refresh Dashboard">
+        ↻
+    </button>
+
+    <script>
+        // Global state
+        let currentHours = 24;
+        let charts = {};
+
+        // API base URL
+        const API_BASE = window.location.origin;
+
+        // Time range selector
+        function setTimeRange(hours) {
+            currentHours = hours;
+
+            // Update button states
+            document.querySelectorAll('.time-filter button').forEach(btn => {
+                btn.classList.remove('active');
+                if (parseInt(btn.dataset.hours) === hours) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Reload dashboard
+            loadDashboard();
+        }
+
+        // Load dashboard data
+        async function loadDashboard() {
+            const refreshBtn = document.querySelector('.refresh-btn');
+            refreshBtn.classList.add('loading');
+
+            try {
+                await Promise.all([
+                    loadSummary(),
+                    loadHourlyStats(),
+                    loadWidgetComparison(),
+                    loadPerformance(),
+                    loadTopUsers(),
+                    loadErrors()
+                ]);
+
+                updateLastUpdated();
+            } catch (error) {
+                console.error('Dashboard load error:', error);
+                showError('Failed to load dashboard data');
+            } finally {
+                refreshBtn.classList.remove('loading');
+            }
+        }
+
+        // Load summary metrics
+        async function loadSummary() {
+            const response = await fetch(`${API_BASE}/api/analytics/summary?hours=${currentHours}`);
+            const data = await response.json();
+
+            const metricsHtml = `
+                <div class="metric-card">
+                    <div class="metric-label">Total Queries</div>
+                    <div class="metric-value">${data.total_queries.toLocaleString()}</div>
+                    <div class="metric-subtitle">Last ${currentHours}h</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-label">Success Rate</div>
+                    <div class="metric-value">${data.success_rate}%</div>
+                    <div class="metric-subtitle">${data.successful_queries} successful</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-label">Avg Response Time</div>
+                    <div class="metric-value">${Math.round(data.avg_execution_time_ms)}<span style="font-size: 18px;">ms</span></div>
+                    <div class="metric-subtitle">Per query</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-label">Active Sessions</div>
+                    <div class="metric-value">${data.unique_sessions}</div>
+                    <div class="metric-subtitle">${data.unique_users || 0} unique users</div>
+                </div>
+            `;
+
+            document.getElementById('metrics-grid').innerHTML = metricsHtml;
+
+            // Update top tables
+            updateTopTables(data.top_tables);
+        }
+
+        // Load hourly statistics
+        async function loadHourlyStats() {
+            const response = await fetch(`${API_BASE}/api/analytics/hourly-stats?hours=${currentHours}`);
+            const data = await response.json();
+
+            const labels = data.map(d => {
+                const date = new Date(d.hour);
+                return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            });
+
+            const totalData = data.map(d => d.total);
+            const successData = data.map(d => d.successful);
+
+            updateChart('hourlyChart', {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Total Queries',
+                            data: totalData,
+                            borderColor: '#D4A574',
+                            backgroundColor: 'rgba(212, 165, 116, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Successful',
+                            data: successData,
+                            borderColor: '#4ade80',
+                            backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#e0e0e0' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#888' },
+                            grid: { color: '#333' }
+                        },
+                        y: {
+                            ticks: { color: '#888' },
+                            grid: { color: '#333' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load widget comparison
+        async function loadWidgetComparison() {
+            const response = await fetch(`${API_BASE}/api/analytics/widget-comparison?hours=${currentHours}`);
+            const data = await response.json();
+
+            // Success pie chart
+            updateChart('successChart', {
+                type: 'doughnut',
+                data: {
+                    labels: ['Successful', 'Failed'],
+                    datasets: [{
+                        data: [
+                            data.default.total_queries * data.default.success_rate / 100 +
+                            data.auth.total_queries * data.auth.success_rate / 100,
+                            data.default.total_queries * (100 - data.default.success_rate) / 100 +
+                            data.auth.total_queries * (100 - data.auth.success_rate) / 100
+                        ],
+                        backgroundColor: ['#4ade80', '#f87171'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#e0e0e0' }
+                        }
+                    }
+                }
+            });
+
+            // Widget comparison bar chart
+            updateChart('widgetChart', {
+                type: 'bar',
+                data: {
+                    labels: ['Total Queries', 'Success Rate', 'Avg Time (ms)'],
+                    datasets: [
+                        {
+                            label: 'Default Widget',
+                            data: [
+                                data.default.total_queries,
+                                data.default.success_rate,
+                                data.default.avg_time_ms
+                            ],
+                            backgroundColor: '#D4A574'
+                        },
+                        {
+                            label: 'Auth Widget',
+                            data: [
+                                data.auth.total_queries,
+                                data.auth.success_rate,
+                                data.auth.avg_time_ms
+                            ],
+                            backgroundColor: '#A67C52'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#e0e0e0' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#888' },
+                            grid: { color: '#333' }
+                        },
+                        y: {
+                            ticks: { color: '#888' },
+                            grid: { color: '#333' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load performance metrics
+        async function loadPerformance() {
+            const response = await fetch(`${API_BASE}/api/analytics/performance?hours=${currentHours}`);
+            const data = await response.json();
+
+            const buckets = data.response_time_buckets;
+
+            updateChart('performanceChart', {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(buckets),
+                    datasets: [{
+                        label: 'Query Count',
+                        data: Object.values(buckets),
+                        backgroundColor: [
+                            '#4ade80',
+                            '#D4A574',
+                            '#fbbf24',
+                            '#f87171'
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#888' },
+                            grid: { color: '#333' }
+                        },
+                        y: {
+                            ticks: { color: '#888' },
+                            grid: { color: '#333' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load top users
+        async function loadTopUsers() {
+            const response = await fetch(`${API_BASE}/api/analytics/top-users?hours=${currentHours}&limit=10`);
+            const data = await response.json();
+
+            if (data.length === 0) {
+                document.getElementById('top-users-card').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('top-users-card').style.display = 'block';
+
+            const tbody = document.getElementById('top-users-table').querySelector('tbody');
+            tbody.innerHTML = data.map((user, index) => `
+                <tr>
+                    <td><strong>#${index + 1}</strong></td>
+                    <td>${user.user_id}</td>
+                    <td>${user.query_count}</td>
+                    <td><span class="badge ${user.success_rate >= 90 ? 'badge-success' : user.success_rate >= 70 ? 'badge-warning' : 'badge-danger'}">${user.success_rate}%</span></td>
+                    <td>${user.avg_time_ms.toFixed(0)}ms</td>
+                </tr>
+            `).join('');
+        }
+
+        // Load errors
+        async function loadErrors() {
+            const response = await fetch(`${API_BASE}/api/analytics/errors?hours=${currentHours}`);
+            const data = await response.json();
+
+            if (data.total_errors === 0) {
+                document.getElementById('errors-card').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('errors-card').style.display = 'block';
+
+            const tbody = document.getElementById('errors-table').querySelector('tbody');
+            const total = data.total_errors;
+
+            tbody.innerHTML = data.error_types.map(error => `
+                <tr>
+                    <td>${error.error || 'Unknown'}</td>
+                    <td>${error.count}</td>
+                    <td>${((error.count / total) * 100).toFixed(1)}%</td>
+                </tr>
+            `).join('');
+        }
+
+        // Update top tables
+        function updateTopTables(tables) {
+            const tbody = document.getElementById('top-tables-table').querySelector('tbody');
+
+            if (tables.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No data available</td></tr>';
+                return;
+            }
+
+            const total = Object.values(tables).reduce((sum, count) => sum + count, 0);
+
+            tbody.innerHTML = Object.entries(tables).map(([table, count], index) => `
+                <tr>
+                    <td><strong>#${index + 1}</strong></td>
+                    <td>${table}</td>
+                    <td>${count}</td>
+                    <td>${((count / total) * 100).toFixed(1)}%</td>
+                </tr>
+            `).join('');
+        }
+
+        // Update or create chart
+        function updateChart(canvasId, config) {
+            const ctx = document.getElementById(canvasId);
+
+            if (charts[canvasId]) {
+                charts[canvasId].destroy();
+            }
+
+            charts[canvasId] = new Chart(ctx, config);
+        }
+
+        // Update last updated timestamp
+        function updateLastUpdated() {
+            const now = new Date();
+            document.getElementById('last-updated').textContent =
+                `Last updated: ${now.toLocaleString()}`;
+        }
+
+        // Show error message
+        function showError(message) {
+            const metricsGrid = document.getElementById('metrics-grid');
+            metricsGrid.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        // Auto refresh every 30 seconds
+        setInterval(() => {
+            loadDashboard();
+        }, 30000);
+
+        // Initial load
+        loadDashboard();
+    </script>
+</body>
+</html>
