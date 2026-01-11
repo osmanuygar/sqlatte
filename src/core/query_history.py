@@ -1,6 +1,7 @@
+# src/core/query_history.py
 """
 SQLatte Query History & Favorites Manager
-Manages SQL query history and user favorites (in-memory with session support)
+Manages SQL query history and user favorites with SQLite persistence
 """
 
 import uuid
@@ -8,6 +9,9 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field, asdict
+
+# ← YENİ IMPORT EKLE
+from src.core.analytics_db import analytics_db
 
 
 @dataclass
@@ -21,11 +25,19 @@ class QueryRecord:
     execution_time_ms: float  # Execution time
     created_at: datetime
     session_id: str
+
+    # ← YENİ ALANLAR
+    success: bool = True
+    error_message: Optional[str] = None
+    widget_type: str = "default"  # 'default' or 'auth'
+    user_id: Optional[str] = None
+
     is_favorite: bool = False
     favorite_name: Optional[str] = None  # Custom name for favorites
     tags: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization"""
         return {
             "id": self.id,
             "question": self.question,
@@ -33,8 +45,12 @@ class QueryRecord:
             "tables": self.tables,
             "row_count": self.row_count,
             "execution_time_ms": self.execution_time_ms,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
             "session_id": self.session_id,
+            "success": self.success,  # ← YENİ
+            "error_message": self.error_message,  # ← YENİ
+            "widget_type": self.widget_type,  # ← YENİ
+            "user_id": self.user_id,  # ← YENİ
             "is_favorite": self.is_favorite,
             "favorite_name": self.favorite_name,
             "tags": self.tags
@@ -47,10 +63,11 @@ class QueryRecord:
 
 class QueryHistoryManager:
     """
-    Manages query history and favorites
+    Manages query history and favorites with SQLite persistence
 
     Features:
-    - Per-session query history
+    - Persistent storage with SQLite
+    - Per-session query history (in-memory cache)
     - Global favorites (across sessions)
     - Deduplication
     - Auto-cleanup of old entries
@@ -63,13 +80,19 @@ class QueryHistoryManager:
         max_favorites: int = 100,
         history_retention_hours: int = 24
     ):
+        # ← SQLite backend
+        self.db = analytics_db
+
+        # ← In-memory cache for fast access (session-based)
         self.history: Dict[str, List[QueryRecord]] = {}  # session_id -> queries
         self.favorites: Dict[str, QueryRecord] = {}  # query_id -> record
+
         self.max_history_per_session = max_history_per_session
         self.max_favorites = max_favorites
         self.history_retention_hours = history_retention_hours
 
         print(f"✅ Query History Manager initialized")
+        print(f"   SQLite backend: {self.db.db_path}")
         print(f"   Max history/session: {max_history_per_session}")
         print(f"   Max favorites: {max_favorites}")
         print(f"   Retention: {history_retention_hours}h")
@@ -82,10 +105,14 @@ class QueryHistoryManager:
         tables: List[str],
         row_count: int = 0,
         execution_time_ms: float = 0.0,
-        tags: List[str] = None
+        tags: List[str] = None,
+        success: bool = True,  # ← YENİ
+        error_message: str = None,  # ← YENİ
+        widget_type: str = "default",  # ← YENİ
+        user_id: str = None  # ← YENİ
     ) -> QueryRecord:
         """
-        Add a query to history
+        Add a query to history (both in-memory and SQLite)
 
         Args:
             session_id: User session ID
@@ -95,6 +122,10 @@ class QueryHistoryManager:
             row_count: Number of rows returned
             execution_time_ms: Query execution time
             tags: Optional tags for categorization
+            success: Whether query succeeded
+            error_message: Error message if failed
+            widget_type: Widget type ('default' or 'auth')
+            user_id: User ID (for auth widget)
 
         Returns:
             QueryRecord object
@@ -113,8 +144,15 @@ class QueryHistoryManager:
             execution_time_ms=execution_time_ms,
             created_at=datetime.now(),
             session_id=session_id,
-            tags=tags or []
+            tags=tags or [],
+            success=success,  # ← YENİ
+            error_message=error_message,  # ← YENİ
+            widget_type=widget_type,  # ← YENİ
+            user_id=user_id  # ← YENİ
         )
+
+        # ← SAVE TO SQLITE
+        self.db.save_query(record.to_dict())
 
         # Check for duplicates (same SQL in last 5 queries)
         recent_hashes = [q.get_hash() for q in self.history[session_id][-5:]]
@@ -140,7 +178,7 @@ class QueryHistoryManager:
         tables_filter: List[str] = None
     ) -> List[Dict]:
         """
-        Get query history for a session
+        Get query history for a session (from SQLite)
 
         Args:
             session_id: User session ID
@@ -152,33 +190,29 @@ class QueryHistoryManager:
         Returns:
             List of query records
         """
-        if session_id not in self.history:
-            return []
+        # ← GET FROM SQLITE instead of in-memory
+        queries = self.db.get_queries(
+            session_id=session_id,
+            limit=limit,
+            offset=offset
+        )
 
-        queries = self.history[session_id].copy()
-
-        # Apply search filter
+        # Apply search filter (client-side for now)
         if search:
             search_lower = search.lower()
             queries = [
                 q for q in queries
-                if search_lower in q.question.lower() or search_lower in q.sql.lower()
+                if search_lower in q['question'].lower() or search_lower in q['sql'].lower()
             ]
 
         # Apply tables filter
         if tables_filter:
             queries = [
                 q for q in queries
-                if any(t in q.tables for t in tables_filter)
+                if any(t in q['tables'] for t in tables_filter)
             ]
 
-        # Sort by most recent first
-        queries.sort(key=lambda x: x.created_at, reverse=True)
-
-        # Apply pagination
-        paginated = queries[offset:offset + limit]
-
-        return [q.to_dict() for q in paginated]
+        return queries
 
     def add_to_favorites(
         self,
@@ -195,57 +229,53 @@ class QueryHistoryManager:
 
         Can either:
         1. Mark existing query as favorite (by query_id)
-        2. Create new favorite from scratch (question + sql)
+        2. Create new favorite (by providing question, sql, tables)
 
         Args:
             query_id: Existing query ID to mark as favorite
             session_id: Session ID (for new favorites)
-            question: Natural language question (for new favorites)
-            sql: SQL query (for new favorites)
-            tables: Tables used
-            favorite_name: Custom name for the favorite
-            tags: Tags for categorization
+            question: Question text (for new favorites)
+            sql: SQL text (for new favorites)
+            tables: Tables list (for new favorites)
+            favorite_name: Optional custom name
+            tags: Optional tags
 
         Returns:
             QueryRecord if successful, None otherwise
         """
-        # Method 1: Mark existing query as favorite
         if query_id:
-            for session_queries in self.history.values():
-                for query in session_queries:
-                    if query.id == query_id:
-                        query.is_favorite = True
-                        query.favorite_name = favorite_name or query.question[:50]
-                        if tags:
-                            query.tags = tags
-                        self.favorites[query.id] = query
-                        return query
+            # Mark existing query as favorite
+            success = self.db.update_favorite(query_id, True, favorite_name)
+            if success:
+                query = self.db.get_query(query_id)
+                if query:
+                    # Update in-memory cache
+                    record = QueryRecord(**{
+                        **query,
+                        'created_at': datetime.fromisoformat(query['created_at'])
+                    })
+                    self.favorites[query_id] = record
+                    return record
+            return None
 
-        # Method 2: Create new favorite
-        if question and sql:
-            record = QueryRecord(
-                id=str(uuid.uuid4()),
+        elif question and sql:
+            # Create new favorite
+            if len(self.favorites) >= self.max_favorites:
+                print(f"⚠️ Favorites limit reached ({self.max_favorites})")
+                return None
+
+            record = self.add_query(
+                session_id=session_id or "favorites",
                 question=question,
                 sql=sql,
                 tables=tables or [],
-                row_count=0,
-                execution_time_ms=0.0,
-                created_at=datetime.now(),
-                session_id=session_id or "global",
-                is_favorite=True,
-                favorite_name=favorite_name or question[:50],
                 tags=tags or []
             )
-            self.favorites[record.id] = record
 
-            # Enforce max favorites limit
-            if len(self.favorites) > self.max_favorites:
-                # Remove oldest favorite
-                oldest_id = min(
-                    self.favorites.keys(),
-                    key=lambda x: self.favorites[x].created_at
-                )
-                del self.favorites[oldest_id]
+            self.db.update_favorite(record.id, True, favorite_name)
+            record.is_favorite = True
+            record.favorite_name = favorite_name
+            self.favorites[record.id] = record
 
             return record
 
@@ -253,180 +283,102 @@ class QueryHistoryManager:
 
     def remove_from_favorites(self, query_id: str) -> bool:
         """Remove a query from favorites"""
-        if query_id in self.favorites:
-            self.favorites[query_id].is_favorite = False
+        success = self.db.update_favorite(query_id, False, None)
+
+        if success and query_id in self.favorites:
             del self.favorites[query_id]
-            return True
 
-        # Also check in history
-        for session_queries in self.history.values():
-            for query in session_queries:
-                if query.id == query_id:
-                    query.is_favorite = False
-                    query.favorite_name = None
-                    return True
-
-        return False
+        return success
 
     def get_favorites(
         self,
         limit: int = 50,
-        search: str = None,
-        tags_filter: List[str] = None
+        search: str = None
     ) -> List[Dict]:
         """
-        Get all favorites
+        Get all favorites (from SQLite)
 
         Args:
-            limit: Max number of records
+            limit: Max records
             search: Search term
-            tags_filter: Filter by tags
 
         Returns:
-            List of favorite query records
+            List of favorite queries
         """
-        favorites = list(self.favorites.values())
+        # ← GET FROM SQLITE
+        with self.db.get_connection() as conn:
+            query = "SELECT * FROM queries WHERE is_favorite = 1"
+            params = []
 
-        # Apply search filter
-        if search:
-            search_lower = search.lower()
-            favorites = [
-                f for f in favorites
-                if search_lower in f.question.lower()
-                or search_lower in f.sql.lower()
-                or (f.favorite_name and search_lower in f.favorite_name.lower())
-            ]
+            if search:
+                query += " AND (question LIKE ? OR sql LIKE ?)"
+                params.extend([f"%{search}%", f"%{search}%"])
 
-        # Apply tags filter
-        if tags_filter:
-            favorites = [
-                f for f in favorites
-                if any(t in f.tags for t in tags_filter)
-            ]
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
 
-        # Sort by name/question
-        favorites.sort(key=lambda x: x.favorite_name or x.question)
+            cursor = conn.execute(query, params)
+            return [self.db._row_to_dict(row) for row in cursor.fetchall()]
 
-        return [f.to_dict() for f in favorites[:limit]]
-
-    def get_query_by_id(self, query_id: str) -> Optional[Dict]:
-        """Get a specific query by ID"""
-        # Check favorites first
-        if query_id in self.favorites:
-            return self.favorites[query_id].to_dict()
-
-        # Check history
-        for session_queries in self.history.values():
-            for query in session_queries:
-                if query.id == query_id:
-                    return query.to_dict()
-
-        return None
-
-    def delete_query(self, query_id: str, session_id: str = None) -> bool:
+    def delete_query(self, query_id: str, session_id: str) -> bool:
         """Delete a query from history"""
-        # Remove from favorites if present
-        if query_id in self.favorites:
-            del self.favorites[query_id]
+        # Delete from SQLite
+        success = self.db.delete_query(query_id)
 
-        # Remove from history
-        if session_id and session_id in self.history:
+        # Delete from in-memory cache
+        if success and session_id in self.history:
             self.history[session_id] = [
-                q for q in self.history[session_id]
-                if q.id != query_id
+                q for q in self.history[session_id] if q.id != query_id
             ]
-            return True
 
-        # Search all sessions
-        for sid, queries in self.history.items():
-            for i, query in enumerate(queries):
-                if query.id == query_id:
-                    self.history[sid].pop(i)
-                    return True
-
-        return False
+        return success
 
     def clear_history(self, session_id: str) -> int:
         """Clear all history for a session (keeps favorites)"""
         if session_id not in self.history:
             return 0
 
-        count = len(self.history[session_id])
+        # Get non-favorite count
+        removed = sum(1 for q in self.history[session_id] if not q.is_favorite)
 
-        # Keep favorites, remove rest
+        # Clear in-memory
         self.history[session_id] = [
-            q for q in self.history[session_id]
-            if q.is_favorite
+            q for q in self.history[session_id] if q.is_favorite
         ]
 
-        return count - len(self.history[session_id])
-
-    def cleanup_old_history(self) -> int:
-        """Remove history older than retention period"""
-        cutoff = datetime.now() - timedelta(hours=self.history_retention_hours)
-        removed = 0
-
-        for session_id in list(self.history.keys()):
-            original_count = len(self.history[session_id])
-
-            # Keep favorites and recent queries
-            self.history[session_id] = [
-                q for q in self.history[session_id]
-                if q.is_favorite or q.created_at > cutoff
-            ]
-
-            removed += original_count - len(self.history[session_id])
-
-            # Remove empty sessions
-            if not self.history[session_id]:
-                del self.history[session_id]
-
-        if removed > 0:
-            print(f"🧹 Cleaned up {removed} old history entries")
+        # Clear from SQLite (non-favorites only)
+        with self.db.get_connection() as conn:
+            conn.execute("""
+                DELETE FROM queries
+                WHERE session_id = ? AND is_favorite = 0
+            """, (session_id,))
 
         return removed
 
     def get_stats(self) -> Dict:
-        """Get statistics about history and favorites"""
-        total_queries = sum(len(q) for q in self.history.values())
-
-        # Most used tables
-        table_counts: Dict[str, int] = {}
-        for session_queries in self.history.values():
-            for query in session_queries:
-                for table in query.tables:
-                    table_counts[table] = table_counts.get(table, 0) + 1
-
-        top_tables = sorted(
-            table_counts.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:10]
+        """Get statistics about history and favorites (from SQLite)"""
+        # ← GET FROM SQLITE
+        summary = self.db.get_analytics_summary(hours=24)
 
         return {
-            "total_sessions": len(self.history),
-            "total_queries": total_queries,
-            "total_favorites": len(self.favorites),
-            "top_tables": dict(top_tables),
-            "retention_hours": self.history_retention_hours
+            "total_sessions": summary.get('unique_sessions', 0),
+            "total_queries": summary.get('total_queries', 0),
+            "total_favorites": len(self.get_favorites(limit=1000)),
+            "top_tables": dict((t['table'], t['count']) for t in summary.get('top_tables', [])),
+            "retention_hours": self.history_retention_hours,
+            "success_rate": summary.get('success_rate', 0),
+            "avg_execution_time_ms": summary.get('avg_execution_time_ms', 0)
         }
 
     def get_recent_tables(self, session_id: str, limit: int = 5) -> List[str]:
         """Get most recently used tables for a session"""
-        if session_id not in self.history:
-            return []
-
-        recent_queries = sorted(
-            self.history[session_id],
-            key=lambda x: x.created_at,
-            reverse=True
-        )[:10]
+        queries = self.db.get_queries(session_id=session_id, limit=10)
 
         # Flatten and dedupe tables
         seen = set()
         tables = []
-        for query in recent_queries:
-            for table in query.tables:
+        for query in queries:
+            for table in query.get('tables', []):
                 if table not in seen:
                     seen.add(table)
                     tables.append(table)
@@ -455,29 +407,26 @@ class QueryHistoryManager:
         suggestions = []
 
         # 1. From favorites matching current tables
-        for fav in self.favorites.values():
-            if any(t in fav.tables for t in current_tables):
+        favorites = self.get_favorites(limit=50)
+        for fav in favorites:
+            if any(t in fav.get('tables', []) for t in current_tables):
                 suggestions.append({
                     "source": "favorite",
-                    "query": fav.to_dict()
+                    "query": fav
                 })
 
-        # 2. From history matching current tables
-        if session_id in self.history:
-            for query in reversed(self.history[session_id]):
-                if any(t in query.tables for t in current_tables):
-                    if not query.is_favorite:  # Don't duplicate favorites
-                        suggestions.append({
-                            "source": "history",
-                            "query": query.to_dict()
-                        })
+        # 2. From recent history (same session, same tables)
+        recent = self.db.get_queries(session_id=session_id, limit=20)
+        for query in recent:
+            if any(t in query.get('tables', []) for t in current_tables):
+                if not any(s['query']['id'] == query['id'] for s in suggestions):
+                    suggestions.append({
+                        "source": "history",
+                        "query": query
+                    })
 
         return suggestions[:limit]
 
 
-# Global instance
-query_history = QueryHistoryManager(
-    max_history_per_session=50,
-    max_favorites=100,
-    history_retention_hours=24
-)
+# Singleton instance
+query_history = QueryHistoryManager()
