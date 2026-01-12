@@ -1,4 +1,3 @@
-# src/api/analytics_routes.py
 """
 SQLatte Analytics API Routes
 Provides analytics data for dashboard and monitoring
@@ -8,10 +7,16 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta
 
-from src.core.analytics_db import analytics_db
+from src.core.analytics_db_postgres import analytics_db
 from src.core.query_history import query_history
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+# Check if analytics is enabled
+ANALYTICS_ENABLED = analytics_db is not None
+
+if not ANALYTICS_ENABLED:
+    print("⚠️  Analytics routes registered but analytics is disabled")
 
 
 # ============================================
@@ -34,29 +39,13 @@ async def get_analytics_summary(
     - `default` - Standard widget
     - `auth` - Authenticated widget
     - `null` - All widgets (default)
-
-    **Returns:**
-```json
-    {
-      "period_hours": 24,
-      "total_queries": 1247,
-      "successful_queries": 1175,
-      "failed_queries": 72,
-      "success_rate": 94.23,
-      "avg_execution_time_ms": 342.5,
-      "unique_sessions": 23,
-      "unique_users": 12,
-      "widget_breakdown": {
-        "default": 856,
-        "auth": 391
-      },
-      "top_tables": [
-        {"table": "sales_data", "count": 234},
-        {"table": "customer_metrics", "count": 187}
-      ]
-    }
-```
     """
+    if not ANALYTICS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics is disabled. Enable it in config.yaml (analytics.enabled: true)"
+        )
+
     try:
         summary = analytics_db.get_analytics_summary(
             hours=hours,
@@ -64,6 +53,9 @@ async def get_analytics_summary(
         )
         return summary
     except Exception as e:
+        print(f"❌ Analytics summary error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get summary: {str(e)}")
 
 
@@ -86,17 +78,23 @@ async def get_hourly_statistics(
         "total": 45,
         "successful": 42,
         "avg_time": 320.5
-      },
-      ...
+      }
     ]
 ```
-
-    **Use for:** Line charts showing query volume over time
     """
+    if not ANALYTICS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics is disabled. Enable it in config.yaml"
+        )
+
     try:
         stats = analytics_db.get_hourly_stats(hours=hours)
         return stats
     except Exception as e:
+        print(f"❌ Hourly stats error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get hourly stats: {str(e)}")
 
 
@@ -113,18 +111,22 @@ async def get_error_breakdown(
 
     **Returns:**
 ```json
-    [
-      {
-        "error": "Connection timeout",
-        "count": 12
-      },
-      {
-        "error": "SQL syntax error",
-        "count": 8
-      }
-    ]
+    {
+      "period_hours": 24,
+      "total_errors": 12,
+      "error_types": [
+        {"error": "Connection timeout", "count": 8},
+        {"error": "SQL syntax error", "count": 4}
+      ]
+    }
 ```
     """
+    if not ANALYTICS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics is disabled. Enable it in config.yaml"
+        )
+
     try:
         errors = analytics_db.get_error_breakdown(hours=hours)
         return {
@@ -133,6 +135,9 @@ async def get_error_breakdown(
             "error_types": errors
         }
     except Exception as e:
+        print(f"❌ Error breakdown error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get errors: {str(e)}")
 
 
@@ -150,6 +155,7 @@ async def get_widget_comparison(
     **Returns:**
 ```json
     {
+      "period_hours": 24,
       "default": {
         "total_queries": 856,
         "success_rate": 95.2,
@@ -166,6 +172,12 @@ async def get_widget_comparison(
     }
 ```
     """
+    if not ANALYTICS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics is disabled. Enable it in config.yaml"
+        )
+
     try:
         # Get stats for each widget type
         default_stats = analytics_db.get_analytics_summary(
@@ -195,6 +207,9 @@ async def get_widget_comparison(
             }
         }
     except Exception as e:
+        print(f"❌ Widget comparison error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to compare widgets: {str(e)}")
 
 
@@ -225,56 +240,66 @@ async def get_performance_metrics(
     }
 ```
     """
+    if not ANALYTICS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics is disabled. Enable it in config.yaml"
+        )
+
     try:
         cutoff = datetime.now() - timedelta(hours=hours)
         cutoff_iso = cutoff.isoformat()
 
         with analytics_db.get_connection() as conn:
-            # Get all execution times for successful queries
-            cursor = conn.execute("""
-                SELECT execution_time_ms
-                FROM queries
-                WHERE created_at >= ? AND success = 1
-                ORDER BY execution_time_ms
-            """, [cutoff_iso])
+            with conn.cursor() as cursor:
+                # Get all execution times for successful queries
+                cursor.execute("""
+                    SELECT execution_time_ms
+                    FROM queries
+                    WHERE created_at >= %s AND success = TRUE
+                    ORDER BY execution_time_ms
+                """, [cutoff_iso])
 
-            times = [row['execution_time_ms'] for row in cursor.fetchall()]
+                times = [row['execution_time_ms'] for row in cursor.fetchall()]
 
-            if not times:
-                return {
-                    "response_time_buckets": {},
-                    "avg_time_ms": 0,
-                    "median_time_ms": 0,
-                    "p95_time_ms": 0,
-                    "p99_time_ms": 0
+                if not times:
+                    return {
+                        "response_time_buckets": {},
+                        "avg_time_ms": 0,
+                        "median_time_ms": 0,
+                        "p95_time_ms": 0,
+                        "p99_time_ms": 0
+                    }
+
+                # Calculate buckets
+                buckets = {
+                    "0-100ms": sum(1 for t in times if t < 100),
+                    "100-500ms": sum(1 for t in times if 100 <= t < 500),
+                    "500-1000ms": sum(1 for t in times if 500 <= t < 1000),
+                    "1000ms+": sum(1 for t in times if t >= 1000)
                 }
 
-            # Calculate buckets
-            buckets = {
-                "0-100ms": sum(1 for t in times if t < 100),
-                "100-500ms": sum(1 for t in times if 100 <= t < 500),
-                "500-1000ms": sum(1 for t in times if 500 <= t < 1000),
-                "1000ms+": sum(1 for t in times if t >= 1000)
-            }
+                # Calculate percentiles
+                def percentile(data, p):
+                    if not data:
+                        return 0
+                    k = (len(data) - 1) * p / 100
+                    f = int(k)
+                    c = f + 1 if f < len(data) - 1 else f
+                    return data[f] + (k - f) * (data[c] - data[f])
 
-            # Calculate percentiles
-            def percentile(data, p):
-                if not data:
-                    return 0
-                k = (len(data) - 1) * p / 100
-                f = int(k)
-                c = f + 1 if f < len(data) - 1 else f
-                return data[f] + (k - f) * (data[c] - data[f])
-
-            return {
-                "response_time_buckets": buckets,
-                "avg_time_ms": round(sum(times) / len(times), 2),
-                "median_time_ms": round(percentile(times, 50), 2),
-                "p95_time_ms": round(percentile(times, 95), 2),
-                "p99_time_ms": round(percentile(times, 99), 2)
-            }
+                return {
+                    "response_time_buckets": buckets,
+                    "avg_time_ms": round(sum(times) / len(times), 2),
+                    "median_time_ms": round(percentile(times, 50), 2),
+                    "p95_time_ms": round(percentile(times, 95), 2),
+                    "p99_time_ms": round(percentile(times, 99), 2)
+                }
 
     except Exception as e:
+        print(f"❌ Performance metrics error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get performance metrics: {str(e)}")
 
 
@@ -298,45 +323,54 @@ async def get_top_users(
         "query_count": 156,
         "success_rate": 94.2,
         "avg_time_ms": 320.5
-      },
-      ...
+      }
     ]
 ```
     """
+    if not ANALYTICS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics is disabled. Enable it in config.yaml"
+        )
+
     try:
         cutoff = datetime.now() - timedelta(hours=hours)
         cutoff_iso = cutoff.isoformat()
 
         with analytics_db.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT 
-                    user_id,
-                    COUNT(*) as query_count,
-                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful,
-                    AVG(CASE WHEN success = 1 THEN execution_time_ms ELSE NULL END) as avg_time
-                FROM queries
-                WHERE created_at >= ? 
-                  AND widget_type = 'auth'
-                  AND user_id IS NOT NULL
-                GROUP BY user_id
-                ORDER BY query_count DESC
-                LIMIT ?
-            """, [cutoff_iso, limit])
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        user_id,
+                        COUNT(*) as query_count,
+                        SUM(CASE WHEN success = TRUE THEN 1 ELSE 0 END) as successful,
+                        AVG(CASE WHEN success = TRUE THEN execution_time_ms ELSE NULL END) as avg_time
+                    FROM queries
+                    WHERE created_at >= %s 
+                      AND widget_type = 'auth'
+                      AND user_id IS NOT NULL
+                    GROUP BY user_id
+                    ORDER BY query_count DESC
+                    LIMIT %s
+                """, [cutoff_iso, limit])
 
-            users = []
-            for row in cursor.fetchall():
-                total = row['query_count']
-                successful = row['successful'] or 0
-                users.append({
-                    "user_id": row['user_id'],
-                    "query_count": total,
-                    "success_rate": round((successful / total * 100) if total > 0 else 0, 2),
-                    "avg_time_ms": round(row['avg_time'] or 0, 2)
-                })
+                users = []
+                for row in cursor.fetchall():
+                    total = int(row['query_count']) if row['query_count'] else 0
+                    successful = int(row['successful']) if row['successful'] else 0
+                    users.append({
+                        "user_id": row['user_id'],
+                        "query_count": total,
+                        "success_rate": round((successful / total * 100) if total > 0 else 0, 2),
+                        "avg_time_ms": round(float(row['avg_time']) if row['avg_time'] else 0, 2)
+                    })
 
-            return users
+                return users
 
     except Exception as e:
+        print(f"❌ Top users error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get top users: {str(e)}")
 
 
@@ -354,9 +388,18 @@ async def get_query_complexity(
     **Returns:**
 ```json
     {
-      "simple": 450,
-      "medium": 180,
-      "complex": 45
+      "period_hours": 24,
+      "total_queries": 675,
+      "complexity_breakdown": {
+        "simple": 450,
+        "medium": 180,
+        "complex": 45
+      },
+      "complexity_percentages": {
+        "simple": 66.67,
+        "medium": 26.67,
+        "complex": 6.67
+      }
     }
 ```
 
@@ -365,57 +408,67 @@ async def get_query_complexity(
     - Medium: 1-2 JOINs, WHERE clauses
     - Complex: 3+ JOINs, subqueries, aggregations
     """
+    if not ANALYTICS_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics is disabled. Enable it in config.yaml"
+        )
+
     try:
         cutoff = datetime.now() - timedelta(hours=hours)
         cutoff_iso = cutoff.isoformat()
 
         with analytics_db.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT sql
-                FROM queries
-                WHERE created_at >= ? AND success = 1
-            """, [cutoff_iso])
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT sql
+                    FROM queries
+                    WHERE created_at >= %s AND success = TRUE
+                """, [cutoff_iso])
 
-            simple = 0
-            medium = 0
-            complex_count = 0
+                simple = 0
+                medium = 0
+                complex_count = 0
 
-            for row in cursor.fetchall():
-                sql_upper = row['sql'].upper()
+                for row in cursor.fetchall():
+                    sql_upper = row['sql'].upper()
 
-                # Count JOINs
-                join_count = sql_upper.count(' JOIN ')
+                    # Count JOINs
+                    join_count = sql_upper.count(' JOIN ')
 
-                # Check for complex patterns
-                has_subquery = '(' in sql_upper and 'SELECT' in sql_upper.split('(', 1)[1]
-                has_group_by = 'GROUP BY' in sql_upper
-                has_having = 'HAVING' in sql_upper
+                    # Check for complex patterns
+                    has_subquery = '(' in sql_upper and 'SELECT' in sql_upper.split('(', 1)[1]
+                    has_group_by = 'GROUP BY' in sql_upper
+                    has_having = 'HAVING' in sql_upper
 
-                if join_count >= 3 or has_subquery or (has_group_by and has_having):
-                    complex_count += 1
-                elif join_count >= 1 or has_group_by:
-                    medium += 1
-                else:
-                    simple += 1
+                    if join_count >= 3 or has_subquery or (has_group_by and has_having):
+                        complex_count += 1
+                    elif join_count >= 1 or has_group_by:
+                        medium += 1
+                    else:
+                        simple += 1
 
-            total = simple + medium + complex_count
+                total = simple + medium + complex_count
 
-            return {
-                "period_hours": hours,
-                "total_queries": total,
-                "complexity_breakdown": {
-                    "simple": simple,
-                    "medium": medium,
-                    "complex": complex_count
-                },
-                "complexity_percentages": {
-                    "simple": round((simple / total * 100) if total > 0 else 0, 2),
-                    "medium": round((medium / total * 100) if total > 0 else 0, 2),
-                    "complex": round((complex_count / total * 100) if total > 0 else 0, 2)
+                return {
+                    "period_hours": hours,
+                    "total_queries": total,
+                    "complexity_breakdown": {
+                        "simple": simple,
+                        "medium": medium,
+                        "complex": complex_count
+                    },
+                    "complexity_percentages": {
+                        "simple": round((simple / total * 100) if total > 0 else 0, 2),
+                        "medium": round((medium / total * 100) if total > 0 else 0, 2),
+                        "complex": round((complex_count / total * 100) if total > 0 else 0, 2)
+                    }
                 }
-            }
 
     except Exception as e:
+        print(f"❌ Query complexity error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to analyze complexity: {str(e)}")
 
 
@@ -433,35 +486,50 @@ async def analytics_health_check():
     {
       "status": "healthy",
       "database": "connected",
+      "backend": "postgresql",
       "total_queries_stored": 1247,
       "oldest_query": "2025-01-10T14:30:00",
       "newest_query": "2025-01-11T15:45:00"
     }
 ```
     """
+    if not ANALYTICS_ENABLED:
+        return {
+            "status": "disabled",
+            "database": "not_configured",
+            "backend": "none",
+            "message": "Analytics is disabled in config.yaml. Set analytics.enabled: true to enable."
+        }
+
     try:
         with analytics_db.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT 
-                    COUNT(*) as total,
-                    MIN(created_at) as oldest,
-                    MAX(created_at) as newest
-                FROM queries
-            """)
-            row = cursor.fetchone()
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total,
+                        MIN(created_at) as oldest,
+                        MAX(created_at) as newest
+                    FROM queries
+                """)
+                row = cursor.fetchone()
 
-            return {
-                "status": "healthy",
-                "database": "connected",
-                "total_queries_stored": row['total'],
-                "oldest_query": row['oldest'],
-                "newest_query": row['newest']
-            }
+                return {
+                    "status": "healthy",
+                    "database": "connected",
+                    "backend": "postgresql",
+                    "total_queries_stored": row['total'] if row else 0,
+                    "oldest_query": row['oldest'].isoformat() if row and row['oldest'] else None,
+                    "newest_query": row['newest'].isoformat() if row and row['newest'] else None
+                }
 
     except Exception as e:
+        print(f"❌ Health check error: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "status": "unhealthy",
-            "database": "disconnected",
+            "database": "error",
+            "backend": "postgresql",
             "error": str(e)
         }
 

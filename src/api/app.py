@@ -27,6 +27,8 @@ from src.core.query_history import query_history
 from src.api.admin_routes import router as admin_router
 from src.api.demo_routes import router as demo_router
 from src.api.analytics_routes import router as analytics_router
+from src.core.analytics_db_postgres import analytics_db
+
 
 
 # Plugin system
@@ -347,6 +349,108 @@ async def get_config():
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_dashboard():
     """Analytics Dashboard"""
+    if analytics_db is None:
+        return HTMLResponse(
+            content="""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Analytics Disabled - SQLatte</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+                            color: #e0e0e0;
+                            padding: 40px;
+                            text-align: center;
+                            min-height: 100vh;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .container {
+                            max-width: 800px;
+                            background: #2a2a2a;
+                            padding: 40px;
+                            border-radius: 12px;
+                            border: 1px solid #333;
+                        }
+                        h1 {
+                            font-size: 32px;
+                            margin-bottom: 20px;
+                            background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%);
+                            -webkit-background-clip: text;
+                            -webkit-text-fill-color: transparent;
+                        }
+                        p { color: #888; margin: 15px 0; }
+                        pre {
+                            background: #1a1a1a;
+                            padding: 20px;
+                            border-radius: 8px;
+                            text-align: left;
+                            overflow-x: auto;
+                            border: 1px solid #333;
+                            color: #D4A574;
+                        }
+                        a {
+                            color: #D4A574;
+                            text-decoration: none;
+                            margin-top: 20px;
+                            display: inline-block;
+                        }
+                        a:hover { text-decoration: underline; }
+                        .steps {
+                            text-align: left;
+                            margin: 30px 0;
+                            padding: 20px;
+                            background: #1a1a1a;
+                            border-radius: 8px;
+                        }
+                        .steps ol { margin: 10px 0; padding-left: 25px; }
+                        .steps li { margin: 10px 0; color: #e0e0e0; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>📊 Analytics Dashboard</h1>
+                        <p style="font-size: 18px; color: #D4A574;">Analytics is currently disabled.</p>
+
+                        <div class="steps">
+                            <p><strong>To enable analytics, follow these steps:</strong></p>
+                            <ol>
+                                <li>Install PostgreSQL (if not already installed)</li>
+                                <li>Create database and user:
+                                    <pre style="margin-top: 10px;">sudo -u postgres psql
+    CREATE DATABASE sqllatte_analytics;
+    CREATE USER sqllatte WITH PASSWORD 'your_password';
+    GRANT ALL PRIVILEGES ON DATABASE sqllatte_analytics TO sqllatte;
+    \\c sqllatte_analytics
+    GRANT ALL ON SCHEMA public TO sqllatte;</pre>
+                                </li>
+                                <li>Update <code>config/config.yaml</code>:
+                                    <pre style="margin-top: 10px;">analytics:
+      enabled: true
+      backend: "postgresql"
+      postgresql:
+        host: "localhost"
+        port: 5432
+        database: "sqllatte_analytics"
+        user: "sqllatte"
+        password: "your_password"</pre>
+                                </li>
+                                <li>Restart the server: <code>python run.py</code></li>
+                            </ol>
+                        </div>
+
+                        <p><a href="/">← Back to Home</a></p>
+                    </div>
+                </body>
+                </html>
+                """,
+            status_code=200
+        )
     dashboard_path = os.path.join(PROJECT_ROOT, 'frontend', 'analytics_dashboard.html')
 
     if not os.path.exists(dashboard_path):

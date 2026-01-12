@@ -1,7 +1,6 @@
-# src/core/query_history.py
 """
 SQLatte Query History & Favorites Manager
-Manages SQL query history and user favorites with SQLite persistence
+Manages SQL query history and user favorites with optional PostgreSQL persistence
 """
 
 import uuid
@@ -10,8 +9,8 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field, asdict
 
-# ← YENİ IMPORT EKLE
-from src.core.analytics_db import analytics_db
+# PostgreSQL backend (optional)
+from src.core.analytics_db_postgres import analytics_db
 
 
 @dataclass
@@ -26,7 +25,7 @@ class QueryRecord:
     created_at: datetime
     session_id: str
 
-    # ← YENİ ALANLAR
+    # Analytics fields
     success: bool = True
     error_message: Optional[str] = None
     widget_type: str = "default"  # 'default' or 'auth'
@@ -47,10 +46,10 @@ class QueryRecord:
             "execution_time_ms": self.execution_time_ms,
             "created_at": self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
             "session_id": self.session_id,
-            "success": self.success,  # ← YENİ
-            "error_message": self.error_message,  # ← YENİ
-            "widget_type": self.widget_type,  # ← YENİ
-            "user_id": self.user_id,  # ← YENİ
+            "success": self.success,
+            "error_message": self.error_message,
+            "widget_type": self.widget_type,
+            "user_id": self.user_id,
             "is_favorite": self.is_favorite,
             "favorite_name": self.favorite_name,
             "tags": self.tags
@@ -63,11 +62,12 @@ class QueryRecord:
 
 class QueryHistoryManager:
     """
-    Manages query history and favorites with SQLite persistence
+    Manages query history and favorites with optional PostgreSQL persistence
 
     Features:
-    - Persistent storage with SQLite
-    - Per-session query history (in-memory cache)
+    - Optional persistent storage with PostgreSQL
+    - In-memory cache (always available)
+    - Per-session query history
     - Global favorites (across sessions)
     - Deduplication
     - Auto-cleanup of old entries
@@ -80,10 +80,10 @@ class QueryHistoryManager:
         max_favorites: int = 100,
         history_retention_hours: int = 24
     ):
-        # ← SQLite backend
+        # PostgreSQL backend (optional - can be None)
         self.db = analytics_db
 
-        # ← In-memory cache for fast access (session-based)
+        # In-memory cache (always available)
         self.history: Dict[str, List[QueryRecord]] = {}  # session_id -> queries
         self.favorites: Dict[str, QueryRecord] = {}  # query_id -> record
 
@@ -92,7 +92,17 @@ class QueryHistoryManager:
         self.history_retention_hours = history_retention_hours
 
         print(f"✅ Query History Manager initialized")
-        print(f"   SQLite backend: {self.db.db_path}")
+
+        # Backend info
+        if self.db is not None:
+            try:
+                db_info = f"{self.db.connection_params['database']}@{self.db.connection_params['host']}:{self.db.connection_params['port']}"
+                print(f"   PostgreSQL backend: {db_info}")
+            except (AttributeError, KeyError):
+                print(f"   Backend: PostgreSQL")
+        else:
+            print(f"   Backend: In-memory only (no persistence)")
+
         print(f"   Max history/session: {max_history_per_session}")
         print(f"   Max favorites: {max_favorites}")
         print(f"   Retention: {history_retention_hours}h")
@@ -106,13 +116,13 @@ class QueryHistoryManager:
         row_count: int = 0,
         execution_time_ms: float = 0.0,
         tags: List[str] = None,
-        success: bool = True,  # ← YENİ
-        error_message: str = None,  # ← YENİ
-        widget_type: str = "default",  # ← YENİ
-        user_id: str = None  # ← YENİ
+        success: bool = True,
+        error_message: str = None,
+        widget_type: str = "default",
+        user_id: str = None
     ) -> QueryRecord:
         """
-        Add a query to history (both in-memory and SQLite)
+        Add a query to history (both in-memory and PostgreSQL if available)
 
         Args:
             session_id: User session ID
@@ -145,14 +155,15 @@ class QueryHistoryManager:
             created_at=datetime.now(),
             session_id=session_id,
             tags=tags or [],
-            success=success,  # ← YENİ
-            error_message=error_message,  # ← YENİ
-            widget_type=widget_type,  # ← YENİ
-            user_id=user_id  # ← YENİ
+            success=success,
+            error_message=error_message,
+            widget_type=widget_type,
+            user_id=user_id
         )
 
-        # ← SAVE TO SQLITE
-        self.db.save_query(record.to_dict())
+        # Save to PostgreSQL (if available)
+        if self.db is not None:
+            self.db.save_query(record.to_dict())
 
         # Check for duplicates (same SQL in last 5 queries)
         recent_hashes = [q.get_hash() for q in self.history[session_id][-5:]]
@@ -178,7 +189,7 @@ class QueryHistoryManager:
         tables_filter: List[str] = None
     ) -> List[Dict]:
         """
-        Get query history for a session (from SQLite)
+        Get query history for a session
 
         Args:
             session_id: User session ID
@@ -190,29 +201,48 @@ class QueryHistoryManager:
         Returns:
             List of query records
         """
-        # ← GET FROM SQLITE instead of in-memory
-        queries = self.db.get_queries(
-            session_id=session_id,
-            limit=limit,
-            offset=offset
-        )
+        # Use PostgreSQL if available, otherwise in-memory
+        if self.db is not None:
+            # Get from PostgreSQL
+            queries = self.db.get_queries(
+                session_id=session_id,
+                limit=limit,
+                offset=offset
+            )
 
-        # Apply search filter (client-side for now)
-        if search:
-            search_lower = search.lower()
-            queries = [
-                q for q in queries
-                if search_lower in q['question'].lower() or search_lower in q['sql'].lower()
-            ]
+            # Apply search filter (client-side)
+            if search:
+                search_lower = search.lower()
+                queries = [
+                    q for q in queries
+                    if search_lower in q['question'].lower() or search_lower in q['sql'].lower()
+                ]
 
-        # Apply tables filter
-        if tables_filter:
-            queries = [
-                q for q in queries
-                if any(t in q['tables'] for t in tables_filter)
-            ]
+            # Apply tables filter
+            if tables_filter:
+                queries = [
+                    q for q in queries
+                    if any(t in q['tables'] for t in tables_filter)
+                ]
 
-        return queries
+            return queries
+        else:
+            # In-memory fallback
+            if session_id not in self.history:
+                return []
+
+            queries = [q.to_dict() for q in self.history[session_id]]
+
+            # Apply filters
+            if search:
+                search_lower = search.lower()
+                queries = [q for q in queries if search_lower in q['question'].lower() or search_lower in q['sql'].lower()]
+
+            if tables_filter:
+                queries = [q for q in queries if any(t in q['tables'] for t in tables_filter)]
+
+            # Apply pagination
+            return queries[offset:offset + limit]
 
     def add_to_favorites(
         self,
@@ -245,17 +275,26 @@ class QueryHistoryManager:
         """
         if query_id:
             # Mark existing query as favorite
-            success = self.db.update_favorite(query_id, True, favorite_name)
-            if success:
-                query = self.db.get_query(query_id)
-                if query:
-                    # Update in-memory cache
-                    record = QueryRecord(**{
-                        **query,
-                        'created_at': datetime.fromisoformat(query['created_at'])
-                    })
-                    self.favorites[query_id] = record
-                    return record
+            if self.db is not None:
+                success = self.db.update_favorite(query_id, True, favorite_name)
+                if success:
+                    query = self.db.get_query(query_id)
+                    if query:
+                        record = QueryRecord(**{
+                            **query,
+                            'created_at': datetime.fromisoformat(query['created_at']) if isinstance(query['created_at'], str) else query['created_at']
+                        })
+                        self.favorites[query_id] = record
+                        return record
+            else:
+                # In-memory: Find and update
+                for session_queries in self.history.values():
+                    for q in session_queries:
+                        if q.id == query_id:
+                            q.is_favorite = True
+                            q.favorite_name = favorite_name
+                            self.favorites[query_id] = q
+                            return q
             return None
 
         elif question and sql:
@@ -272,7 +311,9 @@ class QueryHistoryManager:
                 tags=tags or []
             )
 
-            self.db.update_favorite(record.id, True, favorite_name)
+            if self.db is not None:
+                self.db.update_favorite(record.id, True, favorite_name)
+
             record.is_favorite = True
             record.favorite_name = favorite_name
             self.favorites[record.id] = record
@@ -283,12 +324,18 @@ class QueryHistoryManager:
 
     def remove_from_favorites(self, query_id: str) -> bool:
         """Remove a query from favorites"""
-        success = self.db.update_favorite(query_id, False, None)
-
-        if success and query_id in self.favorites:
-            del self.favorites[query_id]
-
-        return success
+        if self.db is not None:
+            success = self.db.update_favorite(query_id, False, None)
+            if success and query_id in self.favorites:
+                del self.favorites[query_id]
+            return success
+        else:
+            # In-memory
+            if query_id in self.favorites:
+                self.favorites[query_id].is_favorite = False
+                del self.favorites[query_id]
+                return True
+            return False
 
     def get_favorites(
         self,
@@ -296,7 +343,7 @@ class QueryHistoryManager:
         search: str = None
     ) -> List[Dict]:
         """
-        Get all favorites (from SQLite)
+        Get all favorites
 
         Args:
             limit: Max records
@@ -305,74 +352,115 @@ class QueryHistoryManager:
         Returns:
             List of favorite queries
         """
-        # ← GET FROM SQLITE
-        with self.db.get_connection() as conn:
-            query = "SELECT * FROM queries WHERE is_favorite = 1"
-            params = []
+        if self.db is not None:
+            # PostgreSQL
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    query = "SELECT * FROM queries WHERE is_favorite = TRUE"
+                    params = []
 
+                    if search:
+                        query += " AND (question ILIKE %s OR sql ILIKE %s)"
+                        params.extend([f"%{search}%", f"%{search}%"])
+
+                    query += " ORDER BY created_at DESC LIMIT %s"
+                    params.append(limit)
+
+                    cursor.execute(query, params)
+
+                    results = []
+                    for row in cursor.fetchall():
+                        result = self.db._row_to_dict(row)
+                        results.append(result)
+
+                    return results
+        else:
+            # In-memory fallback
+            favs = list(self.favorites.values())
             if search:
-                query += " AND (question LIKE ? OR sql LIKE ?)"
-                params.extend([f"%{search}%", f"%{search}%"])
-
-            query += " ORDER BY created_at DESC LIMIT ?"
-            params.append(limit)
-
-            cursor = conn.execute(query, params)
-            return [self.db._row_to_dict(row) for row in cursor.fetchall()]
+                search_lower = search.lower()
+                favs = [f for f in favs if search_lower in f.question.lower() or search_lower in f.sql.lower()]
+            return [f.to_dict() for f in favs[-limit:]]
 
     def delete_query(self, query_id: str, session_id: str) -> bool:
         """Delete a query from history"""
-        # Delete from SQLite
-        success = self.db.delete_query(query_id)
+        if self.db is not None:
+            # Delete from PostgreSQL
+            success = self.db.delete_query(query_id)
 
-        # Delete from in-memory cache
-        if success and session_id in self.history:
-            self.history[session_id] = [
-                q for q in self.history[session_id] if q.id != query_id
-            ]
+            # Delete from in-memory cache
+            if success and session_id in self.history:
+                self.history[session_id] = [
+                    q for q in self.history[session_id] if q.id != query_id
+                ]
 
-        return success
+            return success
+        else:
+            # In-memory only
+            if session_id in self.history:
+                original_len = len(self.history[session_id])
+                self.history[session_id] = [q for q in self.history[session_id] if q.id != query_id]
+                return len(self.history[session_id]) < original_len
+            return False
 
     def clear_history(self, session_id: str) -> int:
         """Clear all history for a session (keeps favorites)"""
-        if session_id not in self.history:
-            return 0
-
-        # Get non-favorite count
-        removed = sum(1 for q in self.history[session_id] if not q.is_favorite)
+        removed = 0
 
         # Clear in-memory
-        self.history[session_id] = [
-            q for q in self.history[session_id] if q.is_favorite
-        ]
+        if session_id in self.history:
+            removed = sum(1 for q in self.history[session_id] if not q.is_favorite)
+            self.history[session_id] = [
+                q for q in self.history[session_id] if q.is_favorite
+            ]
 
-        # Clear from SQLite (non-favorites only)
-        with self.db.get_connection() as conn:
-            conn.execute("""
-                DELETE FROM queries
-                WHERE session_id = ? AND is_favorite = 0
-            """, (session_id,))
+        # Clear from PostgreSQL (if available)
+        if self.db is not None:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        DELETE FROM queries
+                        WHERE session_id = %s AND is_favorite = FALSE
+                    """, (session_id,))
 
         return removed
 
     def get_stats(self) -> Dict:
-        """Get statistics about history and favorites (from SQLite)"""
-        # ← GET FROM SQLITE
-        summary = self.db.get_analytics_summary(hours=24)
+        """Get statistics about history and favorites"""
+        if self.db is not None:
+            # PostgreSQL stats
+            summary = self.db.get_analytics_summary(hours=24)
 
-        return {
-            "total_sessions": summary.get('unique_sessions', 0),
-            "total_queries": summary.get('total_queries', 0),
-            "total_favorites": len(self.get_favorites(limit=1000)),
-            "top_tables": dict((t['table'], t['count']) for t in summary.get('top_tables', [])),
-            "retention_hours": self.history_retention_hours,
-            "success_rate": summary.get('success_rate', 0),
-            "avg_execution_time_ms": summary.get('avg_execution_time_ms', 0)
-        }
+            return {
+                "total_sessions": summary.get('unique_sessions', 0),
+                "total_queries": summary.get('total_queries', 0),
+                "total_favorites": len(self.get_favorites(limit=1000)),
+                "top_tables": dict((t['table'], t['count']) for t in summary.get('top_tables', [])),
+                "retention_hours": self.history_retention_hours,
+                "success_rate": summary.get('success_rate', 0),
+                "avg_execution_time_ms": summary.get('avg_execution_time_ms', 0),
+                "backend": "postgresql"
+            }
+        else:
+            # In-memory stats
+            total_queries = sum(len(queries) for queries in self.history.values())
+            return {
+                "total_sessions": len(self.history),
+                "total_queries": total_queries,
+                "total_favorites": len(self.favorites),
+                "top_tables": {},
+                "retention_hours": self.history_retention_hours,
+                "backend": "in-memory"
+            }
 
     def get_recent_tables(self, session_id: str, limit: int = 5) -> List[str]:
         """Get most recently used tables for a session"""
-        queries = self.db.get_queries(session_id=session_id, limit=10)
+        if self.db is not None:
+            queries = self.db.get_queries(session_id=session_id, limit=10)
+        else:
+            if session_id not in self.history:
+                return []
+            queries = [q.to_dict() for q in self.history[session_id][-10:]]
 
         # Flatten and dedupe tables
         seen = set()
@@ -416,7 +504,14 @@ class QueryHistoryManager:
                 })
 
         # 2. From recent history (same session, same tables)
-        recent = self.db.get_queries(session_id=session_id, limit=20)
+        if self.db is not None:
+            recent = self.db.get_queries(session_id=session_id, limit=20)
+        else:
+            if session_id in self.history:
+                recent = [q.to_dict() for q in self.history[session_id][-20:]]
+            else:
+                recent = []
+
         for query in recent:
             if any(t in query.get('tables', []) for t in current_tables):
                 if not any(s['query']['id'] == query['id'] for s in suggestions):

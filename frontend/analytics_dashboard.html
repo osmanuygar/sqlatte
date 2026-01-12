@@ -424,40 +424,64 @@
         }
 
         // Load summary metrics
-        async function loadSummary() {
-            const response = await fetch(`${API_BASE}/api/analytics/summary?hours=${currentHours}`);
-            const data = await response.json();
+       async function loadSummary() {
+            try {
+                const response = await fetch(`${API_BASE}/api/analytics/summary?hours=${currentHours}`);
 
-            const metricsHtml = `
-                <div class="metric-card">
-                    <div class="metric-label">Total Queries</div>
-                    <div class="metric-value">${data.total_queries.toLocaleString()}</div>
-                    <div class="metric-subtitle">Last ${currentHours}h</div>
-                </div>
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
 
-                <div class="metric-card">
-                    <div class="metric-label">Success Rate</div>
-                    <div class="metric-value">${data.success_rate}%</div>
-                    <div class="metric-subtitle">${data.successful_queries} successful</div>
-                </div>
+                const data = await response.json();
 
-                <div class="metric-card">
-                    <div class="metric-label">Avg Response Time</div>
-                    <div class="metric-value">${Math.round(data.avg_execution_time_ms)}<span style="font-size: 18px;">ms</span></div>
-                    <div class="metric-subtitle">Per query</div>
-                </div>
+                // ✅ GÜVENLI ERİŞİM - Default values ekle
+                const totalQueries = data.total_queries || 0;
+                const successRate = data.success_rate || 0;
+                const avgTime = data.avg_execution_time_ms || 0;
+                const uniqueSessions = data.unique_sessions || 0;
+                const uniqueUsers = data.unique_users || 0;
+                const successfulQueries = data.successful_queries || 0;
 
-                <div class="metric-card">
-                    <div class="metric-label">Active Sessions</div>
-                    <div class="metric-value">${data.unique_sessions}</div>
-                    <div class="metric-subtitle">${data.unique_users || 0} unique users</div>
-                </div>
-            `;
+                const metricsHtml = `
+                    <div class="metric-card">
+                        <div class="metric-label">Total Queries</div>
+                        <div class="metric-value">${totalQueries.toLocaleString()}</div>
+                        <div class="metric-subtitle">Last ${currentHours}h</div>
+                    </div>
 
-            document.getElementById('metrics-grid').innerHTML = metricsHtml;
+                    <div class="metric-card">
+                        <div class="metric-label">Success Rate</div>
+                        <div class="metric-value">${successRate.toFixed(1)}%</div>
+                        <div class="metric-subtitle">${successfulQueries.toLocaleString()} successful</div>
+                    </div>
 
-            // Update top tables
-            updateTopTables(data.top_tables);
+                    <div class="metric-card">
+                        <div class="metric-label">Avg Response Time</div>
+                        <div class="metric-value">${Math.round(avgTime)}<span style="font-size: 18px;">ms</span></div>
+                        <div class="metric-subtitle">Per query</div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">Active Sessions</div>
+                        <div class="metric-value">${uniqueSessions.toLocaleString()}</div>
+                        <div class="metric-subtitle">${uniqueUsers} unique users</div>
+                    </div>
+                `;
+
+                document.getElementById('metrics-grid').innerHTML = metricsHtml;
+
+                // Update top tables
+                updateTopTables(data.top_tables || []);
+
+            } catch (error) {
+                console.error('Error loading summary:', error);
+                document.getElementById('metrics-grid').innerHTML = `
+                    <div class="error">
+                        Failed to load metrics: ${error.message}<br>
+                        <small>Check console for details</small>
+                    </div>
+                `;
+            }
         }
 
         // Load hourly statistics
