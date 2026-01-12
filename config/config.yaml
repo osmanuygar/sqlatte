@@ -9,6 +9,17 @@ app:
   host: "0.0.0.0"
   port: 8000
 
+# Analytics Database Configuration
+analytics:
+  enabled: false
+  backend: "postgresql"
+  postgresql:
+    host: "localhost"
+    port: 5432
+    database: "sqlatte_analytics"
+    user: "sqlatte"
+    password: "sqlatte"
+
 # ============================================
 # UTHENTICATION PLUGIN
 # ============================================
