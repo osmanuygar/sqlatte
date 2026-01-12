@@ -93,8 +93,14 @@ python run.py
 # Open in browser
 http://localhost:8000
 
-# Access Admin Panel (NEW!)
+# Access Admin Panel 
 http://localhost:8000/admin
+
+# Access Auth Plugin Panel 
+http://localhost:8000/demo
+
+# Access Analytics Panel 
+http://localhost:8000/analytics
 ```
 
 **That's it!** 🎉
