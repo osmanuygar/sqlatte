@@ -28,11 +28,12 @@
 - 🔗 **Multi-Table JOINs** - Automatically detects and creates table relationships
 - 🧠 **Conversation Memory** - Remembers chat history per session (in-memory)
 - 🎯 **Context-Aware Responses** - Understands follow-up questions
-- 📱 **Widget-Based UI** - Fullscreen modal with modern, responsive design
 - ⚙️ **Admin Panel** - Runtime configuration without restart
-- 🎨 **SQL Syntax Highlighting** - Beautiful colored SQL queries
+- ⭐ **Query History & Favorites** - Save and replay queries
 - 🔌 **Plugin System** - Extensible architecture for custom functionality
-- ⚡ **Fast & Simple** - Single YAML config file, no complex setup
+- 📊 **Analytics Dashboard** (Optional) - Query metrics and insights
+- 🎨 **Embeddable Widgets** - Easy integration into any website
+- ⚡  **Fast & Simple** - Single YAML config file, no complex setup
 - 🐳 **Docker Ready** - Easy deployment with Docker & Docker Compose
 
 ---
@@ -73,6 +74,15 @@ database:
     catalog: "hive"
     schema: "default"
 ```
+#### Analytics (optional - disabled by default)
+```yaml
+analytics:
+  enabled: false  # Query history is in-memory only
+```
+
+**Leave it at `false`** - SQLatte works perfectly without it!
+
+---
 
 ### 3. Run
 
@@ -88,6 +98,37 @@ http://localhost:8000/admin
 ```
 
 **That's it!** 🎉
+
+<details>
+<summary><b>Chat Screen</b></summary>
+<p align="left">
+  <img src="frontend/static/image/img_2.png" width="600" alt="SQLatte widget">
+</p>
+</details>
+<details>
+<summary><b>SQL Screen</b></summary>
+<p align="left">
+  <img src="frontend/static/image/img.png" width="600" alt="SQLatte widget">
+</p>
+</details>
+<details>
+<summary><b>Graphs Screen</b></summary>
+<p align="left">
+  <img src="frontend/static/image/graphs.png" width="600" alt="SQLatte widget">
+</p>
+</details>
+<details>
+<summary><b>Admin Screen</b></summary>
+<p align="left">
+  <img src="frontend/static/image/admin.png" width="600" alt="SQLatte widget">
+</p>
+</details>
+<details>
+<summary><b>Analytics Screen</b></summary>
+<p align="left">
+  <img src="frontend/static/image/analytics.png" width="600" alt="SQLatte widget">
+</p>
+</details>
 
 
 ---
