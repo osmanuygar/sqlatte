@@ -718,19 +718,21 @@
         function updateTopTables(tables) {
             const tbody = document.getElementById('top-tables-table').querySelector('tbody');
 
-            if (tables.length === 0) {
+            if (!tables || tables.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4">No data available</td></tr>';
                 return;
             }
 
-            const total = Object.values(tables).reduce((sum, count) => sum + count, 0);
+            // Calculate total count
+            const total = tables.reduce((sum, item) => sum + item.count, 0);
 
-            tbody.innerHTML = Object.entries(tables).map(([table, count], index) => `
+            // Render table rows
+            tbody.innerHTML = tables.map((item, index) => `
                 <tr>
                     <td><strong>#${index + 1}</strong></td>
-                    <td>${table}</td>
-                    <td>${count}</td>
-                    <td>${((count / total) * 100).toFixed(1)}%</td>
+                    <td>${item.table}</td>
+                    <td>${item.count}</td>
+                    <td>${((item.count / total) * 100).toFixed(1)}%</td>
                 </tr>
             `).join('');
         }
