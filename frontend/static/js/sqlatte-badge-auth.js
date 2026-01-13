@@ -765,7 +765,10 @@
                     data.explanation
                 );
                 addMessage('assistant', formatted);
-                saveToHistory(question, data);
+
+                // Save to history with generated queryId
+                const generatedQueryId = data.query_id || ('query_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+                saveToHistory(question, data, generatedQueryId);
             }
 
             // YENİ: Reload conversation history
@@ -1154,6 +1157,14 @@
             return '<div style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
         }
 
+        // FIX: Generate queryId if not provided
+        if (!queryId && sql) {
+            queryId = 'query_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+            console.log('🔍 Generated queryId:', queryId);
+        } else {
+            console.log('🔍 Using provided queryId:', queryId);
+        }
+
         const resultId = 'result-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         const normalizedData = normalizeRows(columns, data);
         window.sqlatteAuthResultsCache[resultId] = { columns, data: normalizedData };
@@ -1187,7 +1198,7 @@
             <div class="sqlatte-table-actions">
                 <button onclick="SQLatteAuthWidget.exportToCSV('${resultId}')">📥 CSV</button>
                 <button onclick="SQLatteAuthWidget.handleChartClick('${resultId}')">📊 Chart</button>
-                ${queryId ? `<button onclick="SQLatteAuthWidget.addToFavorites('${queryId}')">⭐ Save</button>` : ''}
+                <button onclick="SQLatteAuthWidget.addToFavorites('${queryId}')">⭐ Save</button>
             </div>
             <div class="sqlatte-table-wrapper">
                 <table class="sqlatte-table">
@@ -1213,11 +1224,14 @@
     // ============================================
     // HISTORY & FAVORITES
     // ============================================
-    function saveToHistory(question, data) {
+    function saveToHistory(question, data, queryId = null) {
         if (!data.sql) return;
 
+        // Use provided queryId or generate new one
+        const id = queryId || ('query_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+
         const historyItem = {
-            id: Date.now().toString(),
+            id: id,
             question: question,
             sql: data.sql,
             timestamp: new Date().toISOString()
@@ -1244,9 +1258,23 @@
         }
     }
 
+    function loadFavorites() {
+        const stored = localStorage.getItem('sqlatte_auth_favorites');
+        if (stored) {
+            try {
+                favorites = JSON.parse(stored);
+            } catch (e) {
+                favorites = [];
+            }
+        }
+    }
+
     function toggleHistory() {
         isHistoryPanelOpen = !isHistoryPanelOpen;
         const panel = document.getElementById('sqlatte-auth-history-panel');
+
+        console.log('🔍 toggleHistory called, isOpen:', isHistoryPanelOpen);
+        console.log('🔍 Panel element:', panel);
 
         if (isHistoryPanelOpen) {
             // Close favorites if open
@@ -1256,9 +1284,21 @@
 
             renderHistoryPanel();
             panel.style.display = 'flex';
+            console.log('🔍 Before transform - display:', panel.style.display, 'transform:', panel.style.transform);
+            // FIX: Animate panel into view
+            setTimeout(() => {
+                panel.style.transform = 'translateX(0)';
+                console.log('🔍 After transform - transform:', panel.style.transform);
+            }, 10);
             console.log('📜 History panel opened');
         } else {
-            panel.style.display = 'none';
+            panel.style.transform = 'translateX(-100%)';
+            console.log('🔍 Closing - transform:', panel.style.transform);
+            // Wait for animation before hiding
+            setTimeout(() => {
+                panel.style.display = 'none';
+                console.log('🔍 After timeout - display:', panel.style.display);
+            }, 300);
             console.log('📜 History panel closed');
         }
     }
@@ -1305,12 +1345,11 @@
 
         // Reverse to show newest first
         queryHistory.slice().reverse().forEach((item) => {
-            const safeSQL = escapeHtml(item.sql || '').replace(/'/g, "\\'");
             const safeQuestion = escapeHtml(item.question || 'Unnamed query');
             const date = new Date(item.timestamp).toLocaleString();
 
             html += `
-                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuery('${safeSQL}')">
+                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuestion('${safeQuestion.replace(/'/g, "\\'")}')">
                     <div class="sqlatte-history-question">${safeQuestion}</div>
                     <div class="sqlatte-history-time">${date}</div>
                 </div>
@@ -1336,6 +1375,9 @@
         isFavoritesPanelOpen = !isFavoritesPanelOpen;
         const panel = document.getElementById('sqlatte-auth-favorites-panel');
 
+        console.log('🔍 toggleFavorites called, isOpen:', isFavoritesPanelOpen);
+        console.log('🔍 Panel element:', panel);
+
         if (isFavoritesPanelOpen) {
             // Close history if open
             if (isHistoryPanelOpen) {
@@ -1343,10 +1385,22 @@
             }
 
             renderFavoritesPanel();
-            panel.style.display = 'block';
+            panel.style.display = 'flex';
+            console.log('🔍 Before transform - display:', panel.style.display, 'transform:', panel.style.transform);
+            // FIX: Animate panel into view
+            setTimeout(() => {
+                panel.style.transform = 'translateX(0)';
+                console.log('🔍 After transform - transform:', panel.style.transform);
+            }, 10);
             console.log('⭐ Favorites panel opened');
         } else {
-            panel.style.display = 'none';
+            panel.style.transform = 'translateX(-100%)';
+            console.log('🔍 Closing - transform:', panel.style.transform);
+            // Wait for animation before hiding
+            setTimeout(() => {
+                panel.style.display = 'none';
+                console.log('🔍 After timeout - display:', panel.style.display);
+            }, 300);
             console.log('⭐ Favorites panel closed');
         }
     }
@@ -1385,9 +1439,11 @@
         `;
 
         favorites.forEach((item) => {
+            const safeQuestion = escapeHtml(item.question || item.name || 'Unnamed favorite');
+
             html += `
-                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuery(\`${escapeHtml(item.sql).replace(/`/g, '\\`')}\`)">
-                    <div class="sqlatte-history-question">${escapeHtml(item.name || item.question)}</div>
+                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuestion('${safeQuestion.replace(/'/g, "\\'")}')">
+                    <div class="sqlatte-history-question">${safeQuestion}</div>
                     <button onclick="event.stopPropagation(); SQLatteAuthWidget.removeFavorite('${item.id}')"
                             style="position: absolute; right: 10px; top: 10px; background: transparent; border: none; cursor: pointer; font-size: 16px;">
                         🗑️
@@ -1415,55 +1471,18 @@
         }
     }
 
-
-    function renderHistoryPanel() {
-        const panel = document.getElementById('sqlatte-auth-history-panel');
-        if (!panel) return;
-
-        // Load from localStorage
-        const stored = localStorage.getItem('sqlatte_auth_history');
-        if (stored) {
-            queryHistory = JSON.parse(stored);
+    function rerunQuestion(question) {
+        const input = document.getElementById('sqlatte-auth-input');
+        if (input) {
+            input.value = question;
+            input.focus();
+            // Auto-submit after a brief delay
+            setTimeout(() => {
+                sendMessage();
+            }, 100);
         }
-
-        if (queryHistory.length === 0) {
-            panel.innerHTML = `
-                <div class="sqlatte-panel-header">
-                    <h3>📜 Query History</h3>
-                    <button onclick="SQLatteAuthWidget.toggleHistory()">✕</button>
-                </div>
-                <div class="sqlatte-panel-empty">
-                    <div style="font-size: 48px; margin-bottom: 16px;">📜</div>
-                    <p>No history yet</p>
-                    <small>Your queries will appear here</small>
-                </div>
-            `;
-            return;
-        }
-
-        let html = `
-            <div class="sqlatte-panel-header">
-                <h3>📜 History (${queryHistory.length})</h3>
-                <div style="display: flex; gap: 8px;">
-                    <button onclick="SQLatteAuthWidget.clearHistory()" title="Clear All">🗑️</button>
-                    <button onclick="SQLatteAuthWidget.toggleHistory()">✕</button>
-                </div>
-            </div>
-            <div class="sqlatte-panel-list">
-        `;
-
-        queryHistory.slice().reverse().forEach((item, index) => {
-            html += `
-                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuery(\`${escapeHtml(item.sql).replace(/`/g, '\\`')}\`)">
-                    <div class="sqlatte-history-question">${escapeHtml(item.question)}</div>
-                    <div class="sqlatte-history-time">${new Date(item.timestamp).toLocaleString()}</div>
-                </div>
-            `;
-        });
-
-        html += '</div>';
-        panel.innerHTML = html;
     }
+
 
     // ============================================
     // UTILITY FUNCTIONS
@@ -1706,6 +1725,7 @@ function visualizeData(resultId) {
 
         injectStyles();
         loadHistory();
+        loadFavorites();
 
         setTimeout(() => widget.classList.add('sqlatte-widget-visible'), 500);
 
@@ -2098,6 +2118,7 @@ function visualizeData(resultId) {
     flex-direction: column;
     overflow: hidden;
     background: #0f0f0f;
+    position: relative; /* FIX: Panel'lerin düzgün konumlanması için */
 }
 
 
@@ -3004,6 +3025,7 @@ em {
         clearHistory: clearHistory,
         removeFavorite: removeFavorite,
         rerunQuery: rerunQuery,
+        rerunQuestion: rerunQuestion,
 
         // Utilities
         copySQLAction: copySQLAction,
@@ -3017,9 +3039,58 @@ em {
         exportToCSV: exportToCSV,
         handleChartClick: handleChartClick,
         addToFavorites: (queryId) => {
-            favorites.push({ id: queryId, name: 'Query ' + queryId });
+            console.log('🔍 addToFavorites called with queryId:', queryId);
+
+            // Reload history from localStorage to ensure we have latest data
+            const stored = localStorage.getItem('sqlatte_auth_history');
+            if (stored) {
+                try {
+                    queryHistory = JSON.parse(stored);
+                    console.log('🔍 Loaded history:', queryHistory.length, 'items');
+                } catch (e) {
+                    console.error('🔍 Failed to load history:', e);
+                    queryHistory = [];
+                }
+            }
+
+            console.log('🔍 Searching for queryId in history...');
+            console.log('🔍 All history IDs:', queryHistory.map(item => item.id));
+
+            // Find query in history
+            const historyItem = queryHistory.find(item => item.id === queryId);
+
+            console.log('🔍 Found history item:', historyItem);
+
+            if (!historyItem) {
+                console.error('🔍 Query not found! QueryId:', queryId);
+                showToast('❌ Query not found in history', 'error');
+                return;
+            }
+
+            // Check if already in favorites
+            const exists = favorites.some(fav => fav.id === queryId);
+            if (exists) {
+                showToast('⚠️ Already in favorites', 'info');
+                return;
+            }
+
+            // Add to favorites
+            const favoriteItem = {
+                id: queryId,
+                question: historyItem.question,
+                sql: historyItem.sql,
+                timestamp: new Date().toISOString()
+            };
+
+            favorites.push(favoriteItem);
             localStorage.setItem('sqlatte_auth_favorites', JSON.stringify(favorites));
+            console.log('🔍 Added to favorites:', favoriteItem);
             showToast('⭐ Added to favorites', 'success');
+
+            // Refresh favorites panel if open
+            if (isFavoritesPanelOpen) {
+                renderFavoritesPanel();
+            }
         },
 
         // Config
