@@ -32,6 +32,8 @@
     let favorites = [];
     let isHistoryPanelOpen = false;
     let isFavoritesPanelOpen = false;
+    let isSchedulesPanelOpen = false;  // NEW
+    let schedules = [];  // NEW
 
     // Results cache
     window.sqlatteResultsCache = {};
@@ -524,6 +526,39 @@
                 method: 'DELETE'
             });
 
+            const result = await response.json();
+
+            // Check if schedules exist
+            if (result.error === 'scheduled_queries_exist') {
+                const count = result.schedules.length;
+                const scheduleNames = result.schedules
+                    .map(s => `  • ${s.name} (${s.frequency})`)
+                    .join('\n');
+
+                const message = `⚠️ Bu query'e bağlı ${count} aktif schedule var:\n\n${scheduleNames}\n\nFavorite ve tüm schedule'ları silmek istiyor musunuz?`;
+
+                if (confirm(message)) {
+                    // Force delete - cascade
+                    const forceResponse = await fetch(
+                        `${BADGE_CONFIG.apiBase}/favorites/${queryId}?force=true`,
+                        { method: 'DELETE' }
+                    );
+
+                    const forceResult = await forceResponse.json();
+
+                    if (forceResponse.ok) {
+                        showToast(`✅ Favorite ve ${forceResult.schedules_deleted} schedule silindi`, 'success');
+                        loadFavorites();
+                        loadHistory();
+                    } else {
+                        throw new Error(forceResult.detail || 'Failed to delete');
+                    }
+                } else {
+                    showToast('❌ İptal edildi', 'info');
+                }
+                return;
+            }
+
             if (response.ok) {
                 showToast('🗑️ Removed from favorites', 'info');
                 loadFavorites();
@@ -531,6 +566,7 @@
             }
         } catch (error) {
             console.error('Error removing favorite:', error);
+            showToast('❌ Failed to remove favorite', 'error');
         }
     }
 
@@ -703,6 +739,370 @@
         isFavoritesPanelOpen = false;
     }
 
+    /**
+     * ============================================
+     * SCHEDULES PANEL FUNCTIONS
+     * ============================================
+     */
+
+    async function loadSchedules() {
+        try {
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/api/schedules`);
+
+            if (!response.ok) {
+                console.error('Failed to load schedules');
+                return;
+            }
+
+            const data = await response.json();
+            schedules = data || [];
+
+            console.log('✅ Loaded schedules:', schedules.length);
+            renderSchedulesPanel();
+
+        } catch (error) {
+            console.error('❌ Failed to load schedules:', error);
+        }
+    }
+
+    function toggleSchedulesPanel() {
+        const panel = document.getElementById('sqlatte-schedules-panel');
+        const btn = document.getElementById('sqlatte-schedules-btn');
+
+        if (isSchedulesPanelOpen) {
+            closeSchedulesPanel();
+        } else {
+            closeHistoryPanel();
+            closeFavoritesPanel();
+            panel.classList.add('sqlatte-panel-open');
+            btn.classList.add('sqlatte-toolbar-btn-active');
+            isSchedulesPanelOpen = true;
+            loadSchedules();
+        }
+    }
+
+    function closeSchedulesPanel() {
+        const panel = document.getElementById('sqlatte-schedules-panel');
+        const btn = document.getElementById('sqlatte-schedules-btn');
+        if (panel) panel.classList.remove('sqlatte-panel-open');
+        if (btn) btn.classList.remove('sqlatte-toolbar-btn-active');
+        isSchedulesPanelOpen = false;
+    }
+
+    function renderSchedulesPanel() {
+        const panelContent = document.querySelector('#sqlatte-schedules-panel .sqlatte-panel-content');
+        if (!panelContent) return;
+
+        if (schedules.length === 0) {
+            panelContent.innerHTML = `
+                <div class="sqlatte-panel-empty">
+                    <span>📅</span>
+                    <p>No schedules yet</p>
+                    <button onclick="SQLatteWidget.openScheduleModal()" class="sqlatte-btn-primary" style="margin-top: 15px; padding: 10px 20px;">
+                        Create Schedule
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="sqlatte-schedules-list" style="padding: 15px;">';
+
+        schedules.forEach(schedule => {
+            const statusClass = schedule.enabled ? 'success' : 'warning';
+            const statusText = schedule.enabled ? 'Active' : 'Paused';
+            const toggleIcon = schedule.enabled ? '⏸️' : '▶️';
+            const toggleTitle = schedule.enabled ? 'Pause' : 'Resume';
+
+            html += `
+                <div class="sqlatte-schedule-card" style="background: #0f0f0f; border: 1px solid #333; border-radius: 8px; padding: 15px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <h5 style="margin: 0 0 5px 0; color: #e0e0e0;">${escapeHtml(schedule.name)}</h5>
+                            <span style="display: inline-block; padding: 2px 8px; background: ${statusClass === 'success' ? '#4ade8033' : '#fbbf2433'}; color: ${statusClass === 'success' ? '#4ade80' : '#fbbf24'}; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase;">
+                                ${statusText}
+                            </span>
+                        </div>
+                        <div style="display: flex; gap: 5px;">
+                            <button onclick="SQLatteWidget.runScheduleNow('${schedule.id}')" title="Run Now" style="padding: 5px 8px; background: transparent; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 12px;">
+                                ▶️
+                            </button>
+                            <button onclick="SQLatteWidget.toggleSchedule('${schedule.id}')" title="${toggleTitle}" style="padding: 5px 8px; background: transparent; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 12px;">
+                                ${toggleIcon}
+                            </button>
+                            <button onclick="SQLatteWidget.deleteSchedule('${schedule.id}', '${escapeHtml(schedule.name).replace(/'/g, "\\'")}');" title="Delete" style="padding: 5px 8px; background: transparent; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 12px;">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="font-size: 12px; color: #888; margin-bottom: 10px;">
+                        <div><strong style="color: #e0e0e0;">Frequency:</strong> ${schedule.frequency}</div>
+                        <div><strong style="color: #e0e0e0;">Recipients:</strong> ${schedule.email_recipients.slice(0, 2).join(', ')}${schedule.email_recipients.length > 2 ? '...' : ''}</div>
+                        <div><strong style="color: #e0e0e0;">Format:</strong> ${schedule.format.toUpperCase()}</div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-size: 11px;">
+                        <div>
+                            <small style="color: #666;">Last Run</small>
+                            <div style="color: #D4A574;">${schedule.last_run ? new Date(schedule.last_run).toLocaleString('en-US', {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'Never'}</div>
+                        </div>
+                        <div>
+                            <small style="color: #666;">Next Run</small>
+                            <div style="color: #D4A574;">${schedule.next_run ? new Date(schedule.next_run).toLocaleString('en-US', {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '-'}</div>
+                        </div>
+                        <div>
+                            <small style="color: #666;">Total</small>
+                            <div style="color: #D4A574;">${schedule.run_count || 0}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        panelContent.innerHTML = html;
+    }
+
+    async function runScheduleNow(scheduleId) {
+        try {
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/api/schedules/${scheduleId}/run`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) throw new Error('Failed to run schedule');
+
+            showToast('✅ Schedule execution started!', 'success');
+            setTimeout(() => loadSchedules(), 2000);
+
+        } catch (error) {
+            console.error('Failed to run schedule:', error);
+            showToast('Failed to run schedule', 'error');
+        }
+    }
+
+    async function toggleSchedule(scheduleId) {
+        try {
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/api/schedules/${scheduleId}/toggle`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) throw new Error('Failed to toggle schedule');
+
+            showToast('✅ Schedule updated', 'success');
+            loadSchedules();
+
+        } catch (error) {
+            console.error('Failed to toggle schedule:', error);
+            showToast('Failed to update schedule', 'error');
+        }
+    }
+
+    async function deleteSchedule(scheduleId, scheduleName) {
+        if (!confirm(`Delete schedule "${scheduleName}"?`)) return;
+
+        try {
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/api/schedules/${scheduleId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) throw new Error('Failed to delete schedule');
+
+            showToast('✅ Schedule deleted', 'success');
+            loadSchedules();
+
+        } catch (error) {
+            console.error('Failed to delete schedule:', error);
+            showToast('Failed to delete schedule', 'error');
+        }
+    }
+
+    function openScheduleModal(queryId = null) {
+        console.log('📅 Opening schedule modal, queryId:', queryId);
+        console.log('📅 Favorites count:', favorites.length);
+
+        const modal = document.createElement('div');
+        modal.id = 'sqlatte-schedule-modal';
+        modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 999999999;';
+
+        modal.innerHTML = `
+            <div style="width: 500px; max-width: 90vw; max-height: 80vh; overflow-y: auto; background: #1a1a1a; border: 1px solid #333; border-radius: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid #333;">
+                    <h3 style="margin: 0; color: #D4A574; font-size: 18px;">📅 Create Schedule</h3>
+                    <button onclick="SQLatteWidget.closeScheduleModal()" style="background: none; border: none; color: #888; font-size: 24px; cursor: pointer;">✕</button>
+                </div>
+
+                <div style="padding: 20px;">
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Select Query *</label>
+                        <select id="schedule-query-select" style="width: 100%; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                            <option value="">Choose from favorites...</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Schedule Name *</label>
+                        <input type="text" id="schedule-name" placeholder="e.g., Daily Sales Report" style="width: 100%; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Frequency *</label>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                            <button class="freq-tab active" data-freq="daily" style="padding: 10px; background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%); border: 1px solid #D4A574; border-radius: 6px; color: white; cursor: pointer; font-weight: 600;">Daily</button>
+                            <button class="freq-tab" data-freq="weekly" style="padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #e0e0e0; cursor: pointer;">Weekly</button>
+                            <button class="freq-tab" data-freq="monthly" style="padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #e0e0e0; cursor: pointer;">Monthly</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Time</label>
+                        <input type="time" id="schedule-time" value="09:00" style="width: 100%; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                    </div>
+
+                    <div id="weekly-select" style="display: none; margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Day of Week</label>
+                        <select id="schedule-weekday" style="width: 100%; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                            <option value="1">Monday</option>
+                            <option value="2">Tuesday</option>
+                            <option value="3">Wednesday</option>
+                            <option value="4">Thursday</option>
+                            <option value="5">Friday</option>
+                            <option value="6">Saturday</option>
+                            <option value="0">Sunday</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Email Recipients *</label>
+                        <input type="text" id="schedule-emails" placeholder="email@company.com, another@company.com" style="width: 100%; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                        <small style="color: #888; font-size: 11px;">Separate multiple emails with commas</small>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Format</label>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                            <label style="display: flex; align-items: center; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; cursor: pointer;">
+                                <input type="radio" name="format" value="csv" style="margin-right: 8px;">
+                                <span>📄 CSV</span>
+                            </label>
+                            <label style="display: flex; align-items: center; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; cursor: pointer;">
+                                <input type="radio" name="format" value="excel" checked style="margin-right: 8px;">
+                                <span>📊 Excel</span>
+                            </label>
+                            <label style="display: flex; align-items: center; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; cursor: pointer;">
+                                <input type="radio" name="format" value="html" style="margin-right: 8px;">
+                                <span>🌐 HTML</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 20px; border-top: 1px solid #333;">
+                    <button onclick="SQLatteWidget.closeScheduleModal()" style="padding: 10px 20px; background: transparent; border: 1px solid #333; border-radius: 6px; color: #e0e0e0; cursor: pointer;">Cancel</button>
+                    <button onclick="SQLatteWidget.createSchedule()" style="padding: 10px 20px; background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%); border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer;">Create</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        console.log('📅 Modal added to DOM');
+
+        // Load favorites
+        const select = document.getElementById('schedule-query-select');
+        console.log('📅 Select element:', select);
+
+        favorites.forEach(fav => {
+            const option = document.createElement('option');
+            option.value = fav.id;
+            option.textContent = fav.question || fav.name || 'Unnamed';
+            select.appendChild(option);
+        });
+
+        if (queryId) select.value = queryId;
+
+        // Frequency tabs
+        document.querySelectorAll('.freq-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.freq-tab').forEach(t => {
+                    t.style.background = '#0f0f0f';
+                    t.style.borderColor = '#333';
+                    t.style.color = '#e0e0e0';
+                    t.style.fontWeight = 'normal';
+                    t.classList.remove('active');
+                });
+                this.style.background = 'linear-gradient(135deg, #D4A574 0%, #A67C52 100%)';
+                this.style.borderColor = '#D4A574';
+                this.style.color = 'white';
+                this.style.fontWeight = '600';
+                this.classList.add('active');
+
+                const freq = this.dataset.freq;
+                document.getElementById('weekly-select').style.display = freq === 'weekly' ? 'block' : 'none';
+            });
+        });
+    }
+
+    function closeScheduleModal() {
+        const modal = document.getElementById('sqlatte-schedule-modal');
+        if (modal) modal.remove();
+    }
+
+    async function createSchedule() {
+        try {
+            const queryId = document.getElementById('schedule-query-select').value;
+            const name = document.getElementById('schedule-name').value;
+            const time = document.getElementById('schedule-time').value;
+            const emails = document.getElementById('schedule-emails').value;
+            const format = document.querySelector('input[name="format"]:checked').value;
+            const freq = document.querySelector('.freq-tab.active').dataset.freq;
+
+            if (!queryId || !name || !emails) {
+                showToast('Please fill all required fields', 'error');
+                return;
+            }
+
+            const [hour, minute] = time.split(':');
+            let cron;
+
+            if (freq === 'daily') {
+                cron = `${minute} ${hour} * * *`;
+            } else if (freq === 'weekly') {
+                const day = document.getElementById('schedule-weekday').value;
+                cron = `${minute} ${hour} * * ${day}`;
+            } else {
+                cron = `${minute} ${hour} 1 * *`;
+            }
+
+            const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
+
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/api/schedules`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    query_id: queryId,
+                    name: name,
+                    frequency: freq,
+                    cron_expression: cron,
+                    timezone: 'UTC',
+                    email_recipients: emailList,
+                    format: format,
+                    enabled: true
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to create schedule');
+
+            showToast('✅ Schedule created!', 'success');
+            closeScheduleModal();
+            loadSchedules();
+
+        } catch (error) {
+            console.error('Failed to create schedule:', error);
+            showToast(`Failed: ${error.message}`, 'error');
+        }
+    }
+
+
     function getTimeAgo(dateString) {
         const date = new Date(dateString);
         const now = new Date();
@@ -824,6 +1224,9 @@
                     <button id="sqlatte-favorites-btn" class="sqlatte-toolbar-btn" onclick="SQLatteWidget.toggleFavorites()" title="Favorites">
                         ⭐ Favorites
                     </button>
+                    <button id="sqlatte-schedules-btn" class="sqlatte-toolbar-btn" onclick="SQLatteWidget.toggleSchedules()" title="Scheduled Queries">
+                        📅 Schedules
+                    </button>
                 </div>
                 <div class="sqlatte-toolbar-tables">
                     <label>Tables:</label>
@@ -856,6 +1259,19 @@
                     <div class="sqlatte-panel-empty">
                         <span>⭐</span>
                         <p>Loading favorites...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="sqlatte-schedules-panel" class="sqlatte-slide-panel">
+                <div class="sqlatte-panel-header">
+                    <h4>📅 Scheduled Queries</h4>
+                    <button onclick="SQLatteWidget.closeSchedulesPanel()">✕</button>
+                </div>
+                <div class="sqlatte-panel-content">
+                    <div class="sqlatte-panel-empty">
+                        <span>📅</span>
+                        <p>Loading schedules...</p>
                     </div>
                 </div>
             </div>
@@ -2519,6 +2935,17 @@
         removeFromFavorites: removeFromFavorites,
         deleteFromHistory: deleteFromHistory,
         useQuery: useQuery,
+
+        // Schedules
+        toggleSchedules: toggleSchedulesPanel,
+        closeSchedulesPanel: closeSchedulesPanel,
+        loadSchedules: loadSchedules,
+        openScheduleModal: openScheduleModal,
+        closeScheduleModal: closeScheduleModal,
+        createSchedule: createSchedule,
+        runScheduleNow: runScheduleNow,
+        toggleSchedule: toggleSchedule,
+        deleteSchedule: deleteSchedule,
 
         configure: function(options) {
             Object.assign(BADGE_CONFIG, options);
