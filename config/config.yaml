@@ -205,3 +205,53 @@ query:
 # 1. Edit values directly in this file (easiest)
 # 2. Or use ${VAR} for environment variables
 # 3. No .env file needed unless you want to use env vars
+
+
+# ============================================
+# SCHEDULED QUERIES & EMAIL REPORTS
+# ============================================
+scheduler:
+  enabled: false                  # Enable scheduled queries feature
+  timezone: "UTC"               # Default timezone for schedules
+  max_concurrent_jobs: 10       # Max jobs running simultaneously
+  job_timeout_seconds: 300      # Timeout for each job execution
+
+  # Execution History
+  keep_history_days: 30         # How long to keep execution logs
+  max_executions_per_schedule: 100  # Max execution logs per schedule
+
+# Email Configuration
+email:
+  enabled: false                # Set to true to enable email reports
+  provider: "smtp"              # Currently only SMTP supported
+
+  smtp:
+    host: "smtp.gmail.com"
+    port: 587
+    user: "your-email@gmail.com"  # SMTP username
+    password: "app-password"  # SMTP password (use app password for Gmail)
+    from_email: "from-email-address@gmail.com"  # From email address
+    from_name: "SQLatte Reports"       # From name
+
+  # Email Templates
+  templates:
+    success_subject: "✅ {{schedule_name}} - {{date}}"
+    failure_subject: "❌ Failed: {{schedule_name}}"
+
+  # Rate Limiting
+  max_emails_per_day: 1000      # Max emails per day
+  max_recipients_per_email: 10  # Max recipients per email
+
+# Export Configuration
+export:
+  formats:
+    - csv
+    - excel
+    - html
+
+  max_rows: 1000               # Max rows to export (prevent huge files)
+  max_file_size_mb: 25          # Max attachment size
+
+  # File naming
+  filename_template: "{{schedule_name}}_{{date}}_{{time}}.{{format}}"
+
