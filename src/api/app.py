@@ -4,6 +4,7 @@ SQLatte API - Optimized with Async Processing & Thread Pool
 
 import time
 import asyncio
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,15 @@ from src.api.admin_routes import router as admin_router
 from src.api.demo_routes import router as demo_router
 from src.api.analytics_routes import router as analytics_router
 from src.core.analytics_db_postgres import analytics_db
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+# Scheduled Queries
+from src.core.scheduled_queries_db import ScheduledQueriesDB
+from src.core.scheduler_manager import SchedulerManager
+from src.core.email_service import EmailService, MockEmailService
+from src.api import scheduled_routes
 
 
 
@@ -61,9 +71,15 @@ def get_current_providers():
 # Initialize providers
 llm_provider, db_provider = get_current_providers()
 
+# Scheduled Queries components (initialized in startup)
+schedules_db = None
+scheduler_manager = None
+email_service = None
+
 print(f"✅ Initial providers loaded:")
 print(f"   LLM: {llm_provider.get_model_name()}")
 print(f"   DB: {db_provider.get_connection_info()['type']}")
+print(f"📅 Scheduled queries will be initialized on startup")
 
 # ============================================
 # DYNAMIC PROVIDER RELOAD
@@ -158,6 +174,7 @@ initialize_plugins(app)
 app.include_router(admin_router)
 app.include_router(demo_router)
 app.include_router(analytics_router)
+app.include_router(scheduled_routes.router)
 
 # ============================================
 # REQUEST/RESPONSE MODELS
@@ -817,8 +834,53 @@ async def add_favorite(request: FavoriteRequest, session_id: Optional[str] = Non
 
 
 @app.delete("/favorites/{query_id}")
-async def remove_favorite(query_id: str):
-    """Remove a query from favorites"""
+async def remove_favorite(query_id: str, force: bool = False):
+    """
+    Remove a query from favorites
+
+    Args:
+        query_id: Query ID to remove
+        force: If true, delete even if schedules exist (cascade delete)
+    """
+    # Check if there are schedules using this query
+    if schedules_db and scheduler_manager:
+        # Get all schedules for this query
+        all_schedules = await schedules_db.get_all_enabled_schedules()
+        related_schedules = [s for s in all_schedules if s.get('query_id') == query_id]
+
+        if related_schedules and not force:
+            # Warning: schedules exist
+            return {
+                "error": "scheduled_queries_exist",
+                "message": f"⚠️ This query has {len(related_schedules)} active schedule(s). Delete schedules first or use force=true",
+                "schedules": [
+                    {
+                        "id": s['id'],
+                        "name": s['name'],
+                        "frequency": s['frequency']
+                    }
+                    for s in related_schedules
+                ],
+                "query_id": query_id
+            }
+
+        # Force delete or no schedules - cascade delete schedules
+        if related_schedules and force:
+            logger.info(f"🗑️ Cascade deleting {len(related_schedules)} schedules for query {query_id}")
+
+            for schedule in related_schedules:
+                try:
+                    # Remove from scheduler
+                    scheduler_manager.remove_job(schedule['id'])
+
+                    # Delete from database
+                    await schedules_db.delete_schedule(schedule['id'])
+
+                    logger.info(f"   ✅ Deleted schedule: {schedule['name']}")
+                except Exception as e:
+                    logger.error(f"   ❌ Failed to delete schedule {schedule['id']}: {e}")
+
+    # Remove from favorites
     success = query_history.remove_from_favorites(query_id)
 
     if not success:
@@ -826,7 +888,8 @@ async def remove_favorite(query_id: str):
 
     return {
         "message": "✅ Removed from favorites",
-        "query_id": query_id
+        "query_id": query_id,
+        "schedules_deleted": len(related_schedules) if schedules_db and force else 0
     }
 
 
@@ -840,12 +903,136 @@ async def get_history_stats():
 # SHUTDOWN
 # ============================================
 
+# ============================================
+# SCHEDULED QUERY EXECUTOR
+# ============================================
+
+async def execute_scheduled_query(query_id: str, user_id: str) -> dict:
+    """
+    Execute a query from favorites for scheduled execution
+
+    Args:
+        query_id: Favorite query ID
+        user_id: User ID (for multi-tenant scenarios)
+
+    Returns:
+        dict with 'columns' and 'data'
+    """
+    try:
+        # Get query from favorites
+        favorite = None
+        all_favorites = query_history.get_favorites(limit=1000)
+
+        for fav in all_favorites:
+            if fav['id'] == query_id:
+                favorite = fav
+                break
+
+        if not favorite:
+            raise ValueError(f"Query {query_id} not found in favorites")
+
+        sql = favorite['sql']
+
+        print(f"📅 Executing scheduled query: {favorite.get('question', 'Unnamed')}")
+
+        # Execute SQL using current db_provider
+        columns, data = db_provider.execute_query(sql)
+
+        print(f"   ✅ Executed: {len(data)} rows returned")
+
+        return {
+            'columns': columns,
+            'data': data
+        }
+
+    except Exception as e:
+        print(f"   ❌ Execution failed: {e}")
+        raise
+
+
+# ============================================
+# STARTUP & SHUTDOWN
+# ============================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize scheduled queries on startup"""
+    global schedules_db, scheduler_manager, email_service
+
+    print("\n🚀 Starting up SQLatte...")
+
+    # Get scheduler config
+    scheduler_config = config.get('scheduler', {})
+    email_config = config.get('email', {})
+
+    # Initialize scheduled queries if enabled
+    if scheduler_config.get('enabled', True):
+        print("\n📅 Initializing Scheduled Queries...")
+
+        try:
+            # 1. Initialize database
+            schedules_db = ScheduledQueriesDB()
+            print("   ✅ Schedules database initialized (in-memory)")
+
+            # 2. Initialize email service
+            if email_config.get('enabled', False):
+                email_service = EmailService(email_config)
+                print("   ✅ Email service initialized (SMTP)")
+            else:
+                email_service = MockEmailService(email_config)
+                print("   ✅ Email service initialized (Mock mode - testing)")
+
+            # 3. Initialize scheduler
+            scheduler_manager = SchedulerManager(
+                schedules_db=schedules_db,
+                query_executor=execute_scheduled_query,
+                email_service=email_service,
+                timezone=scheduler_config.get('timezone', 'UTC')
+            )
+            print(f"   ✅ Scheduler initialized (timezone: {scheduler_config.get('timezone', 'UTC')})")
+
+            # 4. Start scheduler
+            scheduler_manager.start()
+            print("   ✅ Scheduler started")
+
+            # 5. Load existing schedules
+            await scheduler_manager.load_schedules()
+
+            # 6. Make available to routes
+            scheduled_routes.schedules_db = schedules_db
+            scheduled_routes.scheduler_manager = scheduler_manager
+            scheduled_routes.query_history_manager = query_history
+
+            print("✅ Scheduled Queries initialized successfully!\n")
+
+        except Exception as e:
+            print(f"❌ Failed to initialize Scheduled Queries: {e}")
+            print("   App will continue without scheduling functionality")
+            schedules_db = None
+            scheduler_manager = None
+            email_service = None
+    else:
+        print("📅 Scheduled Queries disabled in config")
+
+    print("✅ SQLatte startup complete!\n")
+
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    print("\n Shutting down SQLatte...")
+    print("\n🛑 Shutting down SQLatte...")
+
+    # Shutdown scheduler
+    if scheduler_manager:
+        print("📅 Stopping scheduler...")
+        scheduler_manager.shutdown()
+        print("   ✅ Scheduler stopped")
+
+    # Close thread pool
     MAIN_EXECUTOR.shutdown(wait=True)
     print("✅ Thread pool closed")
+
+    print("✅ Shutdown complete\n")
 
 
 if __name__ == "__main__":

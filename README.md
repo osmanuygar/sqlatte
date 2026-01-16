@@ -22,6 +22,9 @@
 
 
 ### Core Features
+## ✨ Features
+
+### Core Features
 - 🤖 **AI-Powered** - Uses Anthropic Claude, Google Gemini, or Google Vertex AI
 - 🗄️ **Multi-Database Support** - Trino, PostgreSQL, MySQL, and more
 - 💬 **Smart Chat Interface** - Conversational AI that understands context
@@ -30,10 +33,12 @@
 - 🎯 **Context-Aware Responses** - Understands follow-up questions
 - ⚙️ **Admin Panel** - Runtime configuration without restart
 - ⭐ **Query History & Favorites** - Save and replay queries
+- 📅 **Scheduled Queries** - Automate reports with email delivery
+- 📊 **Data Visualization** - Auto-generate charts from query results
 - 🔌 **Plugin System** - Extensible architecture for custom functionality
-- 📊 **Analytics Dashboard** (Optional) - Query metrics and insights
+- 📈 **Analytics Dashboard** (Optional) - Query metrics and insights
 - 🎨 **Embeddable Widgets** - Easy integration into any website
-- ⚡  **Fast & Simple** - Single YAML config file, no complex setup
+- ⚡ **Fast & Simple** - Single YAML config file, no complex setup
 - 🐳 **Docker Ready** - Easy deployment with Docker & Docker Compose
 
 ---
@@ -74,10 +79,22 @@ database:
     catalog: "hive"
     schema: "default"
 ```
-#### Analytics (optional - disabled by default)
+#### Analytics, scheduler and email  (optional - disabled by default)
 ```yaml
 analytics:
   enabled: false  # Query history is in-memory only
+
+scheduler:
+  enabled: false  # Set to true to enable scheduled queries
+  timezone: "UTC"
+
+email:
+  enabled: false  # Set to true for real emails (uses mock by default)
+  smtp:
+    host: "smtp.gmail.com"
+    port: 587
+    user: "your-email@gmail.com"
+    password: "your-app-password"  # Gmail App Password
 ```
 
 **Leave it at `false`** - SQLatte works perfectly without it!
@@ -544,19 +561,6 @@ database:
     password: "password"
 ```
 </details>
-
-## Features Comparison
-
-| Feature | Standard Widget | Auth Widget |
-|---------|----------------|-------------|
-| **Authentication** | None (backend config) | Login required |
-| **Database Connection** | Shared | Per-user |
-| **Use Case** | Internal apps, single tenant | Multi-tenant SaaS |
-| **Configuration** | config.yaml | User provides credentials |
-| **Setup Time** | 1 minute | 5 minutes |
-| **Security** | Backend credentials | Session-based isolation |
-| **Session Management** | Simple session ID | Full authentication flow |
-| **Multi-tenancy** | ❌ | ✅ |
 
 ---
 
