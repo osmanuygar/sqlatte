@@ -1004,7 +1004,8 @@
             </div>
         `;
 
-        document.body.appendChild(modal);
+        const parent = document.getElementById('sqlatte-modal');
+        (parent || document.body).appendChild(modal);
         console.log('📅 Modal added to DOM');
 
         // Load favorites
@@ -1083,7 +1084,7 @@
                     name: name,
                     frequency: freq,
                     cron_expression: cron,
-                    timezone: 'UTC',
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                     email_recipients: emailList,
                     format: format,
                     enabled: true
@@ -2105,7 +2106,7 @@
     border-right: 1px solid #333;
     transform: translateX(-100%);
     transition: transform 0.3s ease;
-    z-index: 10;
+    z-index: 9999;
     display: flex;
     flex-direction: column;
     box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
