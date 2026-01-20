@@ -91,7 +91,8 @@ class EmailService:
             # Send email
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
                 server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
+                if self.smtp_user and self.smtp_password:
+                    server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
 
             logger.info(f"✅ Email sent to {len(recipients)} recipients: {subject}")
