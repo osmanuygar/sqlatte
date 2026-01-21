@@ -476,6 +476,71 @@ async def analytics_dashboard():
     with open(dashboard_path, 'r', encoding='utf-8') as f:
         return f.read()
 
+
+@app.get("/admin/schedules", response_class=HTMLResponse)
+async def schedules_admin_page():
+    """
+    Schedule Management Admin Page
+    Shows all schedules across all users
+    """
+    schedules_admin_path = os.path.join(PROJECT_ROOT, 'frontend', 'schedules-admin.html')
+
+    if not os.path.exists(schedules_admin_path):
+        # Fallback: Return simple error page
+        return HTMLResponse(
+            content="""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Schedules Admin - Not Found</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            background: #0f0f0f;
+                            color: #e0e0e0;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            height: 100vh;
+                            margin: 0;
+                        }
+                        .error-container {
+                            text-align: center;
+                            padding: 40px;
+                            background: #1a1a1a;
+                            border-radius: 12px;
+                            border: 1px solid #333;
+                        }
+                        h1 { color: #D4A574; margin-bottom: 20px; }
+                        p { color: #a0a0a0; margin-bottom: 20px; }
+                        a { 
+                            color: #D4A574; 
+                            text-decoration: none; 
+                            padding: 10px 20px;
+                            background: rgba(212, 165, 116, 0.1);
+                            border-radius: 8px;
+                            display: inline-block;
+                        }
+                        a:hover { background: rgba(212, 165, 116, 0.2); }
+                    </style>
+                </head>
+                <body>
+                    <div class="error-container">
+                        <h1>📅 Schedules Admin Page Not Found</h1>
+                        <p>The schedules-admin.html file is missing from the frontend directory.</p>
+                        <p><code>frontend/schedules-admin.html</code></p>
+                        <a href="/">← Back to Home</a>
+                    </div>
+                </body>
+                </html>
+            """,
+            status_code=404
+        )
+
+    with open(schedules_admin_path, 'r', encoding='utf-8') as f:
+        return f.read()
+
+
 @app.post("/reload-providers")
 async def trigger_reload_providers():
     """Reload providers after configuration change"""

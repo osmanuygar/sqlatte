@@ -196,13 +196,22 @@ async def create_schedule(
 @router.get("", response_model=List[ScheduleResponse])
 async def list_schedules(
         enabled: Optional[bool] = None,
+        all_users: Optional[bool] = False,  # ✅ NEW: Admin mode
         user_id: str = Depends(get_current_user_id)
 ):
     """
-    Get all schedules for current user
+    Get schedules
+    - Default: Only current user's schedules
+    - all_users=true: All schedules (admin mode)
     """
     try:
-        schedules = await schedules_db.get_schedules(user_id, enabled)
+        if all_users:
+            # ✅ Admin mode: Get ALL schedules from all users
+            logger.info(f"📅 Admin request: Fetching all schedules")
+            schedules = await schedules_db.get_all_schedules(enabled)
+        else:
+            # Normal mode: Only current user
+            schedules = await schedules_db.get_schedules(user_id, enabled)
 
         # Enrich with job info from scheduler
         for schedule in schedules:
