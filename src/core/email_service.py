@@ -35,7 +35,7 @@ class EmailService:
         self.from_name = smtp_config.get('from_name', 'SQLatte')
 
         # Validate config
-        if not all([self.smtp_host, self.smtp_user, self.smtp_password]):
+        if not all([self.smtp_host, self.smtp_port]):
             logger.warning("⚠️  Email service enabled but SMTP config incomplete")
             self.enabled = False
             return
@@ -90,7 +90,7 @@ class EmailService:
 
             # Send email
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                server.starttls()
+                #server.starttls()   # Uncomment if using TLS for google smtp
                 if self.smtp_user and self.smtp_password:
                     server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)

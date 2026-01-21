@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQLatte ☕ - Natural Language to SQL</title>
-
-    <!-- Landing Page Styles -->
+    <title>SQLatte ☕ - Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -18,25 +16,175 @@
             background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
             color: #e0e0e0;
             min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
         }
 
-        .landing-container {
-            max-width: 600px;
+        /* ===================================== */
+        /* MAIN LAYOUT */
+        /* ===================================== */
+        .dashboard-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* ===================================== */
+        /* SIDEBAR */
+        /* ===================================== */
+        .sidebar {
+            width: 250px;
+            background: #1a1a1a;
+            border-right: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            padding: 20px 0;
+        }
+
+        .sidebar-logo {
+            padding: 0 20px 20px 20px;
+            border-bottom: 1px solid #333;
+            margin-bottom: 20px;
+        }
+
+        .sidebar-logo h1 {
+            font-size: 24px;
+            background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            color: #a0a0a0;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: rgba(212, 165, 116, 0.1);
+            color: #D4A574;
+        }
+
+        .nav-item.active {
+            background: rgba(212, 165, 116, 0.15);
+            color: #D4A574;
+            border-left-color: #D4A574;
+        }
+
+        .nav-icon {
+            font-size: 20px;
+            width: 24px;
             text-align: center;
         }
 
-        .logo-large {
-            width: 150px;
-            height: 150px;
+        .nav-label {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* ===================================== */
+        /* MAIN CONTENT */
+        /* ===================================== */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .content-section {
+            display: none;
+        }
+
+        .content-section.active {
+            display: block;
+        }
+
+        /* Page Header */
+        .page-header {
+            margin-bottom: 30px;
+        }
+
+        .page-header h2 {
+            font-size: 32px;
+            color: #D4A574;
+            margin-bottom: 8px;
+        }
+
+        .page-header p {
+            color: #a0a0a0;
+            font-size: 14px;
+        }
+
+        /* ===================================== */
+        /* IFRAME CONTAINER */
+        /* ===================================== */
+        .iframe-container {
+            width: 100%;
+            height: calc(100vh - 150px);
+            background: #0f0f0f;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #333;
+        }
+
+        .iframe-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* ===================================== */
+        /* LOADING STATE */
+        /* ===================================== */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            color: #a0a0a0;
+        }
+
+        .loading::before {
+            content: "⏳";
+            font-size: 48px;
+            margin-right: 16px;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ===================================== */
+        /* HOME PAGE - WELCOME */
+        /* ===================================== */
+        .welcome-container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+            padding-top: 60px;
+        }
+
+        .welcome-logo {
+            width: 120px;
+            height: 120px;
             margin: 0 auto 30px;
             filter: drop-shadow(0 4px 12px rgba(212, 165, 116, 0.3));
         }
 
-        h1 {
+        .welcome-container h1 {
             font-size: 48px;
             margin-bottom: 15px;
             background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%);
@@ -45,165 +193,319 @@
             background-clip: text;
         }
 
-        .subtitle {
+        .welcome-subtitle {
             font-size: 20px;
             color: #a0a0a0;
             margin-bottom: 40px;
         }
 
-        .cta-button {
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-            padding: 16px 32px;
-            background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
-            color: white;
-            border: none;
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 50px;
+        }
+
+        .quick-action-card {
+            background: rgba(212, 165, 116, 0.1);
+            padding: 30px;
             border-radius: 12px;
-            font-size: 18px;
-            font-weight: 600;
+            border: 1px solid rgba(212, 165, 116, 0.2);
             cursor: pointer;
             transition: all 0.3s;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
 
-        .cta-button:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(212, 165, 116, 0.4);
+        .quick-action-card:hover {
+            background: rgba(212, 165, 116, 0.2);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
         }
 
-        .cta-button:active {
-            transform: translateY(-1px);
+        .quick-action-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
         }
 
-        .cta-button svg {
-            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-        }
-
-        .features {
-            margin-top: 50px;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 20px;
-        }
-
-        .feature {
-            background: rgba(212, 165, 116, 0.1);
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid rgba(212, 165, 116, 0.2);
-        }
-
-        .feature-icon {
-            font-size: 32px;
-            margin-bottom: 10px;
-        }
-
-        .feature h3 {
-            font-size: 16px;
+        .quick-action-title {
+            font-size: 18px;
+            font-weight: 600;
             color: #D4A574;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
         }
 
-        .feature p {
-            font-size: 13px;
+        .quick-action-desc {
+            font-size: 14px;
             color: #a0a0a0;
         }
 
-        .hint {
-            margin-top: 30px;
-            font-size: 14px;
-            color: #707070;
-        }
+        /* ===================================== */
+        /* RESPONSIVE */
+        /* ===================================== */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 70px;
+            }
 
-        .hint-arrow {
-            display: inline-block;
-            animation: bounce 2s infinite;
-        }
+            .nav-label,
+            .sidebar-logo h1 {
+                display: none;
+            }
 
-        @keyframes bounce {
-            0%, 100% { transform: translateX(0); }
-            50% { transform: translateX(5px); }
+            .sidebar-logo {
+                text-align: center;
+            }
+
+            .nav-item {
+                justify-content: center;
+            }
         }
     </style>
-
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="landing-container">
-        <img src="/static/image/sqlatte_logo.svg" alt="SQLatte Logo" class="logo-large">
-
-        <h1>SQLatte</h1>
-        <p class="subtitle">Natural Language to SQL</p>
-
-        <button class="cta-button" onclick="openAssistantWidget()">
-            <svg width="24" height="24" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <linearGradient id="cta-cup" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" style="stop-color:#A67C52;stop-opacity:1" />
-                        <stop offset="100%" style="stop-color:#8B6F47;stop-opacity:1" />
-                    </linearGradient>
-                </defs>
-                <path d="M 60 70 L 68 145 Q 68 152 75 152 L 125 152 Q 132 152 132 145 L 140 70 Z"
-                      fill="url(#cta-cup)"/>
-                <ellipse cx="100" cy="70" rx="40" ry="9" fill="#D4A574"/>
-            </svg>
-            <span>Open Assistant</span>
-        </button>
-
-        <div class="features">
-            <div class="feature">
-                <div class="feature-icon">🤖</div>
-                <h3>AI-Powered</h3>
-                <p>Natural language queries</p>
+    <div class="dashboard-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>
+                    <span>☕</span>
+                    <span>SQLatte</span>
+                </h1>
             </div>
-            <div class="feature">
-                <div class="feature-icon">🗄️</div>
-                <h3>Multi-DB</h3>
-                <p>Trino, Postgres & more</p>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">⚡</div>
-                <h3>Fast</h3>
-                <p>Instant SQL generation</p>
-            </div>
-        </div>
 
-        <p class="hint">
-            <span class="hint-arrow">👉</span> Click the button above or the ☕ badge in the corner
-        </p>
+            <nav class="sidebar-nav">
+                <a class="nav-item active" onclick="showSection('home')">
+                    <span class="nav-icon">🏠</span>
+                    <span class="nav-label">Home</span>
+                </a>
+                <a class="nav-item" onclick="showSection('assistant')">
+                    <span class="nav-icon">🤖</span>
+                    <span class="nav-label">Assistant</span>
+                </a>
+                <a class="nav-item" onclick="showSection('demo')">
+                    <span class="nav-icon">🎮</span>
+                    <span class="nav-label">Demo</span>
+                </a>
+                <a class="nav-item" onclick="showSection('analytics')">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">Analytics</span>
+                </a>
+                <a class="nav-item" onclick="showSection('schedules')">
+                    <span class="nav-icon">📅</span>
+                    <span class="nav-label">Schedules</span>
+                </a>
+                <a class="nav-item" onclick="showSection('admin')">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">Configuration</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- HOME SECTION -->
+            <section id="home" class="content-section active">
+                <div class="welcome-container">
+                    <svg class="welcome-logo" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="welcome-cup" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" style="stop-color:#A67C52;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#8B6F47;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M 60 70 L 68 145 Q 68 152 75 152 L 125 152 Q 132 152 132 145 L 140 70 Z"
+                              fill="url(#welcome-cup)"/>
+                        <ellipse cx="100" cy="70" rx="40" ry="9" fill="#D4A574"/>
+                        <g opacity="0.85">
+                            <circle cx="100" cy="30" r="4.5" fill="#D4A574">
+                                <animate attributeName="r" values="4.5;5.5;4.5" dur="2s" repeatCount="indefinite"/>
+                            </circle>
+                            <circle cx="85" cy="35" r="4" fill="#D4A574">
+                                <animate attributeName="r" values="4;5;4" dur="2s" begin="0.2s" repeatCount="indefinite"/>
+                            </circle>
+                            <circle cx="115" cy="35" r="4" fill="#D4A574">
+                                <animate attributeName="r" values="4;5;4" dur="2s" begin="0.4s" repeatCount="indefinite"/>
+                            </circle>
+                        </g>
+                    </svg>
+
+                    <h1>Welcome to SQLatte ☕</h1>
+                    <p class="welcome-subtitle">Natural Language to SQL Platform</p>
+
+                    <div class="quick-actions">
+                        <div class="quick-action-card" onclick="showSection('assistant')">
+                            <div class="quick-action-icon">🤖</div>
+                            <div class="quick-action-title">Open Assistant</div>
+                            <div class="quick-action-desc">Ask questions in natural language</div>
+                        </div>
+
+                        <div class="quick-action-card" onclick="showSection('analytics')">
+                            <div class="quick-action-icon">📊</div>
+                            <div class="quick-action-title">View Analytics</div>
+                            <div class="quick-action-desc">Check query performance</div>
+                        </div>
+
+                        <div class="quick-action-card" onclick="showSection('schedules')">
+                            <div class="quick-action-icon">📅</div>
+                            <div class="quick-action-title">Manage Schedules</div>
+                            <div class="quick-action-desc">Automated query scheduling</div>
+                        </div>
+
+                        <div class="quick-action-card" onclick="showSection('admin')">
+                            <div class="quick-action-icon">⚙️</div>
+                            <div class="quick-action-title">Configuration</div>
+                            <div class="quick-action-desc">LLM and database settings</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ASSISTANT SECTION -->
+            <section id="assistant" class="content-section">
+                <div class="page-header">
+                    <h2>🤖 SQLatte Assistant</h2>
+                    <p>Ask questions in natural language and get SQL queries</p>
+                </div>
+                <div id="assistant-widget-container"></div>
+            </section>
+
+            <!-- DEMO SECTION -->
+            <section id="demo" class="content-section">
+                <div class="page-header">
+                    <h2>🎮 Interactive Demo</h2>
+                    <p>Try SQLatte with sample queries</p>
+                </div>
+                <div class="iframe-container">
+                    <iframe id="demo-iframe" src="/demo"></iframe>
+                </div>
+            </section>
+
+            <!-- ANALYTICS SECTION -->
+            <section id="analytics" class="content-section">
+                <div class="page-header">
+                    <h2>📊 Analytics Dashboard</h2>
+                    <p>Query performance and usage statistics</p>
+                </div>
+                <div class="iframe-container">
+                    <iframe id="analytics-iframe" src="/analytics"></iframe>
+                </div>
+            </section>
+
+            <!-- SCHEDULES SECTION -->
+            <section id="schedules" class="content-section">
+                <div class="page-header">
+                    <h2>📅 Schedule Management</h2>
+                    <p>Manage automated queries and email reports</p>
+                </div>
+                <div class="iframe-container">
+                    <iframe id="schedules-iframe" src="/admin/schedules"></iframe>
+                </div>
+            </section>
+
+            <!-- ADMIN/CONFIG SECTION -->
+            <section id="admin" class="content-section">
+                <div class="page-header">
+                    <h2>⚙️ Configuration</h2>
+                    <p>LLM provider and database settings</p>
+                </div>
+                <div class="iframe-container">
+                    <iframe id="admin-iframe" src="/admin"></iframe>
+                </div>
+            </section>
+        </main>
     </div>
 
-    <!-- SQLatte Widget (Badge) - TAM EKRAN MODE -->
+    <!-- SQLatte Widget Script (for Assistant tab) -->
     <script src="/static/js/sqlatte-badge.js"></script>
 
-    <!-- Widget Control -->
     <script>
+        // ============================================
+        // NAVIGATION
+        // ============================================
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.remove('active');
+            });
+
+            // Remove active from all nav items
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+
+            // Show selected section
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.classList.add('active');
+            }
+
+            // Add active to clicked nav item
+            event.target.closest('.nav-item')?.classList.add('active');
+
+            // Special handling for assistant
+            if (sectionId === 'assistant') {
+                openAssistantWidget();
+            }
+
+            // Update URL hash
+            window.location.hash = sectionId;
+        }
+
+        // ============================================
+        // ASSISTANT WIDGET
+        // ============================================
         function openAssistantWidget() {
             if (window.SQLatteWidget) {
                 window.SQLatteWidget.open();
             } else {
-                alert('Widget is loading... Please try again in a moment.');
+                console.log('Widget loading...');
             }
         }
 
-        // Configure widget to open fullscreen
+        // Configure widget
         window.addEventListener('load', () => {
             if (window.SQLatteWidget) {
-                // Fullscreen mode configuration
                 window.SQLatteWidget.configure({
                     position: 'bottom-right',
-                    fullscreen: true,  // TAM EKRAN MODE
-                    title: 'SQLatte Assistant ☕',
-                    placeholder: 'Ask a question... (e.g., "Show me top 10 customers")'
+                    fullscreen: true,
+                    title: 'SQLatte Assistant ☕'
                 });
-
-                console.log('✅ SQLatte Widget loaded successfully!');
-                console.log('🎯 Widget will open in FULLSCREEN mode');
+                console.log('✅ SQLatte Widget loaded');
             }
+
+            // Handle initial hash
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                const navItem = document.querySelector(`.nav-item[onclick*="${hash}"]`);
+                if (navItem) {
+                    navItem.click();
+                }
+            }
+        });
+
+        // ============================================
+        // LAZY LOAD IFRAMES
+        // ============================================
+        const observerOptions = {
+            root: null,
+            threshold: 0.1
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const iframe = entry.target.querySelector('iframe');
+                    if (iframe && !iframe.src) {
+                        const src = iframe.getAttribute('data-src');
+                        if (src) {
+                            iframe.src = src;
+                        }
+                    }
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.content-section').forEach(section => {
+            observer.observe(section);
         });
     </script>
 </body>
