@@ -484,8 +484,10 @@
     }
 
     async function loadFavorites() {
+        if (!sessionId) return;  // Session gerekli
+
         try {
-            const response = await fetch(`${BADGE_CONFIG.apiBase}/favorites?limit=50`);
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/favorites?session_id=${sessionId}&limit=50`);
             if (response.ok) {
                 const data = await response.json();
                 favorites = data.favorites || [];
@@ -746,8 +748,10 @@
      */
 
     async function loadSchedules() {
+        if (!sessionId) return;  // Session gerekli
+
         try {
-            const response = await fetch(`${BADGE_CONFIG.apiBase}/api/schedules`);
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/api/schedules?session_id=${sessionId}`);
 
             if (!response.ok) {
                 console.error('Failed to load schedules');
@@ -861,6 +865,16 @@
         });
 
         html += '</div>';
+
+        // ✅ Add "Create New Schedule" button at the bottom
+        html += `
+            <div style="padding: 15px; text-align: center;">
+                <button onclick="SQLatteWidget.openScheduleModal()" class="sqlatte-btn-primary" style="padding: 10px 20px; background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%); border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer;">
+                    ➕ Create New Schedule
+                </button>
+            </div>
+        `;
+
         panelContent.innerHTML = html;
     }
 

@@ -39,6 +39,25 @@
     // Results cache
     window.sqlatteAuthResultsCache = {};
 
+    // ============================================
+    // HELPER: User-specific localStorage keys
+    // ============================================
+    function getHistoryKey() {
+        if (!userInfo || !userInfo.username) {
+            console.warn('⚠️ No userInfo, using default history key');
+            return 'sqlatte_auth_history_default';
+        }
+        return `sqlatte_history_${userInfo.username}`;
+    }
+
+    function getFavoritesKey() {
+        if (!userInfo || !userInfo.username) {
+            console.warn('⚠️ No userInfo, using default favorites key');
+            return 'sqlatte_auth_favorites_default';
+        }
+        return `sqlatte_favorites_${userInfo.username}`;
+    }
+
     // YENİ FONKSIYON: Load conversation history
     async function loadConversationHistory() {
         if (!sessionId) return;
@@ -757,18 +776,20 @@
             } else if (data.error) {
                 addMessage('assistant', `<div class="sqlatte-error">❌ ${escapeHtml(data.error)}</div>`);
             } else {
+                // ✅ FIX: Generate queryId ONCE and use it everywhere
+                const queryId = data.query_id || ('query_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+
                 const formatted = formatTable(
                     data.columns,
                     data.data,
-                    data.query_id,
+                    queryId,  // ✅ Use same queryId
                     data.sql,
                     data.explanation
                 );
                 addMessage('assistant', formatted);
 
-                // Save to history with generated queryId
-                const generatedQueryId = data.query_id || ('query_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
-                saveToHistory(question, data, generatedQueryId);
+                // ✅ Save to history with SAME queryId
+                saveToHistory(question, data, queryId);
             }
 
             // YENİ: Reload conversation history
@@ -1244,11 +1265,13 @@
             queryHistory = queryHistory.slice(-50);
         }
 
-        localStorage.setItem('sqlatte_auth_history', JSON.stringify(queryHistory));
+        // ✅ User-specific key
+        localStorage.setItem(getHistoryKey(), JSON.stringify(queryHistory));
     }
 
     function loadHistory() {
-        const stored = localStorage.getItem('sqlatte_auth_history');
+        // ✅ User-specific key
+        const stored = localStorage.getItem(getHistoryKey());
         if (stored) {
             try {
                 queryHistory = JSON.parse(stored);
@@ -1259,7 +1282,8 @@
     }
 
     function loadFavorites() {
-        const stored = localStorage.getItem('sqlatte_auth_favorites');
+        // ✅ User-specific key
+        const stored = localStorage.getItem(getFavoritesKey());
         if (stored) {
             try {
                 favorites = JSON.parse(stored);
@@ -1307,8 +1331,8 @@
         const panel = document.getElementById('sqlatte-auth-history-panel');
         if (!panel) return;
 
-        // Load from localStorage
-        const stored = localStorage.getItem('sqlatte_auth_history');
+        // ✅ User-specific key - Load from localStorage
+        const stored = localStorage.getItem(getHistoryKey());
         if (stored) {
             try {
                 queryHistory = JSON.parse(stored);
@@ -1366,7 +1390,8 @@
         if (!confirm('Clear all query history?')) return;
 
         queryHistory = [];
-        localStorage.removeItem('sqlatte_auth_history');
+        // ✅ User-specific key
+        localStorage.removeItem(getHistoryKey());
         renderHistoryPanel();
         showToast('✅ History cleared', 'success');
     }
@@ -1409,8 +1434,8 @@
         const panel = document.getElementById('sqlatte-auth-favorites-panel');
         if (!panel) return;
 
-        // Load from localStorage
-        const stored = localStorage.getItem('sqlatte_auth_favorites');
+        // ✅ User-specific key - Load from localStorage
+        const stored = localStorage.getItem(getFavoritesKey());
         if (stored) {
             favorites = JSON.parse(stored);
         }
@@ -1458,7 +1483,8 @@
 
     function removeFavorite(id) {
         favorites = favorites.filter(f => f.id !== id);
-        localStorage.setItem('sqlatte_auth_favorites', JSON.stringify(favorites));
+        // ✅ User-specific key
+        localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
         renderFavoritesPanel();
         showToast('✅ Removed from favorites', 'success');
     }
@@ -3041,8 +3067,8 @@ em {
         addToFavorites: (queryId) => {
             console.log('🔍 addToFavorites called with queryId:', queryId);
 
-            // Reload history from localStorage to ensure we have latest data
-            const stored = localStorage.getItem('sqlatte_auth_history');
+            // ✅ Reload history from user-specific localStorage key
+            const stored = localStorage.getItem(getHistoryKey());
             if (stored) {
                 try {
                     queryHistory = JSON.parse(stored);
@@ -3083,7 +3109,8 @@ em {
             };
 
             favorites.push(favoriteItem);
-            localStorage.setItem('sqlatte_auth_favorites', JSON.stringify(favorites));
+            // ✅ User-specific key
+            localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
             console.log('🔍 Added to favorites:', favoriteItem);
             showToast('⭐ Added to favorites', 'success');
 
