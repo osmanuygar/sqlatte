@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule Management - SQLatte Admin</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+
+        .schedules-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+
+        .stat-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #D4A574;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #a0a0a0;
+        }
+
+        /* Filters */
+        .filters-bar {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filters-bar input,
+        .filters-bar select {
+            padding: 10px 15px;
+            background: #0f0f0f;
+            border: 1px solid #444;
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+
+        .filters-bar input:focus,
+        .filters-bar select:focus {
+            outline: none;
+            border-color: #D4A574;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(212, 165, 116, 0.4);
+        }
+
+        /* Table */
+        .table-container {
+            background: #1a1a1a;
+            border-radius: 12px;
+            border: 1px solid #333;
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #252525;
+        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: #D4A574;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #333;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #2a2a2a;
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background: rgba(212, 165, 116, 0.05);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-active {
+            background: rgba(74, 222, 128, 0.2);
+            color: #4ade80;
+        }
+
+        .status-paused {
+            background: rgba(251, 191, 36, 0.2);
+            color: #fbbf24;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            background: transparent;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 5px;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            background: #333;
+            border-color: #D4A574;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #a0a0a0;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: #a0a0a0;
+        }
+    </style>
+</head>
+<body>
+    <div class="schedules-container">
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">📅</div>
+                <div class="stat-value" id="total-schedules">0</div>
+                <div class="stat-label">Total Schedules</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">✅</div>
+                <div class="stat-value" id="active-schedules">0</div>
+                <div class="stat-label">Active</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">⏸️</div>
+                <div class="stat-value" id="paused-schedules">0</div>
+                <div class="stat-label">Paused</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">👥</div>
+                <div class="stat-value" id="total-users">0</div>
+                <div class="stat-label">Users</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-bar">
+            <input type="text" id="user-filter" placeholder="Filter by user...">
+            <select id="status-filter">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadSchedules()">🔄 Refresh</button>
+        </div>
+
+        <!-- Schedules Table -->
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>User</th>
+                        <th>Frequency</th>
+                        <th>Recipients</th>
+                        <th>Status</th>
+                        <th>Last Run</th>
+                        <th>Next Run</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="schedules-tbody">
+                    <tr>
+                        <td colspan="8">
+                            <div class="loading">Loading schedules...</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // CONFIG
+        // ============================================
+        const API_BASE = window.location.origin;
+
+        // ============================================
+        // LOAD SCHEDULES
+        // ============================================
+        async function loadSchedules() {
+            const userFilter = document.getElementById('user-filter').value;
+            const statusFilter = document.getElementById('status-filter').value;
+
+            try {
+                // Build query params
+                const params = new URLSearchParams();
+
+                // ✅ Admin mode: Get all users' schedules
+                params.append('all_users', 'true');
+
+                if (statusFilter) {
+                    params.append('enabled', statusFilter === 'active' ? 'true' : 'false');
+                }
+
+                const response = await fetch(`${API_BASE}/api/schedules?${params}`);
+
+                if (!response.ok) {
+                    throw new Error('Failed to load schedules');
+                }
+
+                const schedules = await response.json();
+
+                // Filter by user (client-side)
+                let filtered = schedules;
+                if (userFilter) {
+                    filtered = schedules.filter(s =>
+                        s.user_id.toLowerCase().includes(userFilter.toLowerCase())
+                    );
+                }
+
+                renderSchedules(filtered);
+                updateStats(schedules);
+
+            } catch (error) {
+                console.error('Error loading schedules:', error);
+                showError('Failed to load schedules');
+            }
+        }
+
+        // ============================================
+        // RENDER SCHEDULES
+        // ============================================
+        function renderSchedules(schedules) {
+            const tbody = document.getElementById('schedules-tbody');
+
+            if (schedules.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📅</div>
+                                <div>No schedules found</div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = schedules.map(schedule => `
+                <tr>
+                    <td><strong>${escapeHtml(schedule.name)}</strong></td>
+                    <td>${escapeHtml(schedule.user_id)}</td>
+                    <td>${schedule.frequency}</td>
+                    <td>${schedule.email_recipients.slice(0, 2).join(', ')}${schedule.email_recipients.length > 2 ? '...' : ''}</td>
+                    <td>
+                        <span class="status-badge ${schedule.enabled ? 'status-active' : 'status-paused'}">
+                            ${schedule.enabled ? 'Active' : 'Paused'}
+                        </span>
+                    </td>
+                    <td>${schedule.last_run ? formatDate(schedule.last_run) : 'Never'}</td>
+                    <td>${schedule.next_run ? formatDate(schedule.next_run) : '-'}</td>
+                    <td>
+                        <button class="action-btn" onclick="runNow('${schedule.id}')" title="Run Now">▶️</button>
+                        <button class="action-btn" onclick="toggleSchedule('${schedule.id}', ${!schedule.enabled})" title="${schedule.enabled ? 'Pause' : 'Resume'}">
+                            ${schedule.enabled ? '⏸️' : '▶️'}
+                        </button>
+                        <button class="action-btn" onclick="deleteSchedule('${schedule.id}', '${escapeHtml(schedule.name)}')" title="Delete">🗑️</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // ============================================
+        // UPDATE STATS
+        // ============================================
+        function updateStats(schedules) {
+            const total = schedules.length;
+            const active = schedules.filter(s => s.enabled).length;
+            const paused = total - active;
+            const users = new Set(schedules.map(s => s.user_id)).size;
+
+            document.getElementById('total-schedules').textContent = total;
+            document.getElementById('active-schedules').textContent = active;
+            document.getElementById('paused-schedules').textContent = paused;
+            document.getElementById('total-users').textContent = users;
+        }
+
+        // ============================================
+        // ACTIONS
+        // ============================================
+        async function runNow(scheduleId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/schedules/${scheduleId}/run`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    alert('✅ Schedule execution started!');
+                    setTimeout(loadSchedules, 2000);
+                } else {
+                    throw new Error('Failed to run schedule');
+                }
+            } catch (error) {
+                alert('❌ Failed to run schedule: ' + error.message);
+            }
+        }
+
+        async function toggleSchedule(scheduleId, enabled) {
+            try {
+                const response = await fetch(`${API_BASE}/api/schedules/${scheduleId}/toggle`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    loadSchedules();
+                } else {
+                    throw new Error('Failed to toggle schedule');
+                }
+            } catch (error) {
+                alert('❌ Failed to toggle schedule: ' + error.message);
+            }
+        }
+
+        async function deleteSchedule(scheduleId, name) {
+            if (!confirm(`Delete schedule "${name}"?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/schedules/${scheduleId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    alert('✅ Schedule deleted');
+                    loadSchedules();
+                } else {
+                    throw new Error('Failed to delete schedule');
+                }
+            } catch (error) {
+                alert('❌ Failed to delete schedule: ' + error.message);
+            }
+        }
+
+        // ============================================
+        // HELPERS
+        // ============================================
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showError(message) {
+            const tbody = document.getElementById('schedules-tbody');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">❌</div>
+                            <div>${escapeHtml(message)}</div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        // ============================================
+        // INIT
+        // ============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSchedules();
+
+            // Auto-refresh every 30 seconds
+            setInterval(loadSchedules, 30000);
+
+            // Filter on input
+            document.getElementById('user-filter').addEventListener('input', loadSchedules);
+            document.getElementById('status-filter').addEventListener('change', loadSchedules);
+        });
+    </script>
+</body>
+</html>

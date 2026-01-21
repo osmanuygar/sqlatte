@@ -91,6 +91,23 @@ class ScheduledQueriesDB:
 
         return schedules
 
+    async def get_all_schedules(
+            self,
+            enabled: Optional[bool] = None
+    ) -> List[Dict]:
+        """
+        Get ALL schedules from all users (admin mode)
+        """
+        schedules = list(self.schedules.values())
+
+        if enabled is not None:
+            schedules = [s for s in schedules if s['enabled'] == enabled]
+
+        # Sort by created_at desc
+        schedules.sort(key=lambda x: x['created_at'], reverse=True)
+
+        return schedules
+
     async def get_all_enabled_schedules(self) -> List[Dict]:
         """Get all enabled schedules (for scheduler)"""
         return [
