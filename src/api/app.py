@@ -1154,6 +1154,12 @@ async def shutdown_event():
         scheduler_manager.shutdown()
         print("   ✅ Scheduler stopped")
 
+    # Shutdown email service (wait for pending emails)
+    if email_service:
+        print("📧 Shutting down email service...")
+        email_service.shutdown(timeout=30)
+        print("   ✅ Email service stopped")
+
     # Close thread pool
     MAIN_EXECUTOR.shutdown(wait=True)
     print("✅ Thread pool closed")

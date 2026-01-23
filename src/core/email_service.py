@@ -2,9 +2,12 @@
 """
 Email service for sending scheduled query results
 Supports SMTP, with beautiful HTML templates
+Uses ThreadPoolExecutor for non-blocking email sending
 """
 
 import smtplib
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -40,9 +43,15 @@ class EmailService:
             self.enabled = False
             return
 
-        logger.info(f"✅ Email service initialized: {self.from_email}")
+        # Thread pool for non-blocking email sending
+        self.executor = ThreadPoolExecutor(
+            max_workers=3,  # Max 3 concurrent emails
+            thread_name_prefix="email_sender"
+        )
 
-    async def send_email(
+        logger.info(f"✅ Email service initialized: {self.from_email} (thread pool: 3 workers)")
+
+    def _send_email_sync(
             self,
             recipients: List[str],
             subject: str,
@@ -51,17 +60,12 @@ class EmailService:
             html: bool = True
     ):
         """
-        Send email with optional attachments
+        Synchronous email sending - runs in thread pool
 
-        Args:
-            recipients: List of email addresses
-            subject: Email subject
-            body: Email body (HTML or plain text)
-            attachments: List of dicts with 'filename' and 'content' (bytes)
-            html: Whether body is HTML
+        This method contains blocking SMTP calls and should only be called
+        via run_in_executor to avoid blocking the async event loop.
         """
         if not self.enabled:
-            logger.warning("📧 Email service disabled - skipping email")
             return
 
         try:
@@ -88,9 +92,9 @@ class EmailService:
                     )
                     msg.attach(part)
 
-            # Send email
+            # Send email (BLOCKING - that's why we run in thread pool)
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                #server.starttls()   # Uncomment if using TLS for google smtp
+                # server.starttls()   # Uncomment if using TLS for google smtp
                 if self.smtp_user and self.smtp_password:
                     server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
@@ -99,7 +103,48 @@ class EmailService:
 
         except Exception as e:
             logger.error(f"❌ Failed to send email: {e}")
-            raise
+            # Don't raise - email failure shouldn't break the schedule
+
+    async def send_email(
+            self,
+            recipients: List[str],
+            subject: str,
+            body: str,
+            attachments: Optional[List[Dict]] = None,
+            html: bool = True
+    ):
+        """
+        Send email asynchronously using thread pool (non-blocking)
+
+        This method queues the email to be sent in a background thread,
+        preventing it from blocking the async event loop or other requests.
+
+        Args:
+            recipients: List of email addresses
+            subject: Email subject
+            body: Email body (HTML or plain text)
+            attachments: List of dicts with 'filename' and 'content' (bytes)
+            html: Whether body is HTML
+        """
+        if not self.enabled:
+            logger.warning("📧 Email service disabled - skipping email")
+            return
+
+        try:
+            # Run blocking SMTP in thread pool - NON-BLOCKING! ✅
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                self.executor,
+                self._send_email_sync,
+                recipients,
+                subject,
+                body,
+                attachments,
+                html
+            )
+        except Exception as e:
+            # Log but don't raise - email failure shouldn't break schedule execution
+            logger.error(f"❌ Email sending failed (schedule continues): {e}")
 
     def create_report_email(
             self,
@@ -369,6 +414,21 @@ class EmailService:
         """
 
         return html
+
+    def shutdown(self, timeout: int = 30):
+        """
+        Gracefully shutdown email service
+
+        Waits for pending emails to complete before shutting down.
+        Call this during application shutdown.
+
+        Args:
+            timeout: Maximum seconds to wait for pending emails
+        """
+        if hasattr(self, 'executor'):
+            logger.info("📧 Shutting down email service...")
+            self.executor.shutdown(wait=True, timeout=timeout)
+            logger.info("✅ Email service shut down cleanly")
 
 
 # Mock email service for testing
