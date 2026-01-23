@@ -371,7 +371,7 @@
     </div>
 
     <!-- Refresh Button -->
-    <button class="refresh-btn" onclick="loadDashboard()" title="Refresh Dashboard">
+    <button class="refresh-btn" onclick="loadDashboard()" title="Refresh Dashboard (F5 or Ctrl+Shift+R)">
         ↻
     </button>
 
@@ -752,7 +752,7 @@
         function updateLastUpdated() {
             const now = new Date();
             document.getElementById('last-updated').textContent =
-                `Last updated: ${now.toLocaleString()}`;
+                `Last updated: ${now.toLocaleString()} • Press F5 or click 🔄 to refresh`;
         }
 
         // Show error message
@@ -761,12 +761,28 @@
             metricsGrid.innerHTML = `<div class="error">${message}</div>`;
         }
 
-        // Auto refresh every 30 seconds
-        setInterval(() => {
-            loadDashboard();
-        }, 30000);
+        // ========================================
+        // KEYBOARD SHORTCUTS
+        // ========================================
+        document.addEventListener('keydown', (e) => {
+            // F5 is default browser refresh - let it work
+            // Ctrl+R (Windows/Linux) or Cmd+R (Mac) - browser refresh
+            // We don't need to override these, they'll reload the page
 
-        // Initial load
+            // Optional: Ctrl+Shift+R for data refresh without page reload
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
+                e.preventDefault();
+                loadDashboard();
+            }
+        });
+
+        // ========================================
+        // MANUAL REFRESH ONLY - No Auto-Refresh!
+        // ========================================
+        // Auto-refresh removed to reduce backend load
+        // User can click refresh button or press F5
+
+        // Initial load on page load
         loadDashboard();
     </script>
 </body>
