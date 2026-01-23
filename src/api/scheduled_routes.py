@@ -30,7 +30,7 @@ class ScheduleCreateRequest(BaseModel):
 
     email_recipients: List[str] = Field(..., min_items=1, description="Email recipients")
     email_subject: Optional[str] = Field(None, description="Email subject template")
-    email_body: Optional[str] = Field(None, description="Custom email body")
+    email_body: Optional[str] = Field(None, description="Custom message to include in email body")
     format: str = Field(default="excel", description="Output format: csv, excel, html")
 
     enabled: bool = Field(default=True, description="Whether schedule is enabled")
@@ -162,6 +162,13 @@ async def create_schedule(
     Create a new scheduled query
     """
     try:
+        # Check if scheduler is initialized
+        if schedules_db is None or scheduler_manager is None:
+            raise HTTPException(
+                503,
+                "Scheduler not initialized. Check if scheduler is enabled in config."
+            )
+
         # Validate cron expression
         from apscheduler.triggers.cron import CronTrigger
         try:
@@ -172,15 +179,34 @@ async def create_schedule(
         # Validate query exists in favorites
         # TODO: Check if query_id exists in user's favorites
 
-        # Create schedule
-        schedule_data = request.dict()
+        # Create schedule - Pydantic v2 compatible
+        try:
+            # Try Pydantic v2 method
+            schedule_data = request.model_dump()
+        except AttributeError:
+            # Fallback to Pydantic v1
+            schedule_data = request.dict()
+
         schedule_data['user_id'] = user_id
 
         schedule = await schedules_db.create_schedule(schedule_data)
 
         # Add to scheduler
         if schedule['enabled']:
-            scheduler_manager.add_scheduled_job(schedule)
+            try:
+                scheduler_manager.add_scheduled_job(schedule)
+
+                # Get the job to extract next_run_time
+                job = scheduler_manager.scheduler.get_job(schedule['id'])
+                if job and job.next_run_time:
+                    # Update next_run in database
+                    await schedules_db.update_schedule(
+                        schedule['id'],
+                        {'next_run': job.next_run_time.isoformat()}
+                    )
+            except Exception as e:
+                logger.error(f"⚠️ Failed to schedule job: {e}")
+                # Don't fail the whole request, schedule is created
 
         logger.info(f"✅ Created schedule: {schedule['name']}")
 
@@ -190,6 +216,8 @@ async def create_schedule(
         raise
     except Exception as e:
         logger.error(f"❌ Failed to create schedule: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Failed to create schedule: {str(e)}")
 
 
@@ -480,3 +508,47 @@ async def get_schedule_stats(
     except Exception as e:
         logger.error(f"❌ Failed to get stats: {e}")
         raise HTTPException(500, f"Failed to get stats: {str(e)}")
+
+
+# ============================================
+# ADMIN ROUTES (for scheduler-admin.html)
+# ============================================
+
+@router.get("/admin/all")
+async def get_all_schedules_admin():
+    """Get ALL schedules from all users (admin view)"""
+    try:
+        schedules = await schedules_db.get_all_schedules()
+        return schedules
+    except Exception as e:
+        logger.error(f"❌ Failed to get all schedules: {e}")
+        raise HTTPException(500, f"Failed to get schedules: {str(e)}")
+
+
+@router.get("/admin/jobs")
+async def get_scheduler_jobs_admin():
+    """Get all active jobs from APScheduler"""
+    try:
+        if not scheduler_manager:
+            raise HTTPException(503, "Scheduler not initialized")
+
+        jobs = scheduler_manager.get_all_jobs()
+
+        detailed_jobs = []
+        for job in jobs:
+            job_info = scheduler_manager.get_job_info(job["id"])
+            if job_info:
+                detailed_jobs.append({
+                    "id": job["id"],
+                    "name": job["name"],
+                    "next_run_time": job["next_run_time"],
+                    "trigger": job_info.get("trigger", "N/A")
+                })
+
+        return detailed_jobs
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to get scheduler jobs: {e}")
+        raise HTTPException(500, f"Failed to get jobs: {str(e)}")

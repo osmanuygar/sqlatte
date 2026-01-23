@@ -993,6 +993,18 @@
                     </div>
 
                     <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Email Subject (Optional)</label>
+                        <input type="text" id="schedule-email-subject" placeholder="e.g., Daily Sales Report - {{date}}" style="width: 100%; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                        <small style="color: #888; font-size: 11px;">Leave empty for default subject</small>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Custom Message (Optional)</label>
+                        <textarea id="schedule-email-body" placeholder="Add a custom message to include in the email..." style="width: 100%; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; color: #e0e0e0; min-height: 80px; resize: vertical; font-family: inherit;"></textarea>
+                        <small style="color: #888; font-size: 11px;">This message will appear in the email body</small>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
                         <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #e0e0e0;">Format</label>
                         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
                             <label style="display: flex; align-items: center; padding: 10px; background: #0f0f0f; border: 1px solid #333; border-radius: 6px; cursor: pointer;">
@@ -1068,6 +1080,8 @@
             const name = document.getElementById('schedule-name').value;
             const time = document.getElementById('schedule-time').value;
             const emails = document.getElementById('schedule-emails').value;
+            const emailSubject = document.getElementById('schedule-email-subject')?.value || null;
+            const emailBody = document.getElementById('schedule-email-body')?.value || null;
             const format = document.querySelector('input[name="format"]:checked').value;
             const freq = document.querySelector('.freq-tab.active').dataset.freq;
 
@@ -1090,22 +1104,35 @@
 
             const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
 
+            const scheduleData = {
+                query_id: queryId,
+                name: name,
+                frequency: freq,
+                cron_expression: cron,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                email_recipients: emailList,
+                format: format,
+                enabled: true
+            };
+
+            // Add optional fields if provided
+            if (emailSubject) {
+                scheduleData.email_subject = emailSubject;
+            }
+            if (emailBody) {
+                scheduleData.email_body = emailBody;
+            }
+
             const response = await fetch(`${BADGE_CONFIG.apiBase}/api/schedules`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    query_id: queryId,
-                    name: name,
-                    frequency: freq,
-                    cron_expression: cron,
-                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    email_recipients: emailList,
-                    format: format,
-                    enabled: true
-                })
+                body: JSON.stringify(scheduleData)
             });
 
-            if (!response.ok) throw new Error('Failed to create schedule');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || 'Failed to create schedule');
+            }
 
             showToast('✅ Schedule created!', 'success');
             closeScheduleModal();
