@@ -1,7 +1,7 @@
 # src/core/scheduler_manager.py
 """
 Scheduler Manager for executing scheduled queries
-Uses APScheduler for background job execution
+Uses APScheduler with optional PostgreSQL persistence
 """
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 class SchedulerManager:
     """
     Manages scheduled query execution using APScheduler
+    Supports optional PostgreSQL jobstore for persistence
     """
 
     def __init__(
@@ -25,7 +26,9 @@ class SchedulerManager:
             schedules_db,
             query_executor,
             email_service,
-            timezone: str = 'UTC'
+            timezone: str = 'UTC',
+            use_persistent_store: bool = False,
+            postgres_url: Optional[str] = None
     ):
         """
         Initialize scheduler
@@ -35,16 +38,39 @@ class SchedulerManager:
             query_executor: Function to execute queries
             email_service: EmailService instance
             timezone: Default timezone
+            use_persistent_store: Use PostgreSQL jobstore (requires SQLAlchemy)
+            postgres_url: PostgreSQL URL for jobstore
         """
         self.schedules_db = schedules_db
         self.query_executor = query_executor
         self.email_service = email_service
         self.default_timezone = timezone
 
-        # Configure APScheduler
-        jobstores = {
-            'default': MemoryJobStore()
-        }
+        # Configure APScheduler jobstore
+        jobstores = {}
+
+        if use_persistent_store and postgres_url:
+            try:
+                from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+
+                # Convert asyncpg URL to SQLAlchemy format
+                sqlalchemy_url = postgres_url.replace('postgresql://', 'postgresql+psycopg2://')
+
+                jobstores['default'] = SQLAlchemyJobStore(
+                    url=sqlalchemy_url,
+                    tablename='apscheduler_jobs'
+                )
+                logger.info("✅ Using PostgreSQL jobstore (persistent)")
+            except ImportError:
+                logger.warning("⚠️  SQLAlchemy not installed, using memory jobstore")
+                jobstores['default'] = MemoryJobStore()
+            except Exception as e:
+                logger.warning(f"⚠️  PostgreSQL jobstore failed ({e}), using memory")
+                jobstores['default'] = MemoryJobStore()
+        else:
+            jobstores['default'] = MemoryJobStore()
+            if not use_persistent_store:
+                logger.info("📝 Using memory jobstore (not persistent)")
 
         self.scheduler = AsyncIOScheduler(
             jobstores=jobstores,
@@ -112,14 +138,7 @@ class SchedulerManager:
                 name=schedule['name']
             )
 
-            # Update next_run in database
-            asyncio.create_task(
-                self.schedules_db.update_schedule(
-                    schedule_id,
-                    {'next_run': next_run.isoformat() if next_run else None}
-                )
-            )
-
+            # Note: next_run will be updated by the caller (API endpoint)
             logger.info(f"✅ Scheduled: {schedule['name']} (next run: {next_run})")
 
         except Exception as e:

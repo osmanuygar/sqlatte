@@ -34,7 +34,7 @@ from src.core.analytics_db_postgres import analytics_db
 logger = logging.getLogger(__name__)
 
 # Scheduled Queries
-from src.core.scheduled_queries_db import ScheduledQueriesDB
+from src.core.scheduled_queries_db import ScheduledQueriesDB, ScheduledQueriesDBPostgres
 from src.core.scheduler_manager import SchedulerManager
 from src.core.email_service import EmailService, MockEmailService
 from src.api import scheduled_routes
@@ -326,6 +326,28 @@ async def read_root():
         return HTMLResponse(content="<h1>Frontend not found</h1>", status_code=404)
 
 
+@app.get("/scheduler-admin.html", response_class=HTMLResponse)
+async def scheduler_admin_page():
+    """Serve scheduler admin page"""
+    admin_path = os.path.join(PROJECT_ROOT, 'frontend', 'scheduler-admin.html')
+    try:
+        with open(admin_path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Scheduler Admin not found</h1>", status_code=404)
+
+
+@app.get("/admin.html", response_class=HTMLResponse)
+async def config_admin_page():
+    """Serve config admin page"""
+    admin_path = os.path.join(PROJECT_ROOT, 'frontend', 'admin.html')
+    try:
+        with open(admin_path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Config Admin not found</h1>", status_code=404)
+
+
 @app.get("/health")
 async def health_check():
     """Health check for all providers"""
@@ -480,19 +502,19 @@ async def analytics_dashboard():
 @app.get("/admin/schedules", response_class=HTMLResponse)
 async def schedules_admin_page():
     """
-    Schedule Management Admin Page
-    Shows all schedules across all users
+    Schedule Management Admin Page - Unified scheduler admin
+    Shows system status, schedules, and jobs in tabbed interface
     """
-    schedules_admin_path = os.path.join(PROJECT_ROOT, 'frontend', 'schedules-admin.html')
+    scheduler_admin_path = os.path.join(PROJECT_ROOT, 'frontend', 'scheduler-admin.html')
 
-    if not os.path.exists(schedules_admin_path):
+    if not os.path.exists(scheduler_admin_path):
         # Fallback: Return simple error page
         return HTMLResponse(
             content="""
                 <!DOCTYPE html>
                 <html>
                 <head>
-                    <title>Schedules Admin - Not Found</title>
+                    <title>Scheduler Admin - Not Found</title>
                     <style>
                         body {
                             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -526,9 +548,9 @@ async def schedules_admin_page():
                 </head>
                 <body>
                     <div class="error-container">
-                        <h1>📅 Schedules Admin Page Not Found</h1>
-                        <p>The schedules-admin.html file is missing from the frontend directory.</p>
-                        <p><code>frontend/schedules-admin.html</code></p>
+                        <h1>⏰ Scheduler Admin Page Not Found</h1>
+                        <p>The scheduler-admin.html file is missing from the frontend directory.</p>
+                        <p><code>frontend/scheduler-admin.html</code></p>
                         <a href="/">← Back to Home</a>
                     </div>
                 </body>
@@ -537,7 +559,7 @@ async def schedules_admin_page():
             status_code=404
         )
 
-    with open(schedules_admin_path, 'r', encoding='utf-8') as f:
+    with open(scheduler_admin_path, 'r', encoding='utf-8') as f:
         return f.read()
 
 
@@ -1029,15 +1051,47 @@ async def startup_event():
     # Get scheduler config
     scheduler_config = config.get('scheduler', {})
     email_config = config.get('email', {})
+    analytics_config = config.get('analytics', {})
 
     # Initialize scheduled queries if enabled
     if scheduler_config.get('enabled', True):
         print("\n📅 Initializing Scheduled Queries...")
 
         try:
-            # 1. Initialize database
-            schedules_db = ScheduledQueriesDB()
-            print("   ✅ Schedules database initialized (in-memory)")
+            # 1. Try PostgreSQL if analytics enabled
+            use_persistent_jobstore = False
+            postgres_url = None
+
+            if analytics_config.get('enabled', False):
+                try:
+                    # Build PostgreSQL connection string
+                    pg_config = analytics_config.get('postgresql', {})
+                    postgres_url = (
+                        f"postgresql://{pg_config.get('user', 'sqlatte')}:"
+                        f"{pg_config.get('password', 'sqlatte')}@"
+                        f"{pg_config.get('host', 'localhost')}:"
+                        f"{pg_config.get('port', 5432)}/"
+                        f"{pg_config.get('database', 'sqlatte_analytics')}"
+                    )
+
+                    print(f"   🔍 Attempting PostgreSQL connection...")
+                    schedules_db = ScheduledQueriesDBPostgres(postgres_url)
+                    await schedules_db.initialize()
+                    use_persistent_jobstore = True
+                    print("   ✅ Schedules database initialized (PostgreSQL - persistent)")
+
+                except Exception as pg_error:
+                    print(f"   ⚠️  PostgreSQL connection failed: {pg_error}")
+                    print("   ↪️  Falling back to in-memory storage...")
+                    schedules_db = ScheduledQueriesDB()
+                    postgres_url = None
+                    use_persistent_jobstore = False
+                    print("   ✅ Schedules database initialized (in-memory - not persistent)")
+            else:
+                # Analytics disabled, use in-memory
+                schedules_db = ScheduledQueriesDB()
+                print("   ✅ Schedules database initialized (in-memory)")
+                print("   💡 Tip: Enable analytics.enabled=true for persistent scheduler")
 
             # 2. Initialize email service
             if email_config.get('enabled', False):
@@ -1048,11 +1102,16 @@ async def startup_event():
                 print("   ✅ Email service initialized (Mock mode - testing)")
 
             # 3. Initialize scheduler
+            # NOTE: Always use in-memory jobstore for APScheduler
+            # Schedules are persisted in scheduled_queries table instead
+            # This avoids CronTrigger serialization issues with SQLAlchemy jobstore
             scheduler_manager = SchedulerManager(
                 schedules_db=schedules_db,
                 query_executor=execute_scheduled_query,
                 email_service=email_service,
-                timezone=scheduler_config.get('timezone', 'UTC')
+                timezone=scheduler_config.get('timezone', 'UTC'),
+                use_persistent_store=False,  # Always False - use scheduled_queries table
+                postgres_url=None
             )
             print(f"   ✅ Scheduler initialized (timezone: {scheduler_config.get('timezone', 'UTC')})")
 
@@ -1072,6 +1131,8 @@ async def startup_event():
 
         except Exception as e:
             print(f"❌ Failed to initialize Scheduled Queries: {e}")
+            import traceback
+            traceback.print_exc()
             print("   App will continue without scheduling functionality")
             schedules_db = None
             scheduler_manager = None
