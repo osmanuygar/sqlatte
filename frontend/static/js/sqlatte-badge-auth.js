@@ -1697,6 +1697,9 @@ function visualizeData(resultId) {
             modal.classList.remove('sqlatte-auth-modal-open');
             isModalOpen = false;
         }
+        // Show badge again when modal closes
+        const badge = document.querySelector('.sqlatte-badge-btn');
+        if (badge) badge.style.display = 'flex';
     }
 
     function toggleWidget() {
