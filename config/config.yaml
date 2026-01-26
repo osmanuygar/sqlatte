@@ -255,3 +255,10 @@ export:
   # File naming
   filename_template: "{{schedule_name}}_{{date}}_{{time}}.{{format}}"
 
+insights:
+  enabled: false               # Başlangıçta kapalı
+  mode: hybrid                 # llm_only, statistical_only, hybrid
+  max_insights: 3
+  include_statistical: true
+
+
