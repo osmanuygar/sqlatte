@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Dict
 import os
 import sys
 
@@ -29,6 +29,11 @@ from src.api.admin_routes import router as admin_router
 from src.api.demo_routes import router as demo_router
 from src.api.analytics_routes import router as analytics_router
 from src.core.analytics_db_postgres import analytics_db
+#from src.core.simple_insights import simple_insights
+from src.core.llm_insights_engine import (
+    initialize_insights_engine,
+    get_insights_engine
+)
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -195,6 +200,7 @@ class SQLQueryResponse(BaseModel):
     explanation: str
     session_id: str
     query_id: Optional[str] = None
+    insights: Optional[List[Dict]] = None
 
 
 class ChatResponse(BaseModel):
@@ -271,6 +277,33 @@ def _process_query_sync(
             columns, data = db.execute_query(sql_query)
 
             print(f"✅ [Thread {id(llm)}] Query executed: {len(data)} rows")
+            try:
+                # ✅ NULL CHECK EKLE
+                engine = get_insights_engine()  # ← Singleton'dan al
+                if engine is None:
+                    print("⚠️ Insights engine not initialized")
+                    insights = []
+                else:
+                    insights = engine.generate_insights(
+                        columns=columns,
+                        data=data,
+                        user_question=question,
+                        schema_info=schema_info,
+                        sql_query=sql_query
+                    )
+
+                    if insights:
+                        print(f"🧠 Generated {len(insights)} insights")
+                        for insight in insights:
+                            print(f"   {insight['icon']} {insight['message']}")
+                    else:
+                        print("💡 No insights generated")
+
+            except Exception as e:
+                print(f"⚠️ Insights generation failed: {e}")
+                import traceback
+                traceback.print_exc()
+                insights = []
 
             return {
                 "type": "sql",
@@ -279,6 +312,7 @@ def _process_query_sync(
                 "data": data,
                 "row_count": len(data),
                 "explanation": explanation,
+                "insights": insights,
                 "tables": selected_tables
             }
 
@@ -367,6 +401,7 @@ async def health_check():
         },
         "conversations": conversation_manager.get_stats(),
         "query_history": query_history.get_stats(),
+        "insights_engine": "active",
         "thread_pool": {
             "workers": 20,
             "active": MAIN_EXECUTOR._threads.__len__() if hasattr(MAIN_EXECUTOR, '_threads') else 0
@@ -720,7 +755,8 @@ async def process_query(request: QueryRequest):
                 row_count=result["row_count"],
                 explanation=result["explanation"],
                 session_id=session_id,
-                query_id=history_record.id
+                query_id=history_record.id,
+                insights=result.get("insights", [])
             )
 
         else:  # chat
@@ -1052,6 +1088,20 @@ async def startup_event():
     scheduler_config = config.get('scheduler', {})
     email_config = config.get('email', {})
     analytics_config = config.get('analytics', {})
+    print("\n💡 Initializing Insights Engine...")
+    try:
+        insights_config = config.get('insights', {})
+
+        initialize_insights_engine(
+            llm_provider=llm_provider,
+            enabled=insights_config.get('enabled', True),
+            mode=insights_config.get('mode', 'hybrid'),
+            max_insights=insights_config.get('max_insights', 3)
+        )
+
+        print("✅ Insights Engine initialized")
+    except Exception as e:
+        print(f"⚠️ Insights Engine init failed: {e}")
 
     # Initialize scheduled queries if enabled
     if scheduler_config.get('enabled', True):

@@ -1572,7 +1572,7 @@
     /**
      * FORMAT TABLE WITH SQL HIGHLIGHTING - UPDATED!
      */
-    function formatTable(columns, data, queryId = null, sql = null, explanation = null) {
+    function formatTable(columns, data, queryId = null, sql = null, explanation = null, insights=null) {
         if (!data || data.length === 0) {
             return '<div class="text-sm" style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
         }
@@ -1606,6 +1606,25 @@
                     </div>
                 </div>
             `;
+        }
+        if (insights && insights.length > 0) {
+        html += '<div class="sqlatte-insights-panel">';
+        html += '<div class="sqlatte-insights-header">🧠 Hızlı Görüş</div>';
+
+        insights.forEach(insight => {
+            const severityClass = `severity-${insight.severity || 'info'}`;
+            const icon = insight.icon || '•';
+            const message = escapeHtml(insight.message);
+
+            html += `
+                <div class="sqlatte-insight-card ${severityClass}">
+                    <div class="sqlatte-insight-icon">${icon}</div>
+                    <div class="sqlatte-insight-content">${message}</div>
+                </div>
+            `;
+            });
+
+        html += '</div>';
         }
 
         // Results
@@ -1713,7 +1732,8 @@
                     result.data,
                     result.query_id,
                     result.sql,
-                    result.explanation
+                    result.explanation,
+                    result.insights
                 );
             } else {
                 const msg = result.message || JSON.stringify(result);
@@ -2706,7 +2726,108 @@
 .sqlatte-results-table td:hover {
     background: rgba(212, 165, 116, 0.1);
 }
+/* ============================================
+   INSIGHTS PANEL STYLES
+   ============================================ */
 
+.sqlatte-insights-panel {
+    margin: 16px 0;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(212, 165, 116, 0.1) 0%, rgba(212, 165, 116, 0.05) 100%);
+    border-radius: 8px;
+    border: 1px solid rgba(212, 165, 116, 0.2);
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.sqlatte-insights-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #D4A574;
+    letter-spacing: 0.5px;
+}
+
+.sqlatte-insight-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 14px;
+    margin: 8px 0;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    border-left: 3px solid #666;
+    transition: all 0.2s ease;
+    cursor: default;
+}
+
+.sqlatte-insight-card:hover {
+    background: rgba(0, 0, 0, 0.4);
+    transform: translateX(2px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.sqlatte-insight-card.severity-info {
+    border-left-color: #6b7280;
+}
+
+.sqlatte-insight-card.severity-success {
+    border-left-color: #10b981;
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.sqlatte-insight-card.severity-warning {
+    border-left-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.sqlatte-insight-icon {
+    font-size: 20px;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.sqlatte-insight-content {
+    flex: 1;
+    font-size: 13px;
+    color: #e5e5e5;
+    line-height: 1.6;
+}
+
+/* Mobile responsive */
+@media (max-width: 600px) {
+    .sqlatte-insights-panel {
+        padding: 12px;
+        margin: 12px 0;
+    }
+
+    .sqlatte-insight-card {
+        padding: 8px 12px;
+        gap: 10px;
+    }
+
+    .sqlatte-insight-icon {
+        font-size: 18px;
+    }
+
+    .sqlatte-insight-content {
+        font-size: 12px;
+    }
+}
 /* Input Area */
 .sqlatte-input-area {
     padding: 12px 16px;
