@@ -30,6 +30,7 @@
 - 💬 **Smart Chat Interface** - Conversational AI that understands context
 - 🔗 **Multi-Table JOINs** - Automatically detects and creates table relationships
 - 🧠 **Conversation Memory** - Remembers chat history per session (in-memory)
+- 🧠 **AI-Powered Insights Engine**
 - 🎯 **Context-Aware Responses** - Understands follow-up questions
 - ⚙️ **Admin Panel** - Runtime configuration without restart
 - ⭐ **Query History & Favorites** - Save and replay queries
@@ -41,6 +42,19 @@
 - ⚡ **Fast & Simple** - Single YAML config file, no complex setup
 - 🐳 **Docker Ready** - Easy deployment with Docker & Docker Compose
 
+### Latest Features (2026)
+
+🧠 **AI-Powered Insights Engine**
+- Automatic data analysis and pattern detection
+- Context-aware insights considering temporal patterns
+- Hybrid mode combining LLM and statistical analysis
+- Smart handling of incomplete real-time data
+
+📅 **Scheduled Queries & Email Reports**
+- Automate recurring reports with flexible scheduling
+- Email delivery with CSV, Excel, and HTML formats
+- Execution history and monitoring
+- Rate limiting and error handling
 ---
 
 ##  Quick Start
@@ -96,7 +110,15 @@ email:
     user: "your-email@gmail.com"
     password: "your-app-password"  # Gmail App Password
 ```
-
+####  Insights Engine
+```yaml
+# Insights Engine (NEW!)
+insights:
+  enabled: true                # Enable AI insights
+  mode: hybrid                 # llm_only, statistical_only, hybrid
+  max_insights: 3              # Max insights per query
+  include_statistical: true    # Fallback to statistical analysis
+```
 **Leave it at `false`** - SQLatte works perfectly without it!
 
 ---
@@ -121,37 +143,6 @@ http://localhost:8000/analytics
 ```
 
 **That's it!** 🎉
-
-<details>
-<summary><b>Chat Screen</b></summary>
-<p align="left">
-  <img src="frontend/static/image/img_2.png" width="600" alt="SQLatte widget">
-</p>
-</details>
-<details>
-<summary><b>SQL Screen</b></summary>
-<p align="left">
-  <img src="frontend/static/image/img.png" width="600" alt="SQLatte widget">
-</p>
-</details>
-<details>
-<summary><b>Graphs Screen</b></summary>
-<p align="left">
-  <img src="frontend/static/image/graphs.png" width="600" alt="SQLatte widget">
-</p>
-</details>
-<details>
-<summary><b>Admin Screen</b></summary>
-<p align="left">
-  <img src="frontend/static/image/admin.png" width="600" alt="SQLatte widget">
-</p>
-</details>
-<details>
-<summary><b>Analytics Screen</b></summary>
-<p align="left">
-  <img src="frontend/static/image/analytics.png" width="600" alt="SQLatte widget">
-</p>
-</details>
 
 
 ---
@@ -346,7 +337,48 @@ docker run -d -p 8000:8000 \
   --name sqlatte \
   sqlatte
 ```
+---
 
+## 🧠 AI-Powered Insights Engine
+
+SQLatte's Insights Engine automatically analyzes query results and generates meaningful insights.
+
+### Features
+
+**Context-Aware Analysis**
+- Considers temporal patterns (daily, weekly, monthly)
+- Handles incomplete real-time data intelligently
+- Detects trends, anomalies, and patterns
+
+**Flexible Modes**
+- `llm_only`: Pure AI-generated insights
+- `statistical_only`: Rule-based analysis
+- `hybrid`: Best of both worlds (recommended)
+
+**Smart Insights**
+- 📈 Trend detection (growth, decline)
+- ⚠️ Anomaly identification
+- 🎯 Metric summaries and comparisons
+- 💡 Contextual recommendations
+
+### Configuration
+
+```yaml
+insights:
+  enabled: true
+  mode: hybrid                    # llm_only | statistical_only | hybrid
+  max_insights: 3                 # Limit insights per query
+  include_statistical: true       # Fallback option
+```
+
+### Example Output
+
+```
+Quick Review
+⚠️ The homepage (x.x) and login page (x.x) are critical points that receive the most attacks. Strengthen your security measures immediately.
+📊 High volume of requests to /robots.txt and nonsensical URLs indicates that your site is being crawled by automated bots. Tighten bot rules.
+💡 This analysis only covers the last 24 hours. Look at a longer time period to understand if the attacks are continuous.
+```
 ---
 
 ## 🔌 Embedding in Your Website
