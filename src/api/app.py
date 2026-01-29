@@ -21,11 +21,12 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 # Now import from src
-from src.core.config_manager import config_manager
+#from src.core.config_manager import config_manager
 from src.core.provider_factory import ProviderFactory
+from src.core.config_manager_enhanced import config_manager
 from src.core.conversation_manager import conversation_manager
 from src.core.query_history import query_history
-from src.api.admin_routes import router as admin_router
+from src.api.admin_routes_enhanced import router as admin_router
 from src.api.demo_routes import router as demo_router
 from src.api.analytics_routes import router as analytics_router
 from src.core.analytics_db_postgres import analytics_db
@@ -52,7 +53,7 @@ from src.plugins.auth_plugin import create_auth_plugin
 
 # Load configuration from file
 CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
-config = config_manager.load_from_file(CONFIG_PATH)
+config = config_manager.load_from_file(CONFIG_PATH, enable_db=True)
 
 # ============================================
 # THREAD POOL FOR ASYNC OPERATIONS
@@ -1090,13 +1091,15 @@ async def startup_event():
     analytics_config = config.get('analytics', {})
     print("\n💡 Initializing Insights Engine...")
     try:
-        insights_config = config.get('insights', {})
+        current_config = config_manager.get_config()
+        insights_config = current_config.get('insights', {})
+        print(f"   Insights config from runtime: {insights_config}")
 
         initialize_insights_engine(
             llm_provider=llm_provider,
-            enabled=insights_config.get('enabled', True),
+            enabled=insights_config.get('enabled', False),
             mode=insights_config.get('mode', 'hybrid'),
-            max_insights=insights_config.get('max_insights', 3)
+            max_insights=insights_config.get('max_insights', 4)
         )
 
         print("✅ Insights Engine initialized")
