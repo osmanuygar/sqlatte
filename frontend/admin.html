@@ -727,9 +727,23 @@
                         <label>Port</label>
                         <input type="number" id="db-port" placeholder="8123">
                     </div>
+                    <div class="form-group" id="db-catalog-field" style="display: none;">
+                        <label>Catalog</label>
+                        <input type="text" id="db-catalog" placeholder="hive">
+                        <small>Trino catalog name (e.g., hive, iceberg, postgresql)</small>
+                    </div>
                     <div class="form-group">
-                        <label>Database</label>
-                        <input type="text" id="db-database" placeholder="default">
+                        <label id="db-schema-label">Database / Schema</label>
+                        <input type="text" id="db-schema" placeholder="default">
+                        <small id="db-schema-hint">Database or schema name</small>
+                    </div>
+                    <div class="form-group" id="db-http-scheme-field" style="display: none;">
+                        <label>HTTP Scheme</label>
+                        <select id="db-http-scheme">
+                            <option value="https">HTTPS</option>
+                            <option value="http">HTTP</option>
+                        </select>
+                        <small>Trino connection scheme</small>
                     </div>
                     <div class="form-group">
                         <label>Username</label>
@@ -1212,8 +1226,10 @@
             const dbConfig = config.database?.[dbProvider] || {};
             document.getElementById('db-host').value = dbConfig.host || 'localhost';
             document.getElementById('db-port').value = toInt(dbConfig.port, 8123);
-            document.getElementById('db-database').value = dbConfig.database || 'default';
-            document.getElementById('db-username').value = dbConfig.username || 'default';
+            document.getElementById('db-catalog').value = dbConfig.catalog || '';  // ✅ Trino catalog
+            document.getElementById('db-schema').value = dbConfig.schema || dbConfig.database || 'default';  // ✅ Trino schema
+            document.getElementById('db-http-scheme').value = dbConfig.http_scheme || 'https';  // ✅ Trino http_scheme
+            document.getElementById('db-username').value = dbConfig.username || dbConfig.user || 'default';
 
             // Email Config
             const emailConfig = config.email || {};
@@ -1282,12 +1298,30 @@
         function updateDBFields() {
             const provider = document.getElementById('db-provider').value;
             const portDefaults = {
-                'trino': 8443,
+                'trino': 443,
                 'clickhouse': 8123,
                 'postgresql': 5432,
                 'mysql': 3306
             };
             document.getElementById('db-port').placeholder = portDefaults[provider] || 8123;
+
+            // ✅ Show/hide Trino-specific fields
+            const catalogField = document.getElementById('db-catalog-field');
+            const httpSchemeField = document.getElementById('db-http-scheme-field');
+            const schemaLabel = document.getElementById('db-schema-label');
+            const schemaHint = document.getElementById('db-schema-hint');
+
+            if (provider === 'trino') {
+                catalogField.style.display = 'block';
+                httpSchemeField.style.display = 'block';
+                schemaLabel.textContent = 'Schema';
+                schemaHint.textContent = 'Schema name within the catalog';
+            } else {
+                catalogField.style.display = 'none';
+                httpSchemeField.style.display = 'none';
+                schemaLabel.textContent = 'Database';
+                schemaHint.textContent = 'Database name';
+            }
         }
 
         // ============================================
@@ -1407,13 +1441,31 @@
         // DATABASE ACTIONS
         // ============================================
         function getDBConfig() {
+            const provider = document.getElementById('db-provider').value;
             const password = document.getElementById('db-password').value;
-            return {
+
+            const baseConfig = {
                 host: document.getElementById('db-host').value,
                 port: parseInt(document.getElementById('db-port').value),
-                database: document.getElementById('db-database').value,
-                username: document.getElementById('db-username').value,
                 ...(password && { password: password })
+            };
+
+            // ✅ Trino-specific config
+            if (provider === 'trino') {
+                return {
+                    ...baseConfig,
+                    catalog: document.getElementById('db-catalog').value,
+                    schema: document.getElementById('db-schema').value,
+                    user: document.getElementById('db-username').value,
+                    http_scheme: document.getElementById('db-http-scheme').value
+                };
+            }
+
+            // ✅ Other databases (ClickHouse, PostgreSQL, MySQL)
+            return {
+                ...baseConfig,
+                database: document.getElementById('db-schema').value,
+                username: document.getElementById('db-username').value
             };
         }
 
