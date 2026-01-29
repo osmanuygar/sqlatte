@@ -626,7 +626,7 @@ class AuthPlugin(BasePlugin):
         Execute query with CONVERSATION CONTEXT support
         """
         try:
-            from src.core.config_manager import config_manager
+            from src.core.config_manager_enhanced import config_manager
             from src.core.conversation_manager import conversation_manager  # 👈 YENİ
 
             wrapped_db_config = {'database': db_config}

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQLatte Admin - Configuration</title>
+    <title>SQLatte Admin - Complete Configuration Panel</title>
     <style>
         * {
             margin: 0;
@@ -13,32 +13,32 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            background: #0f0f0f;
             color: #e0e0e0;
-            min-height: 100vh;
             padding: 20px;
+            line-height: 1.6;
         }
 
         .admin-container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
         }
 
         /* Header */
         .admin-header {
-            background: linear-gradient(135deg, #8B6F47 0%, #A67C52 100%);
-            padding: 20px 30px;
+            background: linear-gradient(135deg, #6B4423 0%, #8B5A3C 100%);
+            padding: 24px 32px;
             border-radius: 12px;
             margin-bottom: 30px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 4px 20px rgba(107, 68, 35, 0.3);
         }
 
         .admin-header h1 {
             font-size: 28px;
-            color: white;
+            color: #fff;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -47,8 +47,53 @@
         .admin-actions {
             display: flex;
             gap: 12px;
+            flex-wrap: wrap;
         }
 
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .tab:hover {
+            background: #242424;
+            border-color: #444;
+        }
+
+        .tab.active {
+            background: #D4A574;
+            color: #1a1a1a;
+            border-color: #D4A574;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Buttons */
         .btn {
             padding: 10px 20px;
             border: none;
@@ -57,46 +102,92 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             gap: 8px;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: #D4A574;
+            color: #1a1a1a;
         }
 
-        .btn-success {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            color: white;
+        .btn-primary:hover {
+            background: #E0B886;
+            transform: translateY(-1px);
         }
 
         .btn-secondary {
             background: #333;
             color: #e0e0e0;
-            border: 1px solid #444;
         }
 
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        .btn-secondary:hover {
+            background: #444;
         }
 
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
+        /* Info Panel */
+        .info-panel {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .info-panel h3 {
+            color: #D4A574;
+            margin-bottom: 12px;
+            font-size: 18px;
+        }
+
+        .info-panel ul {
+            list-style: none;
+        }
+
+        .info-panel li {
+            padding: 6px 0;
+            font-size: 13px;
+            color: #a0a0a0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .info-panel li strong {
+            color: #e0e0e0;
         }
 
         /* Grid Layout */
         .admin-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }
@@ -162,6 +253,209 @@
             color: #707070;
         }
 
+        /* Checkbox */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            padding: 12px;
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #D4A574;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            color: #e0e0e0;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* Toggle Switch */
+        .toggle-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin-bottom: 16px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #333;
+            transition: .3s;
+            border-radius: 26px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background-color: #10b981;
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+
+        /* Test Result */
+        .test-result {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .test-result.show {
+            display: block;
+        }
+
+        .test-result.success {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid #10b981;
+            color: #10b981;
+        }
+
+        .test-result.error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #ef4444;
+        }
+
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #242424;
+            color: #e0e0e0;
+            padding: 16px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            border: 1px solid #333;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+            z-index: 1000;
+            max-width: 400px;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .toast.error {
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .toast.warning {
+            border-color: #f59e0b;
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        /* History Viewer */
+        .history-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 16px;
+        }
+
+        .history-item {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .history-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .history-item-key {
+            font-weight: 600;
+            color: #D4A574;
+            font-size: 14px;
+        }
+
+        .history-item-time {
+            font-size: 11px;
+            color: #707070;
+        }
+
+        .history-item-details {
+            font-size: 12px;
+            color: #a0a0a0;
+            margin: 4px 0;
+        }
+
+        .history-item-change {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .history-old {
+            color: #ef4444;
+            flex: 1;
+        }
+
+        .history-new {
+            color: #10b981;
+            flex: 1;
+        }
+
         /* Status Badge */
         .status-badge {
             display: inline-flex;
@@ -178,137 +472,67 @@
             color: #10b981;
         }
 
-        .status-error {
-            background: rgba(239, 68, 68, 0.2);
-            color: #ef4444;
-        }
-
         .status-warning {
             background: rgba(245, 158, 11, 0.2);
             color: #f59e0b;
         }
 
-        /* Test Result */
-        .test-result {
-            margin-top: 16px;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 13px;
-            display: none;
-        }
-
-        .test-result.show {
-            display: block;
-        }
-
-        .test-result.success {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid #10b981;
-            color: #10b981;
-        }
-
-        .test-result.error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid #ef4444;
+        .status-error {
+            background: rgba(239, 68, 68, 0.2);
             color: #ef4444;
         }
 
-        /* Loading Spinner */
-        .spinner {
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            width: 16px;
-            height: 16px;
-            animation: spin 0.8s linear infinite;
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Toast Notifications */
-        .toast {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            padding: 16px 24px;
+        ::-webkit-scrollbar-track {
             background: #1a1a1a;
-            color: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            font-size: 14px;
-            opacity: 0;
-            transform: translateX(100px);
-            transition: all 0.3s;
-            z-index: 9999;
-            border: 1px solid #333;
-            max-width: 400px;
         }
 
-        .toast.show {
-            opacity: 1;
-            transform: translateX(0);
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
         }
 
-        .toast.success {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            border-color: #10b981;
+        ::-webkit-scrollbar-thumb:hover {
+            background: #444;
         }
 
-        .toast.error {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            border-color: #ef4444;
-        }
-
-        /* Info Panel */
-        .info-panel {
-            background: rgba(212, 165, 116, 0.1);
-            border: 1px solid #D4A574;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 20px;
-        }
-
-        .info-panel h3 {
-            font-size: 14px;
-            color: #D4A574;
-            margin-bottom: 10px;
-        }
-
-        .info-panel ul {
-            list-style: none;
-            padding: 0;
-        }
-
-        .info-panel li {
-            padding: 6px 0;
-            font-size: 13px;
-            color: #a0a0a0;
+        /* Multi-select */
+        .multi-select {
             display: flex;
-            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 12px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            min-height: 60px;
         }
 
-        .info-panel li strong {
-            color: #e0e0e0;
-        }
-
-        /* Checkbox */
-        .checkbox-group {
+        .multi-select-item {
+            padding: 6px 12px;
+            background: #D4A574;
+            color: #1a1a1a;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-top: 12px;
-        }
-
-        .checkbox-group input[type="checkbox"] {
-            width: auto;
+            gap: 6px;
             cursor: pointer;
         }
 
-        .checkbox-group label {
-            margin: 0;
+        .multi-select-item:hover {
+            background: #E0B886;
+        }
+
+        .multi-select-item .remove {
             cursor: pointer;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -318,12 +542,12 @@
         <div class="admin-header">
             <h1>
                 <span>⚙️</span>
-                SQLatte Admin
+                SQLatte Complete Admin Panel
             </h1>
             <div class="admin-actions">
-                <button class="btn btn-secondary" onclick="window.location.href='/scheduler-admin.html'">
-                    <span>⏰</span>
-                    Scheduler
+                <button class="btn btn-warning" onclick="hotReload()">
+                    <span>🔥</span>
+                    Hot Reload
                 </button>
                 <button class="btn btn-secondary" onclick="loadConfig()">
                     <span>🔄</span>
@@ -331,7 +555,7 @@
                 </button>
                 <button class="btn btn-danger" onclick="resetConfig()">
                     <span>↩️</span>
-                    Reset to File
+                    Reset
                 </button>
                 <button class="btn btn-primary" onclick="window.location.href='/'">
                     <span>☕</span>
@@ -342,244 +566,585 @@
 
         <!-- System Info Panel -->
         <div class="info-panel" id="system-info">
-            <h3>📊 Current Configuration</h3>
+            <h3>📊 System Status</h3>
             <ul id="system-info-list">
                 <li>Loading...</li>
             </ul>
         </div>
 
-        <!-- Configuration Grid -->
-        <div class="admin-grid">
-            <!-- LLM Configuration -->
-            <div class="config-card">
-                <h2>
-                    <span>🤖</span>
-                    LLM Provider
-                </h2>
-
-                <div class="form-group">
-                    <label>Provider</label>
-                    <select id="llm-provider" onchange="updateLLMFields()">
-                        <option value="anthropic">Anthropic Claude</option>
-                        <option value="gemini">Google Gemini</option>
-                        <option value="vertexai">Google Vertex AI</option>
-                    </select>
-                    <small>Select your AI provider</small>
-                </div>
-
-                <!-- Anthropic Fields -->
-                <div id="anthropic-fields">
-                    <div class="form-group">
-                        <label>API Key</label>
-                        <input type="password" id="anthropic-api-key" placeholder="sk-ant-...">
-                        <small>Your Anthropic API key</small>
-                    </div>
-                    <div class="form-group">
-                        <label>Model</label>
-                        <input type="text" id="anthropic-model" list="anthropic-models" placeholder="claude-sonnet-4-20250514">
-                        <datalist id="anthropic-models">
-                            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                            <option value="claude-opus-4-20250514">Claude Opus 4</option>
-                            <option value="claude-sonnet-4-20241022">Claude Sonnet 4 (Oct)</option>
-                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                        </datalist>
-                        <small>Enter any Anthropic model name</small>
-                    </div>
-                </div>
-
-                <!-- Gemini Fields -->
-                <div id="gemini-fields" style="display: none;">
-                    <div class="form-group">
-                        <label>API Key</label>
-                        <input type="password" id="gemini-api-key" placeholder="Your Gemini API key">
-                    </div>
-                    <div class="form-group">
-                        <label>Model</label>
-                        <input type="text" id="gemini-model" list="gemini-models" placeholder="gemini-pro">
-                        <datalist id="gemini-models">
-                            <option value="gemini-pro">Gemini Pro</option>
-                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
-                        </datalist>
-                        <small>Enter any Gemini model name</small>
-                    </div>
-                </div>
-
-                <!-- Vertex AI Fields -->
-                <div id="vertexai-fields" style="display: none;">
-                    <div class="form-group">
-                        <label>Project ID</label>
-                        <input type="text" id="vertexai-project" placeholder="my-gcp-project">
-                    </div>
-                    <div class="form-group">
-                        <label>Location</label>
-                        <input type="text" id="vertexai-location" placeholder="us-central1">
-                    </div>
-                    <div class="form-group">
-                        <label>Model</label>
-                        <input type="text" id="vertexai-model" list="vertexai-models" placeholder="gemini-2.0-flash-exp">
-                        <datalist id="vertexai-models">
-                            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
-                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                            <option value="gemini-pro">Gemini Pro</option>
-                        </datalist>
-                        <small>Enter any Vertex AI model name</small>
-                    </div>
-                    <div class="form-group">
-                        <label>Credentials Path</label>
-                        <input type="text" id="vertexai-credentials" placeholder="/path/to/service-account.json">
-                        <small>Optional: Path to service account JSON</small>
-                    </div>
-                </div>
-
-                <div class="checkbox-group">
-                    <input type="checkbox" id="llm-persist">
-                    <label for="llm-persist">Save to config.yaml</label>
-                </div>
-
-                <div style="display: flex; gap: 12px; margin-top: 16px;">
-                    <button class="btn btn-secondary" onclick="testLLM()" style="flex: 1;">
-                        <span>🧪</span>
-                        Test Connection
-                    </button>
-                    <button class="btn btn-success" onclick="updateLLM()" style="flex: 1;">
-                        <span>✓</span>
-                        Apply
-                    </button>
-                </div>
-
-                <div id="llm-test-result" class="test-result"></div>
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('providers')">
+                <span>🔌</span>
+                Providers
             </div>
+            <div class="tab" onclick="switchTab('email')">
+                <span>📧</span>
+                Email & SMTP
+            </div>
+            <div class="tab" onclick="switchTab('scheduler')">
+                <span>📅</span>
+                Scheduler
+            </div>
+            <div class="tab" onclick="switchTab('insights')">
+                <span>💡</span>
+                Insights
+            </div>
+            <div class="tab" onclick="switchTab('export')">
+                <span>📊</span>
+                Export
+            </div>
+            <div class="tab" onclick="switchTab('history')">
+                <span>📜</span>
+                History
+            </div>
+            <div class="tab" onclick="switchTab('snapshots')">
+                <span>📸</span>
+                Snapshots
+            </div>
+        </div>
 
-            <!-- Database Configuration -->
-            <div class="config-card">
-                <h2>
-                    <span>🗄️</span>
-                    Database Provider
-                </h2>
+        <!-- TAB: Providers (LLM & Database) -->
+        <div id="tab-providers" class="tab-content active">
+            <div class="admin-grid">
+                <!-- LLM Configuration -->
+                <div class="config-card">
+                    <h2>
+                        <span>🤖</span>
+                        LLM Provider
+                    </h2>
 
-                <div class="form-group">
-                    <label>Provider</label>
-                    <select id="db-provider" onchange="updateDBFields()">
-                        <option value="trino">Trino</option>
-                        <option value="postgresql">PostgreSQL</option>
-                        <option value="mysql">MySQL</option>
-                    </select>
-                    <small>Select your database type</small>
-                </div>
-
-                <!-- Trino Fields -->
-                <div id="trino-fields">
                     <div class="form-group">
-                        <label>Host</label>
-                        <input type="text" id="trino-host" placeholder="trino.example.com">
-                    </div>
-                    <div class="form-group">
-                        <label>Port</label>
-                        <input type="number" id="trino-port" value="8080">
-                    </div>
-                    <div class="form-group">
-                        <label>User</label>
-                        <input type="text" id="trino-user" placeholder="admin">
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" id="trino-password">
-                    </div>
-                    <div class="form-group">
-                        <label>Catalog</label>
-                        <input type="text" id="trino-catalog" placeholder="hive">
-                    </div>
-                    <div class="form-group">
-                        <label>Schema</label>
-                        <input type="text" id="trino-schema" placeholder="default">
-                    </div>
-                    <div class="form-group">
-                        <label>HTTP Scheme</label>
-                        <select id="trino-http-scheme">
-                            <option value="https">HTTPS</option>
-                            <option value="http">HTTP</option>
+                        <label>Provider</label>
+                        <select id="llm-provider" onchange="updateLLMFields()">
+                            <option value="anthropic">Anthropic Claude</option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="vertexai">Google Vertex AI</option>
                         </select>
                     </div>
+
+                    <!-- Anthropic Fields -->
+                    <div id="anthropic-fields">
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="password" id="anthropic-api-key" placeholder="sk-ant-...">
+                            <small>Leave empty to keep current</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Model</label>
+                            <select id="anthropic-model">
+                                <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                                <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                                <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Gemini Fields -->
+                    <div id="gemini-fields" style="display: none;">
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="password" id="gemini-api-key" placeholder="API key">
+                            <small>Leave empty to keep current</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Model</label>
+                            <select id="gemini-model">
+                                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Vertex AI Fields -->
+                    <div id="vertexai-fields" style="display: none;">
+                        <div class="form-group">
+                            <label>Project ID</label>
+                            <input type="text" id="vertexai-project-id" placeholder="your-gcp-project-id">
+                        </div>
+                        <div class="form-group">
+                            <label>Location</label>
+                            <select id="vertexai-location">
+                                <option value="us-central1">us-central1</option>
+                                <option value="us-east1">us-east1</option>
+                                <option value="europe-west1">europe-west1</option>
+                                <option value="asia-northeast1">asia-northeast1</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Model</label>
+                            <input type="text" id="vertexai-model" placeholder="gemini-2.5-flash">
+                            <small>Examples: gemini-2.5-flash, gemini-1.5-pro, gemini-2.0-flash-exp</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Credentials Path</label>
+                            <input type="text" id="vertexai-credentials-path" placeholder="/path/to/service-account.json">
+                            <small>Path to GCP service account JSON file</small>
+                        </div>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="llm-persist" checked>
+                        <label for="llm-persist">💾 Save to Database</label>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; margin-top: 16px;">
+                        <button class="btn btn-secondary" onclick="testLLM()" style="flex: 1;">
+                            <span>🧪</span>
+                            Test
+                        </button>
+                        <button class="btn btn-success" onclick="updateLLM()" style="flex: 1;">
+                            <span>✓</span>
+                            Apply
+                        </button>
+                    </div>
+
+                    <div id="llm-test-result" class="test-result"></div>
                 </div>
 
-                <!-- PostgreSQL Fields -->
-                <div id="postgresql-fields" style="display: none;">
+                <!-- Database Configuration -->
+                <div class="config-card">
+                    <h2>
+                        <span>🗄️</span>
+                        Database Provider
+                    </h2>
+
+                    <div class="form-group">
+                        <label>Provider</label>
+                        <select id="db-provider" onchange="updateDBFields()">
+                            <option value="trino">Trino</option>
+                            <option value="clickhouse">ClickHouse</option>
+                            <option value="postgresql">PostgreSQL</option>
+                            <option value="mysql">MySQL</option>
+                        </select>
+                    </div>
+
                     <div class="form-group">
                         <label>Host</label>
-                        <input type="text" id="pg-host" placeholder="localhost">
+                        <input type="text" id="db-host" placeholder="localhost">
                     </div>
                     <div class="form-group">
                         <label>Port</label>
-                        <input type="number" id="pg-port" value="5432">
+                        <input type="number" id="db-port" placeholder="8123">
                     </div>
                     <div class="form-group">
                         <label>Database</label>
-                        <input type="text" id="pg-database" placeholder="postgres">
+                        <input type="text" id="db-database" placeholder="default">
                     </div>
                     <div class="form-group">
-                        <label>User</label>
-                        <input type="text" id="pg-user" placeholder="postgres">
+                        <label>Username</label>
+                        <input type="text" id="db-username" placeholder="default">
                     </div>
                     <div class="form-group">
                         <label>Password</label>
-                        <input type="password" id="pg-password">
+                        <input type="password" id="db-password">
+                        <small>Leave empty to keep current</small>
                     </div>
-                    <div class="form-group">
-                        <label>Schema</label>
-                        <input type="text" id="pg-schema" placeholder="public">
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="db-persist" checked>
+                        <label for="db-persist">💾 Save to Database</label>
                     </div>
+
+                    <div style="display: flex; gap: 12px; margin-top: 16px;">
+                        <button class="btn btn-secondary" onclick="testDatabase()" style="flex: 1;">
+                            <span>🧪</span>
+                            Test
+                        </button>
+                        <button class="btn btn-success" onclick="updateDatabase()" style="flex: 1;">
+                            <span>✓</span>
+                            Apply
+                        </button>
+                    </div>
+
+                    <div id="db-test-result" class="test-result"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Email & SMTP -->
+        <div id="tab-email" class="tab-content">
+            <div class="config-card">
+                <h2>
+                    <span>📧</span>
+                    Email & SMTP Configuration
+                </h2>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Enable Email Reports</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="email-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
                 </div>
 
-                <!-- MySQL Fields -->
-                <div id="mysql-fields" style="display: none;">
-                    <div class="form-group">
-                        <label>Host</label>
-                        <input type="text" id="mysql-host" placeholder="localhost">
-                    </div>
-                    <div class="form-group">
-                        <label>Port</label>
-                        <input type="number" id="mysql-port" value="3306">
-                    </div>
-                    <div class="form-group">
-                        <label>Database</label>
-                        <input type="text" id="mysql-database" placeholder="mysql">
-                    </div>
-                    <div class="form-group">
-                        <label>User</label>
-                        <input type="text" id="mysql-user" placeholder="root">
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" id="mysql-password">
-                    </div>
+                <div class="form-group">
+                    <label>SMTP Host</label>
+                    <input type="text" id="email-host" placeholder="smtp.gmail.com">
+                </div>
+
+                <div class="form-group">
+                    <label>SMTP Port</label>
+                    <input type="number" id="email-port" placeholder="587">
+                </div>
+
+                <div class="form-group">
+                    <label>SMTP User</label>
+                    <input type="text" id="email-user" placeholder="your-email@gmail.com">
+                </div>
+
+                <div class="form-group">
+                    <label>SMTP Password</label>
+                    <input type="password" id="email-password" placeholder="app-password">
+                    <small>Leave empty to keep current | Use App Password for Gmail</small>
+                </div>
+
+                <div class="form-group">
+                    <label>From Email</label>
+                    <input type="email" id="email-from" placeholder="noreply@example.com">
+                </div>
+
+                <div class="form-group">
+                    <label>From Name</label>
+                    <input type="text" id="email-from-name" placeholder="SQLatte Reports">
+                </div>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Use TLS</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="email-use-tls" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
                 </div>
 
                 <div class="checkbox-group">
-                    <input type="checkbox" id="db-persist">
-                    <label for="db-persist">Save to config.yaml</label>
+                    <input type="checkbox" id="email-persist" checked>
+                    <label for="email-persist">💾 Save to Database</label>
                 </div>
 
                 <div style="display: flex; gap: 12px; margin-top: 16px;">
-                    <button class="btn btn-secondary" onclick="testDatabase()" style="flex: 1;">
+                    <button class="btn btn-secondary" onclick="testEmail()" style="flex: 1;">
                         <span>🧪</span>
-                        Test Connection
+                        Test SMTP
                     </button>
-                    <button class="btn btn-success" onclick="updateDatabase()" style="flex: 1;">
+                    <button class="btn btn-success" onclick="updateEmail()" style="flex: 1;">
                         <span>✓</span>
                         Apply
                     </button>
                 </div>
 
-                <div id="db-test-result" class="test-result"></div>
+                <div id="email-test-result" class="test-result"></div>
+            </div>
+        </div>
+
+        <!-- TAB: Scheduler -->
+        <div id="tab-scheduler" class="tab-content">
+            <div class="config-card">
+                <h2>
+                    <span>📅</span>
+                    Scheduler Configuration
+                </h2>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Enable Scheduler</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="scheduler-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>Timezone</label>
+                    <select id="scheduler-timezone">
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">America/New_York (EST)</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
+                        <option value="Europe/London">Europe/London</option>
+                        <option value="Europe/Istanbul">Europe/Istanbul</option>
+                        <option value="Asia/Tokyo">Asia/Tokyo</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Max Concurrent Jobs</label>
+                    <input type="number" id="scheduler-max-jobs" placeholder="10" min="1" max="100">
+                    <small>Maximum number of jobs running simultaneously</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Job Timeout (seconds)</label>
+                    <input type="number" id="scheduler-timeout" placeholder="300" min="30" max="3600">
+                    <small>Maximum time for each job execution</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Keep History (days)</label>
+                    <input type="number" id="scheduler-history-days" placeholder="30" min="1" max="365">
+                    <small>How long to keep execution logs</small>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="scheduler-persist" checked>
+                    <label for="scheduler-persist">💾 Save to Database</label>
+                </div>
+
+                <button class="btn btn-success" onclick="updateScheduler()" style="width: 100%; margin-top: 16px;">
+                    <span>✓</span>
+                    Apply Scheduler Settings
+                </button>
+            </div>
+        </div>
+
+        <!-- TAB: Insights -->
+        <div id="tab-insights" class="tab-content">
+            <div class="config-card">
+                <h2>
+                    <span>💡</span>
+                    AI Insights Engine
+                </h2>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Enable AI Insights</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="insights-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>Analysis Mode</label>
+                    <select id="insights-mode">
+                        <option value="hybrid">Hybrid (LLM + Statistical)</option>
+                        <option value="llm_only">LLM Only</option>
+                        <option value="statistical_only">Statistical Only</option>
+                    </select>
+                    <small>Hybrid mode provides best results</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Max Insights per Query</label>
+                    <input type="number" id="insights-max" placeholder="3" min="1" max="10">
+                    <small>Number of insights to generate</small>
+                </div>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Include Statistical Analysis</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="insights-statistical" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="insights-persist" checked>
+                    <label for="insights-persist">💾 Save to Database</label>
+                </div>
+
+                <button class="btn btn-success" onclick="updateInsights()" style="width: 100%; margin-top: 16px;">
+                    <span>✓</span>
+                    Apply Insights Settings
+                </button>
+
+                <div style="margin-top: 20px; padding: 16px; background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 8px; font-size: 13px;">
+                    <strong>💡 About Insights:</strong> The AI Insights Engine automatically analyzes query results to detect patterns, anomalies, and trends. It provides context-aware insights that help you understand your data better.
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Export -->
+        <div id="tab-export" class="tab-content">
+            <div class="config-card">
+                <h2>
+                    <span>📊</span>
+                    Query Export Configuration
+                </h2>
+
+                <div class="form-group">
+                    <label>Export Formats</label>
+                    <div style="margin-bottom: 8px; font-size: 12px; color: #a0a0a0;">
+                        Select formats to enable:
+                    </div>
+                    <div id="export-formats" class="multi-select">
+                        <div class="multi-select-item" data-format="csv">
+                            CSV <span class="remove" onclick="removeFormat('csv')">×</span>
+                        </div>
+                        <div class="multi-select-item" data-format="excel">
+                            Excel <span class="remove" onclick="removeFormat('excel')">×</span>
+                        </div>
+                        <div class="multi-select-item" data-format="html">
+                            HTML <span class="remove" onclick="removeFormat('html')">×</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px; display: flex; gap: 8px;">
+                        <button class="btn btn-secondary" onclick="addFormat('csv')" style="font-size: 12px; padding: 6px 12px;">+ CSV</button>
+                        <button class="btn btn-secondary" onclick="addFormat('excel')" style="font-size: 12px; padding: 6px 12px;">+ Excel</button>
+                        <button class="btn btn-secondary" onclick="addFormat('html')" style="font-size: 12px; padding: 6px 12px;">+ HTML</button>
+                        <button class="btn btn-secondary" onclick="addFormat('json')" style="font-size: 12px; padding: 6px 12px;">+ JSON</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Max Rows per Export</label>
+                    <input type="number" id="export-max-rows" placeholder="1000" min="100" max="100000">
+                    <small>Prevent huge files by limiting rows</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Max File Size (MB)</label>
+                    <input type="number" id="export-max-size" placeholder="25" min="1" max="500">
+                    <small>Maximum attachment size for email reports</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Filename Template</label>
+                    <input type="text" id="export-filename" placeholder="{{schedule_name}}_{{date}}_{{time}}.{{format}}">
+                    <small>Variables: {{schedule_name}}, {{date}}, {{time}}, {{format}}</small>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="export-persist" checked>
+                    <label for="export-persist">💾 Save to Database</label>
+                </div>
+
+                <button class="btn btn-success" onclick="updateExport()" style="width: 100%; margin-top: 16px;">
+                    <span>✓</span>
+                    Apply Export Settings
+                </button>
+            </div>
+        </div>
+
+        <!-- TAB: History -->
+        <div id="tab-history" class="tab-content">
+            <div class="config-card">
+                <h2>
+                    <span>📜</span>
+                    Configuration History
+                </h2>
+
+                <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                    <button class="btn btn-secondary" onclick="loadHistory()">
+                        <span>🔍</span>
+                        Load History
+                    </button>
+                    <select id="history-limit" style="padding: 8px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #e0e0e0;">
+                        <option value="10">Last 10</option>
+                        <option value="25" selected>Last 25</option>
+                        <option value="50">Last 50</option>
+                        <option value="100">Last 100</option>
+                    </select>
+                </div>
+
+                <div class="history-container" id="history-container">
+                    <p style="color: #707070; text-align: center; padding: 20px;">
+                        Click "Load History" to view configuration changes
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Snapshots -->
+        <div id="tab-snapshots" class="tab-content">
+            <div class="admin-grid">
+                <div class="config-card">
+                    <h2>
+                        <span>📸</span>
+                        Create Snapshot
+                    </h2>
+
+                    <div style="margin-bottom: 20px; padding: 16px; background: rgba(212, 165, 116, 0.1); border: 1px solid #D4A574; border-radius: 8px; font-size: 13px;">
+                        <strong>💡 What is a Snapshot?</strong><br>
+                        A snapshot saves ALL current configuration settings (LLM, Database, Email, Scheduler, Insights, Export) at this moment. You can restore any snapshot later to quickly rollback to a known working state.
+                        <br><br>
+                        <strong>Use Cases:</strong>
+                        <ul style="margin: 8px 0 0 20px; color: #a0a0a0;">
+                            <li>Before production deploys</li>
+                            <li>Before major config changes</li>
+                            <li>To save different environment configs</li>
+                            <li>For quick rollback if something breaks</li>
+                        </ul>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Snapshot Name</label>
+                        <input type="text" id="snapshot-name" placeholder="e.g., before_prod_deploy_2026">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description (Optional)</label>
+                        <textarea id="snapshot-desc" rows="3" placeholder="e.g., Stable config before Claude 4 upgrade in production"></textarea>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="createSnapshot()" style="width: 100%;">
+                        <span>📸</span>
+                        Create Snapshot
+                    </button>
+                </div>
+
+                <div class="config-card">
+                    <h2>
+                        <span>♻️</span>
+                        Restore Snapshot
+                    </h2>
+
+                    <div style="margin-bottom: 20px; padding: 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; font-size: 13px; color: #ef4444;">
+                        <strong>⚠️ Warning:</strong><br>
+                        Restoring a snapshot will replace ALL current configuration with the saved snapshot state. This includes LLM, Database, Email, Scheduler, Insights, and Export settings.
+                        <br><br>
+                        <strong>Recommended:</strong> Create a new snapshot before restoring, so you can rollback if needed.
+                    </div>
+
+                    <div class="form-group">
+                        <label>Snapshot Name</label>
+                        <input type="text" id="restore-snapshot-name" placeholder="e.g., before_prod_deploy_2026">
+                    </div>
+
+                    <button class="btn btn-warning" onclick="restoreSnapshot()" style="width: 100%;">
+                        <span>♻️</span>
+                        Restore from Snapshot
+                    </button>
+                </div>
+            </div>
+
+            <div class="config-card" style="margin-top: 20px;">
+                <h3 style="color: #D4A574; margin-bottom: 16px;">📋 Example Workflow</h3>
+                <div style="background: #1a1a1a; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 12px; line-height: 1.8;">
+                    <div style="color: #10b981;">// Before deploying to production</div>
+                    1. Create snapshot: "stable_v1.5_prod"<br>
+                    <br>
+                    <div style="color: #10b981;">// Make changes</div>
+                    2. Update LLM model to Claude Sonnet 4<br>
+                    3. Change database host to new server<br>
+                    4. Enable insights engine<br>
+                    5. Hot reload providers<br>
+                    <br>
+                    <div style="color: #10b981;">// Test in production</div>
+                    6. Monitor for 10 minutes...<br>
+                    <br>
+                    <div style="color: #ef4444;">// Oops! Users reporting errors 😱</div>
+                    7. Restore snapshot: "stable_v1.5_prod"<br>
+                    8. Auto hot reload<br>
+                    9. ✅ Everything back to normal in 30 seconds!
+                </div>
             </div>
         </div>
     </div>
 
     <script>
         const API_BASE = window.location.origin;
+        let currentFormats = ['csv', 'excel', 'html'];
+
+        // ============================================
+        // TAB SWITCHING
+        // ============================================
+        function switchTab(tabName) {
+            // Update tabs
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.closest('.tab').classList.add('active');
+
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
 
         // ============================================
         // LOAD CONFIGURATION
@@ -592,89 +1157,115 @@
                 if (data.success) {
                     populateForm(data.config);
                     updateSystemInfo(data);
-                    showToast('Configuration loaded', 'success');
+                    showToast('✅ Configuration loaded', 'success');
                 }
             } catch (error) {
                 console.error('Error loading config:', error);
-                showToast('Failed to load configuration', 'error');
+                showToast('❌ Failed to load configuration', 'error');
             }
         }
 
         function populateForm(config) {
+            console.log('📦 Populating form with config:', config);
+            console.log('  - Email config:', config.email);
+            console.log('  - Scheduler config:', config.scheduler);
+            console.log('  - Insights config:', config.insights);
+            console.log('  - Export config:', config.export);
+
+            // Helper functions for type conversion
+            const toBool = (val) => {
+                if (typeof val === 'boolean') return val;
+                if (typeof val === 'string') return val.toLowerCase() === 'true';
+                return !!val;
+            };
+
+            const toInt = (val, defaultVal) => {
+                if (val === null || val === undefined) return defaultVal;
+                const num = parseInt(val);
+                return isNaN(num) ? defaultVal : num;
+            };
+
             // LLM Config
             const llmProvider = config.llm?.provider || 'anthropic';
             document.getElementById('llm-provider').value = llmProvider;
+            updateLLMFields();
 
             if (llmProvider === 'anthropic') {
                 const anthropicConfig = config.llm?.anthropic || {};
-                // Don't load API key (it's masked), leave empty
-                document.getElementById('anthropic-api-key').value = '';
-                document.getElementById('anthropic-api-key').placeholder = anthropicConfig.api_key === '***masked***' ? 'API key set (unchanged)' : 'Enter API key';
                 document.getElementById('anthropic-model').value = anthropicConfig.model || 'claude-sonnet-4-20250514';
             } else if (llmProvider === 'gemini') {
                 const geminiConfig = config.llm?.gemini || {};
-                // Don't load API key (it's masked), leave empty
-                document.getElementById('gemini-api-key').value = '';
-                document.getElementById('gemini-api-key').placeholder = geminiConfig.api_key === '***masked***' ? 'API key set (unchanged)' : 'Enter API key';
-                document.getElementById('gemini-model').value = geminiConfig.model || 'gemini-pro';
+                document.getElementById('gemini-model').value = geminiConfig.model || 'gemini-2.5-flash';
             } else if (llmProvider === 'vertexai') {
                 const vertexConfig = config.llm?.vertexai || {};
-                document.getElementById('vertexai-project').value = vertexConfig.project_id || '';
+                document.getElementById('vertexai-project-id').value = vertexConfig.project_id || '';
                 document.getElementById('vertexai-location').value = vertexConfig.location || 'us-central1';
-                document.getElementById('vertexai-model').value = vertexConfig.model || 'gemini-2.0-flash-exp';
-                // Don't load credentials path (it might be masked), leave empty
-                document.getElementById('vertexai-credentials').value = '';
-                document.getElementById('vertexai-credentials').placeholder = vertexConfig.credentials_path === '***masked***' ? 'Credentials set (unchanged)' : 'Enter path or leave empty';
+                document.getElementById('vertexai-model').value = vertexConfig.model || 'gemini-2.5-flash';
+                document.getElementById('vertexai-credentials-path').value = vertexConfig.credentials_path || '';
             }
 
-            updateLLMFields();
-
-            // Database Config
-            const dbProvider = config.database?.provider || 'trino';
+            // DB Config
+            const dbProvider = config.database?.provider || 'clickhouse';
             document.getElementById('db-provider').value = dbProvider;
-
-            if (dbProvider === 'trino') {
-                const trinoConfig = config.database?.trino || {};
-                document.getElementById('trino-host').value = trinoConfig.host || '';
-                document.getElementById('trino-port').value = trinoConfig.port || 8080;
-                document.getElementById('trino-user').value = trinoConfig.user || '';
-                // Don't load password (it's masked), leave empty
-                document.getElementById('trino-password').value = '';
-                document.getElementById('trino-password').placeholder = trinoConfig.password === '***masked***' ? 'Password set (unchanged)' : 'Enter password';
-                document.getElementById('trino-catalog').value = trinoConfig.catalog || 'hive';
-                document.getElementById('trino-schema').value = trinoConfig.schema || 'default';
-                document.getElementById('trino-http-scheme').value = trinoConfig.http_scheme || 'https';
-            } else if (dbProvider === 'postgresql') {
-                const pgConfig = config.database?.postgresql || {};
-                document.getElementById('pg-host').value = pgConfig.host || '';
-                document.getElementById('pg-port').value = pgConfig.port || 5432;
-                document.getElementById('pg-database').value = pgConfig.database || '';
-                document.getElementById('pg-user').value = pgConfig.user || '';
-                // Don't load password (it's masked), leave empty
-                document.getElementById('pg-password').value = '';
-                document.getElementById('pg-password').placeholder = pgConfig.password === '***masked***' ? 'Password set (unchanged)' : 'Enter password';
-                document.getElementById('pg-schema').value = pgConfig.schema || 'public';
-            } else if (dbProvider === 'mysql') {
-                const mysqlConfig = config.database?.mysql || {};
-                document.getElementById('mysql-host').value = mysqlConfig.host || '';
-                document.getElementById('mysql-port').value = mysqlConfig.port || 3306;
-                document.getElementById('mysql-database').value = mysqlConfig.database || '';
-                document.getElementById('mysql-user').value = mysqlConfig.user || '';
-                // Don't load password (it's masked), leave empty - placeholder shows it exists
-                document.getElementById('mysql-password').value = '';
-                document.getElementById('mysql-password').placeholder = mysqlConfig.password === '***masked***' ? 'Password set (unchanged)' : 'Enter password';
-            }
-
             updateDBFields();
+
+            const dbConfig = config.database?.[dbProvider] || {};
+            document.getElementById('db-host').value = dbConfig.host || 'localhost';
+            document.getElementById('db-port').value = toInt(dbConfig.port, 8123);
+            document.getElementById('db-database').value = dbConfig.database || 'default';
+            document.getElementById('db-username').value = dbConfig.username || 'default';
+
+            // Email Config
+            const emailConfig = config.email || {};
+            const smtpConfig = emailConfig.smtp || {};
+            document.getElementById('email-enabled').checked = toBool(emailConfig.enabled);
+            document.getElementById('email-host').value = smtpConfig.host || '';
+            document.getElementById('email-port').value = toInt(smtpConfig.port, 587);
+            document.getElementById('email-user').value = smtpConfig.user || '';
+            document.getElementById('email-from').value = smtpConfig.from_email || '';
+            document.getElementById('email-from-name').value = smtpConfig.from_name || 'SQLatte Reports';
+            document.getElementById('email-use-tls').checked = toBool(smtpConfig.use_tls !== false);
+
+            // Scheduler Config
+            const schedulerConfig = config.scheduler || {};
+            document.getElementById('scheduler-enabled').checked = toBool(schedulerConfig.enabled);
+            document.getElementById('scheduler-timezone').value = schedulerConfig.timezone || 'UTC';
+            document.getElementById('scheduler-max-jobs').value = toInt(schedulerConfig.max_concurrent_jobs, 10);
+            document.getElementById('scheduler-timeout').value = toInt(schedulerConfig.job_timeout_seconds, 300);
+            document.getElementById('scheduler-history-days').value = toInt(schedulerConfig.keep_history_days, 30);
+
+            // Insights Config
+            const insightsConfig = config.insights || {};
+            document.getElementById('insights-enabled').checked = toBool(insightsConfig.enabled);
+            document.getElementById('insights-mode').value = insightsConfig.mode || 'hybrid';
+            document.getElementById('insights-max').value = toInt(insightsConfig.max_insights, 3);
+            document.getElementById('insights-statistical').checked = toBool(insightsConfig.include_statistical !== false);
+
+            // Export Config
+            const exportConfig = config.export || {};
+            document.getElementById('export-max-rows').value = toInt(exportConfig.max_rows, 1000);
+            document.getElementById('export-max-size').value = toInt(exportConfig.max_file_size_mb, 25);
+            document.getElementById('export-filename').value = exportConfig.filename_template || '{{schedule_name}}_{{date}}_{{time}}.{{format}}';
+
+            if (exportConfig.formats) {
+                currentFormats = Array.isArray(exportConfig.formats) ? exportConfig.formats : exportConfig.formats.split(',');
+                renderFormats();
+            }
         }
 
         function updateSystemInfo(data) {
-            const list = document.getElementById('system-info-list');
-            list.innerHTML = `
-                <li><strong>LLM Provider:</strong> <span>${data.config.llm?.provider || 'N/A'}</span></li>
-                <li><strong>Database Provider:</strong> <span>${data.config.database?.provider || 'N/A'}</span></li>
-                <li><strong>Runtime Overrides:</strong> <span>${data.has_runtime_overrides ? 'Active' : 'None'}</span></li>
-                <li><strong>Config File:</strong> <span>${data.config_file || 'N/A'}</span></li>
+            const config = data.config;
+            const dbEnabled = data.db_enabled || false;
+            const hasOverrides = data.has_runtime_overrides || false;
+
+            document.getElementById('system-info-list').innerHTML = `
+                <li><strong>LLM Provider:</strong> <span>${config.llm?.provider || 'N/A'}</span></li>
+                <li><strong>LLM Model:</strong> <span>${config.llm?.[config.llm?.provider]?.model || 'N/A'}</span></li>
+                <li><strong>Database:</strong> <span>${config.database?.provider || 'N/A'}</span></li>
+                <li><strong>Email:</strong> <span class="status-badge ${config.email?.enabled ? 'status-success' : 'status-warning'}">${config.email?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
+                <li><strong>Scheduler:</strong> <span class="status-badge ${config.scheduler?.enabled ? 'status-success' : 'status-warning'}">${config.scheduler?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
+                <li><strong>Insights:</strong> <span class="status-badge ${config.insights?.enabled ? 'status-success' : 'status-warning'}">${config.insights?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
+                <li><strong>DB Backend:</strong> <span class="status-badge ${dbEnabled ? 'status-success' : 'status-warning'}">${dbEnabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
             `;
         }
 
@@ -683,7 +1274,6 @@
         // ============================================
         function updateLLMFields() {
             const provider = document.getElementById('llm-provider').value;
-
             document.getElementById('anthropic-fields').style.display = provider === 'anthropic' ? 'block' : 'none';
             document.getElementById('gemini-fields').style.display = provider === 'gemini' ? 'block' : 'none';
             document.getElementById('vertexai-fields').style.display = provider === 'vertexai' ? 'block' : 'none';
@@ -691,20 +1281,73 @@
 
         function updateDBFields() {
             const provider = document.getElementById('db-provider').value;
+            const portDefaults = {
+                'trino': 8443,
+                'clickhouse': 8123,
+                'postgresql': 5432,
+                'mysql': 3306
+            };
+            document.getElementById('db-port').placeholder = portDefaults[provider] || 8123;
+        }
 
-            document.getElementById('trino-fields').style.display = provider === 'trino' ? 'block' : 'none';
-            document.getElementById('postgresql-fields').style.display = provider === 'postgresql' ? 'block' : 'none';
-            document.getElementById('mysql-fields').style.display = provider === 'mysql' ? 'block' : 'none';
+        // ============================================
+        // EXPORT FORMATS MANAGEMENT
+        // ============================================
+        function renderFormats() {
+            const container = document.getElementById('export-formats');
+            container.innerHTML = currentFormats.map(format => `
+                <div class="multi-select-item" data-format="${format}">
+                    ${format.toUpperCase()} <span class="remove" onclick="removeFormat('${format}')">×</span>
+                </div>
+            `).join('');
+        }
+
+        function addFormat(format) {
+            if (!currentFormats.includes(format)) {
+                currentFormats.push(format);
+                renderFormats();
+            }
+        }
+
+        function removeFormat(format) {
+            currentFormats = currentFormats.filter(f => f !== format);
+            renderFormats();
         }
 
         // ============================================
         // LLM ACTIONS
         // ============================================
+        function getLLMConfig() {
+            const provider = document.getElementById('llm-provider').value;
+
+            if (provider === 'anthropic') {
+                const apiKey = document.getElementById('anthropic-api-key').value;
+                return {
+                    model: document.getElementById('anthropic-model').value,
+                    ...(apiKey && { api_key: apiKey })
+                };
+            } else if (provider === 'gemini') {
+                const apiKey = document.getElementById('gemini-api-key').value;
+                return {
+                    model: document.getElementById('gemini-model').value,
+                    ...(apiKey && { api_key: apiKey })
+                };
+            } else if (provider === 'vertexai') {
+                const credentialsPath = document.getElementById('vertexai-credentials-path').value;
+                return {
+                    project_id: document.getElementById('vertexai-project-id').value,
+                    location: document.getElementById('vertexai-location').value,
+                    model: document.getElementById('vertexai-model').value,
+                    ...(credentialsPath && { credentials_path: credentialsPath })
+                };
+            }
+        }
+
         async function testLLM() {
             const provider = document.getElementById('llm-provider').value;
             const config = getLLMConfig();
 
-            showTestResult('llm-test-result', 'Testing connection...', null);
+            showTestResult('llm-test-result', '🧪 Testing connection...', null);
 
             try {
                 const response = await fetch(`${API_BASE}/admin/test`, {
@@ -720,12 +1363,12 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showTestResult('llm-test-result', `✓ Connection successful! Model: ${result.model}`, true);
+                    showTestResult('llm-test-result', `✅ Connection successful! Model: ${result.model}`, true);
                 } else {
-                    showTestResult('llm-test-result', `✗ ${result.message}`, false);
+                    showTestResult('llm-test-result', `❌ ${result.message}`, false);
                 }
             } catch (error) {
-                showTestResult('llm-test-result', `✗ Test failed: ${error.message}`, false);
+                showTestResult('llm-test-result', `❌ Test failed: ${error.message}`, false);
             }
         }
 
@@ -735,8 +1378,8 @@
             const persist = document.getElementById('llm-persist').checked;
 
             try {
-                const response = await fetch(`${API_BASE}/admin/llm/update`, {
-                    method: 'POST',
+                const response = await fetch(`${API_BASE}/admin/config/llm`, {
+                    method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         provider: provider,
@@ -748,50 +1391,37 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showToast('LLM configuration updated' + (persist ? ' and saved' : ''), 'success');
+                    showToast(`✅ LLM configuration updated${persist ? ' and saved' : ''}`, 'success');
                     loadConfig();
-                } else {
-                    showToast('Failed to update LLM configuration', 'error');
+
+                    if (persist) {
+                        setTimeout(() => hotReload(), 1000);
+                    }
                 }
             } catch (error) {
-                showToast(`Error: ${error.message}`, 'error');
-            }
-        }
-
-        function getLLMConfig() {
-            const provider = document.getElementById('llm-provider').value;
-
-            if (provider === 'anthropic') {
-                return {
-                    api_key: document.getElementById('anthropic-api-key').value,
-                    model: document.getElementById('anthropic-model').value,
-                    max_tokens: 1000
-                };
-            } else if (provider === 'gemini') {
-                return {
-                    api_key: document.getElementById('gemini-api-key').value,
-                    model: document.getElementById('gemini-model').value,
-                    max_tokens: 1000
-                };
-            } else if (provider === 'vertexai') {
-                return {
-                    project_id: document.getElementById('vertexai-project').value,
-                    location: document.getElementById('vertexai-location').value,
-                    model: document.getElementById('vertexai-model').value,
-                    credentials_path: document.getElementById('vertexai-credentials').value,
-                    max_tokens: 1000
-                };
+                showToast(`❌ Error: ${error.message}`, 'error');
             }
         }
 
         // ============================================
         // DATABASE ACTIONS
         // ============================================
+        function getDBConfig() {
+            const password = document.getElementById('db-password').value;
+            return {
+                host: document.getElementById('db-host').value,
+                port: parseInt(document.getElementById('db-port').value),
+                database: document.getElementById('db-database').value,
+                username: document.getElementById('db-username').value,
+                ...(password && { password: password })
+            };
+        }
+
         async function testDatabase() {
             const provider = document.getElementById('db-provider').value;
             const config = getDBConfig();
 
-            showTestResult('db-test-result', 'Testing connection...', null);
+            showTestResult('db-test-result', '🧪 Testing connection...', null);
 
             try {
                 const response = await fetch(`${API_BASE}/admin/test`, {
@@ -807,12 +1437,12 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showTestResult('db-test-result', `✓ Connection successful! Tables: ${result.table_count || 0}`, true);
+                    showTestResult('db-test-result', `✅ Connection successful! Found ${result.table_count || 0} tables`, true);
                 } else {
-                    showTestResult('db-test-result', `✗ ${result.message}`, false);
+                    showTestResult('db-test-result', `❌ ${result.message}`, false);
                 }
             } catch (error) {
-                showTestResult('db-test-result', `✗ Test failed: ${error.message}`, false);
+                showTestResult('db-test-result', `❌ Test failed: ${error.message}`, false);
             }
         }
 
@@ -822,8 +1452,8 @@
             const persist = document.getElementById('db-persist').checked;
 
             try {
-                const response = await fetch(`${API_BASE}/admin/database/update`, {
-                    method: 'POST',
+                const response = await fetch(`${API_BASE}/admin/config/database`, {
+                    method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         provider: provider,
@@ -835,46 +1465,336 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showToast('Database configuration updated' + (persist ? ' and saved' : ''), 'success');
+                    showToast(`✅ Database configuration updated${persist ? ' and saved' : ''}`, 'success');
                     loadConfig();
-                } else {
-                    showToast('Failed to update database configuration', 'error');
+
+                    if (persist) {
+                        setTimeout(() => hotReload(), 1000);
+                    }
                 }
             } catch (error) {
-                showToast(`Error: ${error.message}`, 'error');
+                showToast(`❌ Error: ${error.message}`, 'error');
             }
         }
 
-        function getDBConfig() {
-            const provider = document.getElementById('db-provider').value;
+        // ============================================
+        // EMAIL ACTIONS
+        // ============================================
+        async function testEmail() {
+            const config = {
+                host: document.getElementById('email-host').value,
+                port: parseInt(document.getElementById('email-port').value),
+                user: document.getElementById('email-user').value,
+                password: document.getElementById('email-password').value,
+                use_tls: document.getElementById('email-use-tls').checked
+            };
 
-            if (provider === 'trino') {
-                return {
-                    host: document.getElementById('trino-host').value,
-                    port: parseInt(document.getElementById('trino-port').value),
-                    user: document.getElementById('trino-user').value,
-                    password: document.getElementById('trino-password').value,
-                    catalog: document.getElementById('trino-catalog').value,
-                    schema: document.getElementById('trino-schema').value,
-                    http_scheme: document.getElementById('trino-http-scheme').value
-                };
-            } else if (provider === 'postgresql') {
-                return {
-                    host: document.getElementById('pg-host').value,
-                    port: parseInt(document.getElementById('pg-port').value),
-                    database: document.getElementById('pg-database').value,
-                    user: document.getElementById('pg-user').value,
-                    password: document.getElementById('pg-password').value,
-                    schema: document.getElementById('pg-schema').value
-                };
-            } else if (provider === 'mysql') {
-                return {
-                    host: document.getElementById('mysql-host').value,
-                    port: parseInt(document.getElementById('mysql-port').value),
-                    database: document.getElementById('mysql-database').value,
-                    user: document.getElementById('mysql-user').value,
-                    password: document.getElementById('mysql-password').value
-                };
+            showTestResult('email-test-result', '🧪 Testing SMTP connection...', null);
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/test/email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showTestResult('email-test-result', `✅ ${result.message}`, true);
+                } else {
+                    showTestResult('email-test-result', `❌ ${result.message}`, false);
+                }
+            } catch (error) {
+                showTestResult('email-test-result', `❌ Test failed: ${error.message}`, false);
+            }
+        }
+
+        async function updateEmail() {
+            const password = document.getElementById('email-password').value;
+            const config = {
+                enabled: document.getElementById('email-enabled').checked,
+                smtp: {
+                    host: document.getElementById('email-host').value,
+                    port: parseInt(document.getElementById('email-port').value),
+                    user: document.getElementById('email-user').value,
+                    from_email: document.getElementById('email-from').value,
+                    from_name: document.getElementById('email-from-name').value,
+                    use_tls: document.getElementById('email-use-tls').checked,
+                    ...(password && { password: password })
+                }
+            };
+
+            const persist = document.getElementById('email-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/email`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        config: config,
+                        persist: persist
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`✅ Email configuration updated${persist ? ' and saved' : ''}`, 'success');
+                    loadConfig();
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // ============================================
+        // SCHEDULER ACTIONS
+        // ============================================
+        async function updateScheduler() {
+            const config = {
+                enabled: document.getElementById('scheduler-enabled').checked,
+                timezone: document.getElementById('scheduler-timezone').value,
+                max_concurrent_jobs: parseInt(document.getElementById('scheduler-max-jobs').value),
+                job_timeout_seconds: parseInt(document.getElementById('scheduler-timeout').value),
+                keep_history_days: parseInt(document.getElementById('scheduler-history-days').value)
+            };
+
+            const persist = document.getElementById('scheduler-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/scheduler`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        config: config,
+                        persist: persist
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`✅ Scheduler configuration updated${persist ? ' and saved' : ''}`, 'success');
+                    loadConfig();
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // ============================================
+        // INSIGHTS ACTIONS
+        // ============================================
+        async function updateInsights() {
+            const config = {
+                enabled: document.getElementById('insights-enabled').checked,
+                mode: document.getElementById('insights-mode').value,
+                max_insights: parseInt(document.getElementById('insights-max').value),
+                include_statistical: document.getElementById('insights-statistical').checked
+            };
+
+            const persist = document.getElementById('insights-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/insights`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        config: config,
+                        persist: persist
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`✅ Insights configuration updated${persist ? ' and saved' : ''}`, 'success');
+                    loadConfig();
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // ============================================
+        // EXPORT ACTIONS
+        // ============================================
+        async function updateExport() {
+            const config = {
+                formats: currentFormats,
+                max_rows: parseInt(document.getElementById('export-max-rows').value),
+                max_file_size_mb: parseInt(document.getElementById('export-max-size').value),
+                filename_template: document.getElementById('export-filename').value
+            };
+
+            const persist = document.getElementById('export-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/export`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        config: config,
+                        persist: persist
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`✅ Export configuration updated${persist ? ' and saved' : ''}`, 'success');
+                    loadConfig();
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // ============================================
+        // HOT RELOAD
+        // ============================================
+        async function hotReload() {
+            try {
+                showToast('🔥 Hot reloading providers...', 'warning');
+
+                const response = await fetch(`${API_BASE}/admin/reload`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('🎉 Providers reloaded successfully!', 'success');
+                    loadConfig();
+                } else {
+                    showToast(`⚠️ ${result.message}`, 'warning');
+                }
+            } catch (error) {
+                showToast(`❌ Reload failed: ${error.message}`, 'error');
+            }
+        }
+
+        // ============================================
+        // CONFIG HISTORY
+        // ============================================
+        async function loadHistory() {
+            const limit = document.getElementById('history-limit').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/history?limit=${limit}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    displayHistory(data.history);
+                    showToast(`✅ Loaded ${data.count} history entries`, 'success');
+                } else {
+                    showToast('❌ Failed to load history', 'error');
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function displayHistory(history) {
+            const container = document.getElementById('history-container');
+
+            if (!history || history.length === 0) {
+                container.innerHTML = '<p style="color: #707070; text-align: center; padding: 20px;">No history available (requires database backend)</p>';
+                return;
+            }
+
+            container.innerHTML = history.map(entry => `
+                <div class="history-item">
+                    <div class="history-item-header">
+                        <span class="history-item-key">${entry.config_key}</span>
+                        <span class="history-item-time">${new Date(entry.changed_at).toLocaleString()}</span>
+                    </div>
+                    <div class="history-item-details">
+                        <strong>By:</strong> ${entry.changed_by || 'system'}
+                        ${entry.reason ? `| <strong>Reason:</strong> ${entry.reason}` : ''}
+                    </div>
+                    <div class="history-item-change">
+                        <div class="history-old">
+                            <strong>Old:</strong> ${entry.old_value || '(empty)'}
+                        </div>
+                        <div class="history-new">
+                            <strong>New:</strong> ${entry.new_value}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ============================================
+        // SNAPSHOT MANAGEMENT
+        // ============================================
+        async function createSnapshot() {
+            const name = document.getElementById('snapshot-name').value.trim();
+            const desc = document.getElementById('snapshot-desc').value.trim();
+
+            if (!name) {
+                showToast('❌ Please enter a snapshot name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/snapshot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        snapshot_name: name,
+                        description: desc || null
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`📸 Snapshot "${name}" created successfully!`, 'success');
+                    document.getElementById('snapshot-name').value = '';
+                    document.getElementById('snapshot-desc').value = '';
+                } else {
+                    showToast(`❌ ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function restoreSnapshot() {
+            const name = document.getElementById('restore-snapshot-name').value.trim();
+
+            if (!name) {
+                showToast('❌ Please enter a snapshot name', 'error');
+                return;
+            }
+
+            if (!confirm(`⚠️ Are you sure you want to restore from snapshot "${name}"?\n\nThis will replace ALL current configuration (LLM, Database, Email, Scheduler, Insights, Export).`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/restore`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        snapshot_name: name
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`♻️ Configuration restored from "${name}"!`, 'success');
+                    loadConfig();
+
+                    setTimeout(() => hotReload(), 1000);
+                } else {
+                    showToast(`❌ ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
             }
         }
 
@@ -882,7 +1802,7 @@
         // RESET CONFIG
         // ============================================
         async function resetConfig() {
-            if (!confirm('Reset all runtime changes and reload from config.yaml?')) {
+            if (!confirm('⚠️ Reset all configuration to file defaults?\n\nThis will clear all runtime overrides.')) {
                 return;
             }
 
@@ -894,13 +1814,13 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showToast('Configuration reset to file defaults', 'success');
+                    showToast('✅ Configuration reset to file defaults', 'success');
                     loadConfig();
                 } else {
-                    showToast('Failed to reset configuration', 'error');
+                    showToast('❌ Failed to reset configuration', 'error');
                 }
             } catch (error) {
-                showToast(`Error: ${error.message}`, 'error');
+                showToast(`❌ Error: ${error.message}`, 'error');
             }
         }
 

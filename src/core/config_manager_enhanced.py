@@ -1,6 +1,6 @@
 """
-SQLatte Config Manager - Runtime Configuration Management
-Allows config updates without restart
+SQLatte Config Manager - Enhanced with Database Support
+Allows config updates without restart, with optional PostgreSQL persistence
 """
 
 import os
@@ -12,10 +12,19 @@ from copy import deepcopy
 
 class ConfigManager:
     """
-    Singleton Config Manager
+    Singleton Config Manager with Database Support
+
+    Features:
     - Loads config from YAML on startup
-    - Allows runtime updates via API
+    - Optional PostgreSQL persistence for runtime updates
     - Thread-safe config updates
+    - Configuration history and snapshots
+    - Runtime provider reload without restart
+
+    Config Priority (highest to lowest):
+    1. Runtime overrides (in-memory)
+    2. Database configurations (if enabled)
+    3. YAML file configurations
     """
 
     _instance = None
@@ -34,10 +43,18 @@ class ConfigManager:
             self.config_path: Optional[str] = None
             self.runtime_overrides: Dict[str, Any] = {}
             self._config_lock = threading.RLock()
+            self.config_db = None
+            self.db_enabled = False
             self.initialized = True
 
-    def load_from_file(self, config_path: str) -> Dict[str, Any]:
-        """Load initial config from YAML file"""
+    def load_from_file(self, config_path: str, enable_db: bool = False) -> Dict[str, Any]:
+        """
+        Load initial config from YAML file
+
+        Args:
+            config_path: Path to config.yaml
+            enable_db: If True, enable database-backed config storage
+        """
         self.config_path = config_path
 
         with open(config_path, 'r') as f:
@@ -51,15 +68,96 @@ class ConfigManager:
             self.config = resolved_config
 
         print(f"✅ Config loaded from: {config_path}")
+
+        # Initialize database backend if enabled
+        if enable_db:
+            self._init_config_db(resolved_config)
+
         return self.get_config()
 
+    def _init_config_db(self, yaml_config: Dict[str, Any]):
+        """Initialize database backend for configuration storage"""
+        try:
+            from src.core.config_db import get_config_db
+
+            # Check config.yaml for config_db settings
+            config_db_config = yaml_config.get('config_db', {})
+            config_db_enabled = config_db_config.get('enabled', False)
+
+            # Also check environment variable (backwards compatibility)
+            env_enabled = os.getenv('CONFIG_DB_ENABLED', 'false').lower() == 'true'
+
+            if config_db_enabled or env_enabled:
+                # Determine if using memory or PostgreSQL
+                db_type = config_db_config.get('type', 'postgresql')
+                use_memory = (db_type == 'sqlite')
+
+                # Pass the full config to get_config_db
+                self.config_db = get_config_db(config=yaml_config, use_memory=use_memory)
+                self.db_enabled = True
+
+                # Bootstrap from YAML if DB is empty
+                self.config_db.bootstrap_from_yaml(yaml_config)
+
+                print(f"✅ Database-backed configuration enabled ({db_type.upper()})")
+            else:
+                # Fallback: try in-memory mode for development
+                self.config_db = get_config_db(config=yaml_config, use_memory=True)
+                self.db_enabled = True
+
+                # Bootstrap from YAML
+                self.config_db.bootstrap_from_yaml(yaml_config)
+
+                print("✅ Database-backed configuration enabled (In-Memory SQLite)")
+
+        except Exception as e:
+            print(f"⚠️  Could not initialize config database: {e}")
+            print("   Falling back to YAML-only mode")
+            self.config_db = None
+            self.db_enabled = False
+
     def get_config(self) -> Dict[str, Any]:
-        """Get current active configuration"""
+        """
+        Get current active configuration
+
+        Priority:
+        1. Runtime overrides (in-memory)
+        2. Database configurations (if enabled)
+        3. YAML file configurations
+        """
         with self._config_lock:
-            # Merge file config with runtime overrides
+            # Start with file config
             merged = deepcopy(self.config)
+
+            # Overlay database config if enabled
+            if self.db_enabled and self.config_db:
+                db_configs = self.config_db.get_all_configs(include_sensitive=True, decrypt_sensitive=True)
+                merged = self._merge_flat_to_nested(merged, db_configs)
+
+            # Apply runtime overrides
             self._deep_merge(merged, self.runtime_overrides)
+
             return merged
+
+    def _merge_flat_to_nested(self, base: Dict[str, Any], flat_configs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Merge flat database configs (e.g., 'llm.anthropic.api_key')
+        into nested dictionary structure
+        """
+        for key, value in flat_configs.items():
+            keys = key.split('.')
+            current = base
+
+            # Navigate to the correct nested level
+            for k in keys[:-1]:
+                if k not in current:
+                    current[k] = {}
+                current = current[k]
+
+            # Set the value
+            current[keys[-1]] = value
+
+        return base
 
     def get_safe_config(self) -> Dict[str, Any]:
         """Get config with sensitive data masked"""
@@ -86,32 +184,63 @@ class ConfigManager:
     def update_config(
         self,
         updates: Dict[str, Any],
-        persist: bool = False
+        persist: bool = False,
+        user: str = 'system',
+        reason: str = None
     ) -> Dict[str, Any]:
         """
         Update configuration at runtime
 
         Args:
             updates: Configuration updates (nested dict)
-            persist: If True, save to config.yaml file
+            persist: If True, save to database (if enabled) or YAML file
+            user: User making the change (for audit trail)
+            reason: Reason for the change
 
         Returns:
             Updated configuration
         """
         with self._config_lock:
-            # Apply updates to runtime overrides
-            self._deep_merge(self.runtime_overrides, updates)
+            if persist and self.db_enabled and self.config_db:
+                # Save to database
+                flat_updates = self._flatten_dict(updates)
+                for key, value in flat_updates.items():
+                    try:
+                        self.config_db.set_config(key, value, user=user, reason=reason)
+                    except ValueError:
+                        # Key doesn't exist in DB, skip
+                        print(f"⚠️  Config key '{key}' not found in database, skipping")
+                        pass
 
-            # If persist, write to file
-            if persist and self.config_path:
+                print(f"✅ Configuration persisted to database by {user}")
+            elif persist and self.config_path:
+                # Apply updates to runtime overrides first
+                self._deep_merge(self.runtime_overrides, updates)
+                # Save to file
                 self._save_to_file()
+            else:
+                # Just apply to runtime overrides (not persisted)
+                self._deep_merge(self.runtime_overrides, updates)
 
             return self.get_config()
+
+    def _flatten_dict(self, nested: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
+        """Flatten nested dictionary to dot-notation keys"""
+        items = []
+        for k, v in nested.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(self._flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
 
     def update_llm_config(
         self,
         provider: str,
-        provider_config: Dict[str, Any]
+        provider_config: Dict[str, Any],
+        persist: bool = False,
+        user: str = 'system'
     ) -> Dict[str, Any]:
         """
         Update LLM provider configuration
@@ -139,12 +268,14 @@ class ConfigManager:
                 provider: provider_config
             }
         }
-        return self.update_config(updates)
+        return self.update_config(updates, persist=persist, user=user, reason=f"LLM config updated: {provider}")
 
     def update_database_config(
         self,
         provider: str,
-        provider_config: Dict[str, Any]
+        provider_config: Dict[str, Any],
+        persist: bool = False,
+        user: str = 'system'
     ) -> Dict[str, Any]:
         """
         Update Database provider configuration
@@ -172,7 +303,80 @@ class ConfigManager:
                 provider: provider_config
             }
         }
-        return self.update_config(updates)
+        return self.update_config(updates, persist=persist, user=user, reason=f"Database config updated: {provider}")
+
+    def update_email_config(
+        self,
+        email_config: Dict[str, Any],
+        persist: bool = False,
+        user: str = 'system'
+    ) -> Dict[str, Any]:
+        """Update email configuration"""
+        # 🔒 PASSWORD FIX: Preserve SMTP password if masked
+        if 'smtp' in email_config and 'password' in email_config['smtp']:
+            if email_config['smtp']['password'] == '***masked***' or not email_config['smtp']['password']:
+                current_config = self.get_config()
+                current_smtp = current_config.get('email', {}).get('smtp', {})
+                if 'password' in current_smtp:
+                    email_config['smtp']['password'] = current_smtp['password']
+                else:
+                    email_config['smtp'].pop('password', None)
+
+        updates = {'email': email_config}
+        return self.update_config(updates, persist=persist, user=user, reason="Email config updated")
+
+    def get_config_history(self, key: Optional[str] = None, limit: int = 100) -> list:
+        """
+        Get configuration change history from database
+
+        Args:
+            key: Specific config key (None for all)
+            limit: Maximum number of records
+
+        Returns:
+            List of history records (empty if DB not enabled)
+        """
+        if self.db_enabled and self.config_db:
+            return self.config_db.get_config_history(key=key, limit=limit)
+        return []
+
+    def create_snapshot(self, snapshot_name: str, user: str = 'system', description: str = None) -> bool:
+        """
+        Create a configuration snapshot
+
+        Args:
+            snapshot_name: Name of the snapshot
+            user: User creating the snapshot
+            description: Optional description
+
+        Returns:
+            True if successful, False if DB not enabled
+        """
+        if self.db_enabled and self.config_db:
+            return self.config_db.create_snapshot(snapshot_name, user=user, description=description)
+        print("⚠️  Snapshots require database-backed configuration")
+        return False
+
+    def restore_snapshot(self, snapshot_name: str, user: str = 'system') -> bool:
+        """
+        Restore configuration from a snapshot
+
+        Args:
+            snapshot_name: Name of the snapshot to restore
+            user: User performing the restore
+
+        Returns:
+            True if successful, False if DB not enabled
+        """
+        if self.db_enabled and self.config_db:
+            success = self.config_db.restore_snapshot(snapshot_name, user=user)
+            if success:
+                # Clear runtime overrides after restore
+                with self._config_lock:
+                    self.runtime_overrides = {}
+            return success
+        print("⚠️  Snapshots require database-backed configuration")
+        return False
 
     def reset_to_file(self):
         """Reset runtime overrides, reload from file"""
@@ -180,7 +384,7 @@ class ConfigManager:
             self.runtime_overrides = {}
 
             if self.config_path:
-                self.load_from_file(self.config_path)
+                self.load_from_file(self.config_path, enable_db=self.db_enabled)
 
         print("🔄 Config reset to file defaults")
         return self.get_config()
@@ -196,7 +400,7 @@ class ConfigManager:
     def _mask_sensitive(self, value: str) -> str:
         """Mask sensitive values for display"""
         if not value or len(value) < 8:
-            return '***'
+            return '***masked***'
 
         # Show first 3 and last 3 characters
         return f"{value[:3]}...{value[-3:]}"
@@ -209,9 +413,9 @@ class ConfigManager:
         merged_config = self.get_config()
 
         with open(self.config_path, 'w') as f:
-            yaml.dump(merged_config, f, default_flow_style=False, indent=2)
+            yaml.dump(merged_config, f, default_flow_style=False)
 
-        print(f"💾 Config saved to: {self.config_path}")
+        print(f"✅ Config saved to: {self.config_path}")
 
     def test_connection(
         self,
@@ -221,44 +425,23 @@ class ConfigManager:
     ) -> Dict[str, Any]:
         """
         Test a provider configuration before applying
-        WITH ENHANCED DEBUG LOGGING
 
         Args:
             provider_type: 'llm' or 'database'
-            provider: Provider name (e.g., 'anthropic', 'trino')
+            provider: Provider name
             config: Provider configuration
 
         Returns:
-            Test result with status and message
+            Test result dict with 'success' and 'message'
         """
-        # 🔍 DEBUG: Log what we received
-        print(f"\n{'='*60}")
-        print(f"🧪 [TEST CONNECTION] Starting...")
-        print(f"   Type: {provider_type}")
-        print(f"   Provider: {provider}")
-        print(f"   Config received from browser:")
-        for key, value in config.items():
-            if 'password' in key.lower() or 'api_key' in key.lower():
-                print(f"      {key}: {'*' * len(str(value)) if value else '(empty)'}")
-            else:
-                print(f"      {key}: {value}")
-        print(f"{'='*60}\n")
-
-        try:
-            if provider_type == 'llm':
-                return self._test_llm(provider, config)
-            elif provider_type == 'database':
-                return self._test_database(provider, config)
-            else:
-                return {
-                    'success': False,
-                    'message': f'Unknown provider type: {provider_type}'
-                }
-        except Exception as e:
-            print(f"❌ [TEST CONNECTION] Exception: {e}")
+        if provider_type == 'llm':
+            return self._test_llm(provider, config)
+        elif provider_type == 'database':
+            return self._test_database(provider, config)
+        else:
             return {
                 'success': False,
-                'message': f'Test failed: {str(e)}'
+                'message': f'Unknown provider type: {provider_type}'
             }
 
     def _test_llm(self, provider: str, config: Dict[str, Any]) -> Dict[str, Any]:
