@@ -543,6 +543,7 @@ const config = window.SQLatteAuthWidget.getConfig();
 - ✅ **Trino** - Distributed SQL engine
 - ✅ **PostgreSQL** - Advanced relational database
 - ✅ **MySQL** - Popular relational database
+- ✅ **Google BigQuery** - Serverless data warehouse
 
 ### Configuration Examples
 
@@ -643,6 +644,39 @@ llm:
     model: "gemini-pro"
     credentials_path: "/path/to/service-account.json"
 ```
+</details>
+<details>
+<summary><b>Google BigQuery Configuration</b></summary>
+
+```yaml
+database:
+  provider: "bigquery"
+  bigquery:
+    project_id: "my-gcp-project"
+    dataset: "analytics"  # Optional, leave empty for cross-dataset queries
+    location: "US"
+    credentials_path: "/path/to/service-account.json"
+    # OR use credentials_json for direct JSON content
+    # credentials_json: '{"type": "service_account", ...}'
+    timeout: 300
+    max_results: 10000
+```
+
+**Authentication Methods:**
+1. **Service Account JSON File** (Recommended for local)
+   ```yaml
+   credentials_path: "/path/to/service-account-key.json"
+   ```
+
+2. **Service Account JSON Content** (Recommended for containers)
+   ```yaml
+   credentials_json: '{"type": "service_account", "project_id": "...", ...}'
+   ```
+
+3. **Application Default Credentials** (For GCP environments)
+   - Leave both `credentials_path` and `credentials_json` empty
+   - Works automatically on Cloud Run, GKE, Compute Engine
+
 </details>
 
 ---
