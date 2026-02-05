@@ -24,9 +24,9 @@ class ProviderFactory:
         'trino': 'src.providers.database.trino_provider.TrinoProvider',
         'postgresql': 'src.providers.database.postgresql_provider.PostgreSQLProvider',
         'mysql': 'src.providers.database.mysql_provider.MySQLProvider',
+        'bigquery': 'src.providers.database.bigquery_provider.BigQueryProvider',
         # 'presto': 'src.providers.database.presto_provider.PrestoProvider',
-        # 'clickhouse': 'src.providers.database.clickhouse_provider.ClickHouseProvider',
-        # 'bigquery': 'src.providers.database.bigquery_provider.BigQueryProvider',
+        # 'clickhouse': 'src.providers.database.clickhouse_provider.ClickHouseProvider'
     }
 
     @staticmethod

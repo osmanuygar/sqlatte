@@ -165,7 +165,8 @@ class ConfigManager:
         safe_config = deepcopy(config)
 
         # Mask sensitive fields
-        sensitive_fields = ['api_key', 'password', 'credentials_json', 'credentials_path']
+        sensitive_fields = ['api_key', 'password', 'credentials_json', 'credentials_path', 'secret_key',
+        'token']
 
         def mask_recursive(obj):
             if isinstance(obj, dict):
@@ -296,6 +297,34 @@ class ConfigManager:
                     # No existing password, remove the masked value
                     print(f"⚠️  [ConfigManager] No existing password, removing masked value")
                     provider_config.pop('password', None)
+
+        if provider == 'bigquery':
+            # Handle credentials_path
+            if 'credentials_path' in provider_config:
+                if provider_config['credentials_path'] == '***masked***' or not provider_config['credentials_path']:
+                    if 'credentials_path' in current_db_config:
+                        print(f"🔒 [ConfigManager] BigQuery credentials_path masked, preserving original")
+                        provider_config['credentials_path'] = current_db_config['credentials_path']
+                    else:
+                        print(f"⚠️  [ConfigManager] No existing credentials_path, removing masked value")
+                        provider_config.pop('credentials_path', None)
+
+            # Handle credentials_json
+            if 'credentials_json' in provider_config:
+                if provider_config['credentials_json'] == '***masked***' or not provider_config['credentials_json']:
+                    if 'credentials_json' in current_db_config:
+                        print(f"🔒 [ConfigManager] BigQuery credentials_json masked, preserving original")
+                        provider_config['credentials_json'] = current_db_config['credentials_json']
+                    else:
+                        print(f"⚠️  [ConfigManager] No existing credentials_json, removing masked value")
+                        provider_config.pop('credentials_json', None)
+
+            # Project ID should NOT be masked, but check for empty values
+            if 'project_id' in provider_config:
+                if not provider_config['project_id'] or provider_config['project_id'] == '***masked***':
+                    if 'project_id' in current_db_config:
+                        print(f"🔒 [ConfigManager] BigQuery project_id empty, preserving original")
+                        provider_config['project_id'] = current_db_config['project_id']
 
         updates = {
             'database': {

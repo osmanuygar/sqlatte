@@ -4,7 +4,7 @@ SQLatte Configuration Database Manager
 
 Manages all platform configurations with PostgreSQL persistence:
 - LLM configurations (provider, model, API keys)
-- Database configurations (connection settings)
+- Database configurations (connection settings) - INCLUDING BIGQUERY ✅
 - Email configurations (SMTP settings)
 - UI configurations (themes, preferences)
 - Plugin configurations
@@ -157,7 +157,9 @@ class ConfigDB:
 
         print("🌱 Bootstrapping configurations from config.yaml...")
 
-        # Bootstrap LLM configurations
+        # ============================================
+        # Bootstrap LLM Configurations
+        # ============================================
         llm_config = yaml_config.get('llm', {})
         provider = llm_config.get('provider', 'anthropic')
 
@@ -177,13 +179,15 @@ class ConfigDB:
                     self._set_config(f'llm.{prov}.location', prov_config.get('location', 'us-central1'), 'llm')
                     self._set_config(f'llm.{prov}.credentials_path', prov_config.get('credentials_path', ''), 'llm', 'string', True)
 
-        # Bootstrap Database configurations
+        # ============================================
+        # Bootstrap Database Configurations
+        # ============================================
         db_config = yaml_config.get('database', {})
         db_provider = db_config.get('provider', 'clickhouse')
 
         self._set_config('database.provider', db_provider, 'database', 'string', False, 'Active database provider')
 
-        # Provider-specific DB configs
+        # Standard database providers
         for prov in ['clickhouse', 'trino', 'postgresql', 'mysql']:
             prov_config = db_config.get(prov, {})
             if prov_config:
@@ -193,12 +197,66 @@ class ConfigDB:
                 self._set_config(f'database.{prov}.username', prov_config.get('username', ''), 'database')
                 self._set_config(f'database.{prov}.password', prov_config.get('password', ''), 'database', 'string', True)
 
-                # Provider-specific fields
+                # Trino-specific fields
                 if prov == 'trino':
                     self._set_config(f'database.{prov}.catalog', prov_config.get('catalog', 'hive'), 'database')
                     self._set_config(f'database.{prov}.schema', prov_config.get('schema', 'default'), 'database')
+                    self._set_config(f'database.{prov}.http_scheme', prov_config.get('http_scheme', 'https'), 'database')
 
-        # Bootstrap Email configurations
+        # ============================================
+        # ✅ BIGQUERY CONFIGURATION (NEW!)
+        # ============================================
+        bigquery_config = db_config.get('bigquery', {})
+        if bigquery_config:
+            print("📊 Bootstrapping BigQuery configuration...")
+
+            # Required: Project ID
+            self._set_config('database.bigquery.project_id',
+                           bigquery_config.get('project_id', ''),
+                           'database', 'string', False,
+                           'GCP Project ID (required)')
+
+            # Optional: Dataset
+            self._set_config('database.bigquery.dataset',
+                           bigquery_config.get('dataset', ''),
+                           'database', 'string', False,
+                           'Default BigQuery dataset (optional)')
+
+            # Optional: Location
+            self._set_config('database.bigquery.location',
+                           bigquery_config.get('location', 'US'),
+                           'database', 'string', False,
+                           'BigQuery location/region')
+
+            # Sensitive: Credentials Path
+            self._set_config('database.bigquery.credentials_path',
+                           bigquery_config.get('credentials_path', ''),
+                           'database', 'string', True,  # ← SENSITIVE!
+                           'Service account JSON file path')
+
+            # Sensitive: Credentials JSON
+            self._set_config('database.bigquery.credentials_json',
+                           bigquery_config.get('credentials_json', ''),
+                           'database', 'string', True,  # ← SENSITIVE!
+                           'Service account JSON content (inline)')
+
+            # Performance: Timeout
+            self._set_config('database.bigquery.timeout',
+                           str(bigquery_config.get('timeout', 300)),
+                           'database', 'int', False,
+                           'Query timeout in seconds')
+
+            # Performance: Max Results
+            self._set_config('database.bigquery.max_results',
+                           str(bigquery_config.get('max_results', 10000)),
+                           'database', 'int', False,
+                           'Maximum rows to return per query')
+
+            print("   ✅ BigQuery configuration bootstrapped")
+
+        # ============================================
+        # Bootstrap Email Configurations
+        # ============================================
         email_config = yaml_config.get('email', {})
         if email_config:
             smtp_config = email_config.get('smtp', {})
@@ -212,7 +270,9 @@ class ConfigDB:
             self._set_config('email.smtp.use_tls', str(smtp_config.get('use_tls', True)), 'email', 'bool')
             self._set_config('email.smtp.timeout', str(smtp_config.get('timeout', 30)), 'email', 'int')
 
-        # Bootstrap Scheduler configurations
+        # ============================================
+        # Bootstrap Scheduler Configurations
+        # ============================================
         scheduler_config = yaml_config.get('scheduler', {})
         if scheduler_config:
             self._set_config('scheduler.enabled', str(scheduler_config.get('enabled', False)), 'scheduler', 'bool')
@@ -223,7 +283,9 @@ class ConfigDB:
             self._set_config('scheduler.max_executions_per_schedule', str(scheduler_config.get('max_executions_per_schedule', 100)), 'scheduler', 'int')
             self._set_config('scheduler.check_interval_seconds', str(scheduler_config.get('check_interval_seconds', 60)), 'scheduler', 'int')
 
-        # Bootstrap Insights configurations
+        # ============================================
+        # Bootstrap Insights Configurations
+        # ============================================
         insights_config = yaml_config.get('insights', {})
         if insights_config:
             self._set_config('insights.enabled', str(insights_config.get('enabled', False)), 'insights', 'bool')
@@ -231,7 +293,9 @@ class ConfigDB:
             self._set_config('insights.max_insights', str(insights_config.get('max_insights', 3)), 'insights', 'int')
             self._set_config('insights.include_statistical', str(insights_config.get('include_statistical', True)), 'insights', 'bool')
 
-        # Bootstrap Export configurations
+        # ============================================
+        # Bootstrap Export Configurations
+        # ============================================
         export_config = yaml_config.get('export', {})
         if export_config:
             formats = export_config.get('formats', ['csv', 'excel', 'html'])
@@ -240,7 +304,9 @@ class ConfigDB:
             self._set_config('export.max_file_size_mb', str(export_config.get('max_file_size_mb', 25)), 'export', 'int')
             self._set_config('export.filename_template', export_config.get('filename_template', '{{schedule_name}}_{{date}}_{{time}}.{{format}}'), 'export')
 
-        # Bootstrap Plugin configurations
+        # ============================================
+        # Bootstrap Plugin Configurations
+        # ============================================
         plugins_config = yaml_config.get('plugins', {})
         for plugin_name, plugin_config in plugins_config.items():
             if isinstance(plugin_config, dict):
@@ -446,33 +512,32 @@ class ConfigDB:
 
         Args:
             config_type: Filter by type ('llm', 'database', 'email', etc.)
-            include_sensitive: Include sensitive values (masked if not decrypted)
+            include_sensitive: If True, include sensitive fields
             decrypt_sensitive: If True, decrypt sensitive values
 
         Returns:
-            Dictionary of configurations
+            Dictionary of all configurations
         """
         if self.db_type == "postgresql":
             cursor = self.conn.cursor(cursor_factory=RealDictCursor)
         else:
             cursor = self.conn.cursor()
 
+        query = "SELECT config_key, config_value, value_type, is_sensitive FROM configurations"
+        params = None
+
         if config_type:
+            query += " WHERE config_type = ?"
+            params = (config_type,)
             if self.db_type == "postgresql":
-                cursor.execute(
-                    "SELECT config_key, config_value, value_type, is_sensitive FROM configurations WHERE config_type = %s",
-                    (config_type,)
-                )
-            else:
-                cursor.execute(
-                    "SELECT config_key, config_value, value_type, is_sensitive FROM configurations WHERE config_type = ?",
-                    (config_type,)
-                )
+                query = query.replace("?", "%s")
+
+        if params:
+            cursor.execute(query, params)
         else:
-            cursor.execute("SELECT config_key, config_value, value_type, is_sensitive FROM configurations")
+            cursor.execute(query)
 
         configs = {}
-
         for row in cursor.fetchall():
             if self.db_type == "postgresql":
                 key = row['config_key']
@@ -485,116 +550,73 @@ class ConfigDB:
                 value_type = row['value_type']
                 is_sensitive = row['is_sensitive']
 
-            # Skip sensitive values if not requested
+            # Skip sensitive if not requested
             if is_sensitive and not include_sensitive:
                 continue
 
-            # Decrypt or mask sensitive values
-            if is_sensitive:
-                if decrypt_sensitive:
-                    value = self._decrypt(value)
-                else:
-                    value = "***masked***"
+            # Decrypt if requested
+            if is_sensitive and decrypt_sensitive:
+                value = self._decrypt(value)
 
             # Type conversion
             if value_type == 'int':
-                value = int(value) if value and value != "***masked***" else value
+                value = int(value) if value else 0
             elif value_type == 'float':
-                value = float(value) if value and value != "***masked***" else value
+                value = float(value) if value else 0.0
             elif value_type == 'bool':
-                value = value.lower() == 'true' if value and value != "***masked***" else value
+                value = value.lower() == 'true' if value else False
             elif value_type == 'json':
-                value = json.loads(value) if value and value != "***masked***" else value
+                value = json.loads(value) if value else {}
 
             configs[key] = value
 
         cursor.close()
         return configs
 
-    def get_config_history(self,
-                           key: Optional[str] = None,
-                           limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Get configuration change history
-
-        Args:
-            key: Specific config key (None for all)
-            limit: Maximum number of records
-
-        Returns:
-            List of history records
-        """
+    def get_config_history(self, key: Optional[str] = None, limit: int = 100) -> List[Dict]:
+        """Get configuration change history"""
         if self.db_type == "postgresql":
             cursor = self.conn.cursor(cursor_factory=RealDictCursor)
         else:
             cursor = self.conn.cursor()
 
         if key:
+            query = "SELECT * FROM config_history WHERE config_key = ? ORDER BY changed_at DESC LIMIT ?"
+            params = (key, limit)
             if self.db_type == "postgresql":
-                cursor.execute("""
-                    SELECT * FROM config_history 
-                    WHERE config_key = %s 
-                    ORDER BY changed_at DESC 
-                    LIMIT %s
-                """, (key, limit))
-            else:
-                cursor.execute("""
-                    SELECT * FROM config_history 
-                    WHERE config_key = ? 
-                    ORDER BY changed_at DESC 
-                    LIMIT ?
-                """, (key, limit))
+                query = query.replace("?", "%s")
+            cursor.execute(query, params)
         else:
+            query = "SELECT * FROM config_history ORDER BY changed_at DESC LIMIT ?"
+            params = (limit,)
             if self.db_type == "postgresql":
-                cursor.execute("SELECT * FROM config_history ORDER BY changed_at DESC LIMIT %s", (limit,))
-            else:
-                cursor.execute("SELECT * FROM config_history ORDER BY changed_at DESC LIMIT ?", (limit,))
+                query = query.replace("?", "%s")
+            cursor.execute(query, params)
 
         history = []
         for row in cursor.fetchall():
-            if self.db_type == "postgresql":
-                history.append(dict(row))
-            else:
-                history.append(dict(row))
+            history.append(dict(row))
 
         cursor.close()
         return history
 
-    def create_snapshot(self,
-                        snapshot_name: str,
-                        user: str = 'system',
-                        description: str = None) -> bool:
-        """
-        Create a configuration snapshot for rollback
-
-        Args:
-            snapshot_name: Name of the snapshot
-            user: User creating the snapshot
-            description: Optional description
-
-        Returns:
-            True if successful
-        """
-        # Get all current configs
-        all_configs = self.get_all_configs(include_sensitive=True, decrypt_sensitive=True)
+    def create_snapshot(self, snapshot_name: str, user: str = 'system', description: str = None) -> bool:
+        """Create a configuration snapshot"""
+        all_configs = self.get_all_configs(include_sensitive=True, decrypt_sensitive=False)
+        config_data = json.dumps(all_configs)
 
         cursor = self.conn.cursor()
-
-        config_json = json.dumps(all_configs, indent=2)
 
         if self.db_type == "postgresql":
             cursor.execute("""
                 INSERT INTO config_snapshots (snapshot_name, config_data, created_by, description)
                 VALUES (%s, %s, %s, %s)
-                ON CONFLICT (snapshot_name) DO UPDATE SET
-                    config_data = EXCLUDED.config_data,
-                    created_at = CURRENT_TIMESTAMP
-            """, (snapshot_name, config_json, user, description))
+            """, (snapshot_name, config_data, user, description))
         else:
             cursor.execute("""
-                INSERT OR REPLACE INTO config_snapshots (snapshot_name, config_data, created_by, description)
+                INSERT INTO config_snapshots (snapshot_name, config_data, created_by, description)
                 VALUES (?, ?, ?, ?)
-            """, (snapshot_name, config_json, user, description))
+            """, (snapshot_name, config_data, user, description))
 
         self.conn.commit()
         cursor.close()
@@ -603,16 +625,7 @@ class ConfigDB:
         return True
 
     def restore_snapshot(self, snapshot_name: str, user: str = 'system') -> bool:
-        """
-        Restore configuration from a snapshot
-
-        Args:
-            snapshot_name: Name of the snapshot to restore
-            user: User performing the restore
-
-        Returns:
-            True if successful
-        """
+        """Restore configuration from a snapshot"""
         if self.db_type == "postgresql":
             cursor = self.conn.cursor(cursor_factory=RealDictCursor)
         else:
@@ -671,7 +684,10 @@ class ConfigDB:
             print("✅ ConfigDB connection closed")
 
 
-# Singleton instance
+# ============================================
+# Singleton Instance
+# ============================================
+
 _config_db_instance = None
 
 

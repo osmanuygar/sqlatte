@@ -23,5 +23,6 @@ APScheduler>=3.10.4            # Background job scheduling
 openpyxl>=3.1.2
 asyncpg                        #Excel file generation
 
-
+google-cloud-bigquery>=3.11.0
+google-auth>=2.23.0
 

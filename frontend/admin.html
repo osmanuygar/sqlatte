@@ -716,6 +716,7 @@
                             <option value="clickhouse">ClickHouse</option>
                             <option value="postgresql">PostgreSQL</option>
                             <option value="mysql">MySQL</option>
+                            <option value="bigquery">Google BigQuery</option>
                         </select>
                     </div>
 
@@ -754,7 +755,50 @@
                         <input type="password" id="db-password">
                         <small>Leave empty to keep current</small>
                     </div>
-
+                    <!-- ✅ BIGQUERY FIELDS - START -->
+                    <div id="bigquery-fields" style="display: none;">
+                        <div class="form-group">
+                            <label>Project ID <span style="color: red;">*</span></label>
+                            <input type="text" id="db-bigquery-project" placeholder="my-gcp-project-id">
+                            <small>GCP Project ID (required)</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Dataset (Optional)</label>
+                            <input type="text" id="db-bigquery-dataset" placeholder="analytics">
+                            <small>Leave empty for cross-dataset queries</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Location</label>
+                            <select id="db-bigquery-location">
+                                <option value="US">US (Multi-region)</option>
+                                <option value="EU">EU (Multi-region)</option>
+                                <option value="us-central1">us-central1</option>
+                                <option value="us-east1">us-east1</option>
+                                <option value="europe-west1">europe-west1</option>
+                                <option value="asia-northeast1">asia-northeast1</option>
+                            </select>
+                            <small>BigQuery dataset location</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Credentials Path</label>
+                            <input type="text" id="db-bigquery-credentials-path" placeholder="/path/to/service-account.json">
+                            <small>Service account JSON file path</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Credentials JSON</label>
+                            <textarea id="db-bigquery-credentials-json" rows="3" placeholder='{"type": "service_account", ...}'></textarea>
+                            <small>Inline JSON content (leave both empty for ADC)</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Query Timeout (seconds)</label>
+                            <input type="number" id="db-bigquery-timeout" placeholder="300" value="300">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Results</label>
+                            <input type="number" id="db-bigquery-max-results" placeholder="10000" value="10000">
+                        </div>
+                    </div>
+                    <!-- ✅ BIGQUERY FIELDS - END -->
                     <div class="checkbox-group">
                         <input type="checkbox" id="db-persist" checked>
                         <label for="db-persist">💾 Save to Database</label>
@@ -1219,17 +1263,42 @@
             }
 
             // DB Config
-            const dbProvider = config.database?.provider || 'clickhouse';
+            const dbProvider = config.database.provider;
             document.getElementById('db-provider').value = dbProvider;
             updateDBFields();
 
-            const dbConfig = config.database?.[dbProvider] || {};
-            document.getElementById('db-host').value = dbConfig.host || 'localhost';
-            document.getElementById('db-port').value = toInt(dbConfig.port, 8123);
-            document.getElementById('db-catalog').value = dbConfig.catalog || '';  // ✅ Trino catalog
-            document.getElementById('db-schema').value = dbConfig.schema || dbConfig.database || 'default';  // ✅ Trino schema
-            document.getElementById('db-http-scheme').value = dbConfig.http_scheme || 'https';  // ✅ Trino http_scheme
-            document.getElementById('db-username').value = dbConfig.username || dbConfig.user || 'default';
+            if (dbProvider === 'bigquery') {
+                // ✅ Load BigQuery config
+                const bqConfig = config.database.bigquery || {};
+                document.getElementById('db-bigquery-project').value = bqConfig.project_id || '';
+                document.getElementById('db-bigquery-dataset').value = bqConfig.dataset || '';
+                document.getElementById('db-bigquery-location').value = bqConfig.location || 'US';
+                document.getElementById('db-bigquery-timeout').value = bqConfig.timeout || 300;
+                document.getElementById('db-bigquery-max-results').value = bqConfig.max_results || 10000;
+
+                const credPath = bqConfig.credentials_path;
+                if (credPath && credPath.includes('...')) {
+                    document.getElementById('db-bigquery-credentials-path').value = credPath;
+                } else {
+                    document.getElementById('db-bigquery-credentials-path').value = credPath || '';
+                }
+
+                const credJson = bqConfig.credentials_json;
+                if (credJson === '***masked***' || (credJson && credJson.includes('...'))) {
+                    document.getElementById('db-bigquery-credentials-json').value = '***masked***';
+                } else {
+                    document.getElementById('db-bigquery-credentials-json').value = credJson || '';
+                }
+            } else {
+                // ✅ Load standard database config
+                const dbConfig = config.database[dbProvider] || {};
+                document.getElementById('db-host').value = dbConfig.host || 'localhost';
+                document.getElementById('db-port').value = toInt(dbConfig.port, 443);
+                document.getElementById('db-catalog').value = dbConfig.catalog || '';
+                document.getElementById('db-schema').value = dbConfig.schema || dbConfig.database || 'default';
+                document.getElementById('db-http-scheme').value = dbConfig.http_scheme || 'https';
+                document.getElementById('db-username').value = dbConfig.username || dbConfig.user || 'default';
+            }
 
             // Email Config
             const emailConfig = config.email || {};
@@ -1301,26 +1370,47 @@
                 'trino': 443,
                 'clickhouse': 8123,
                 'postgresql': 5432,
-                'mysql': 3306
+                'mysql': 3306,
+                'bigquery': 443
             };
             document.getElementById('db-port').placeholder = portDefaults[provider] || 8123;
 
-            // ✅ Show/hide Trino-specific fields
             const catalogField = document.getElementById('db-catalog-field');
             const httpSchemeField = document.getElementById('db-http-scheme-field');
             const schemaLabel = document.getElementById('db-schema-label');
             const schemaHint = document.getElementById('db-schema-hint');
 
-            if (provider === 'trino') {
-                catalogField.style.display = 'block';
-                httpSchemeField.style.display = 'block';
-                schemaLabel.textContent = 'Schema';
-                schemaHint.textContent = 'Schema name within the catalog';
+            const bigqueryFields = document.getElementById('bigquery-fields');
+            const standardFields = [
+                document.getElementById('db-host')?.parentElement,
+                document.getElementById('db-port')?.parentElement,
+                document.getElementById('db-username')?.parentElement,
+                document.getElementById('db-password')?.parentElement,
+                document.getElementById('db-schema')?.parentElement
+            ];
+
+            if (provider === 'bigquery') {
+                // ✅ Hide standard fields, show BigQuery
+                standardFields.forEach(f => { if (f) f.style.display = 'none'; });
+                if (catalogField) catalogField.style.display = 'none';
+                if (httpSchemeField) httpSchemeField.style.display = 'none';
+                if (bigqueryFields) bigqueryFields.style.display = 'block';
+            } else if (provider === 'trino') {
+                // ✅ Trino: show standard + Trino-specific
+                standardFields.forEach(f => { if (f) f.style.display = 'block'; });
+                if (catalogField) catalogField.style.display = 'block';
+                if (httpSchemeField) httpSchemeField.style.display = 'block';
+                if (bigqueryFields) bigqueryFields.style.display = 'none';
+                if (schemaLabel) schemaLabel.textContent = 'Schema';
+                if (schemaHint) schemaHint.textContent = 'Schema name within the catalog';
             } else {
-                catalogField.style.display = 'none';
-                httpSchemeField.style.display = 'none';
-                schemaLabel.textContent = 'Database';
-                schemaHint.textContent = 'Database name';
+                // ✅ Other databases
+                standardFields.forEach(f => { if (f) f.style.display = 'block'; });
+                if (catalogField) catalogField.style.display = 'none';
+                if (httpSchemeField) httpSchemeField.style.display = 'none';
+                if (bigqueryFields) bigqueryFields.style.display = 'none';
+                if (schemaLabel) schemaLabel.textContent = 'Database';
+                if (schemaHint) schemaHint.textContent = 'Database name';
             }
         }
 
@@ -1444,16 +1534,48 @@
             const provider = document.getElementById('db-provider').value;
             const password = document.getElementById('db-password').value;
 
+            if (provider === 'bigquery') {
+                // BigQuery config (değişmez)
+                const config = {
+                    project_id: document.getElementById('db-bigquery-project').value,
+                    dataset: document.getElementById('db-bigquery-dataset').value || '',
+                    location: document.getElementById('db-bigquery-location').value,
+                    timeout: parseInt(document.getElementById('db-bigquery-timeout').value) || 300,
+                    max_results: parseInt(document.getElementById('db-bigquery-max-results').value) || 10000
+                };
+
+                const credPath = document.getElementById('db-bigquery-credentials-path').value.trim();
+                const credJson = document.getElementById('db-bigquery-credentials-json').value.trim();
+
+                if (credPath) config.credentials_path = credPath;
+                if (credJson && credJson !== '***masked***') config.credentials_json = credJson;
+
+                return config;
+            }
+
+            // ✅ STANDARD DATABASES - PORT FIX
+            const host = document.getElementById('db-host').value;
+            const portValue = document.getElementById('db-port').value;
+
+            // ✅ Parse port safely with fallback
+            let port = 8123; // default
+            if (portValue && portValue.trim() !== '') {
+                port = parseInt(portValue);
+            } else {
+                // Set default based on provider
+                port = provider === 'trino' ? 443 : 8123;
+            }
+
             const baseConfig = {
-                host: document.getElementById('db-host').value,
-                port: parseInt(document.getElementById('db-port').value),
+                host: host,
+                port: port,
                 ...(password && { password: password })
             };
 
-            // ✅ Trino-specific config
             if (provider === 'trino') {
+                // ✅ TRINO
                 return {
-                    ...baseConfig,
+                    ...baseConfig,  // ← host, port, password
                     catalog: document.getElementById('db-catalog').value,
                     schema: document.getElementById('db-schema').value,
                     user: document.getElementById('db-username').value,
@@ -1461,7 +1583,7 @@
                 };
             }
 
-            // ✅ Other databases (ClickHouse, PostgreSQL, MySQL)
+            // ✅ OTHER DATABASES
             return {
                 ...baseConfig,
                 database: document.getElementById('db-schema').value,
