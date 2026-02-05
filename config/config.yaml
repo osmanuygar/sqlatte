@@ -188,6 +188,39 @@ database:
     #charset: "utf8mb4"
     #use_unicode: true
     autocommit: true
+  # ============================================
+  # BIGQUERY Configuration
+  # ============================================
+  bigquery:
+    # GCP Project ID (REQUIRED)
+    project_id: "my-gcp-project-id"
+
+    # Dataset (OPTIONAL)
+    # If empty, allows cross-dataset queries
+    # If specified, simplifies table references (e.g., just "table_name" instead of "dataset.table_name")
+    dataset: ""  # e.g., "analytics", "warehouse", etc.
+
+    # Location (OPTIONAL)
+    # Options: US, EU, asia-northeast1, us-central1, europe-west1, etc.
+    location: "US"
+
+    # ========================================
+    # AUTHENTICATION (2 methods - choose ONE!)
+    # ========================================
+
+    # METHOD 1: Service Account JSON File Path (RECOMMENDED for local development)
+    # credentials_path: "/path/to/service-account-key.json"
+    credentials_path: ""
+
+    # METHOD 2: Service Account JSON Content (RECOMMENDED for containers/CI/CD)
+    # Paste the entire JSON content as a string
+    # credentials_json: '{"type": "service_account", "project_id": "...", "private_key": "...", ...}'
+    credentials_json: ""
+    
+    # Query timeout in seconds
+    timeout: 300
+    # Maximum rows to return (to prevent huge result sets)
+    max_results: 10000
 # CORS Settings
 cors:
   allow_origins: ["*"]
