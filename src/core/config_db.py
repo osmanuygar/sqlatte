@@ -303,7 +303,50 @@ class ConfigDB:
             self._set_config('export.max_rows', str(export_config.get('max_rows', 1000)), 'export', 'int')
             self._set_config('export.max_file_size_mb', str(export_config.get('max_file_size_mb', 25)), 'export', 'int')
             self._set_config('export.filename_template', export_config.get('filename_template', '{{schedule_name}}_{{date}}_{{time}}.{{format}}'), 'export')
+            # ============================================
+            # Bootstrap Prompts Configurations
+            # ============================================
+            prompts_config = yaml_config.get('prompts', {})
+            if prompts_config:
+                print("📝 Bootstrapping prompts configuration...")
 
+                self._set_config(
+                    'prompts.intent_detection',
+                    prompts_config.get('intent_detection', ''),
+                    'prompts',
+                    'text',
+                    False,
+                    'Prompt for determining if question requires SQL or chat'
+                )
+
+                self._set_config(
+                    'prompts.barista_personality',
+                    prompts_config.get('barista_personality', ''),
+                    'prompts',
+                    'text',
+                    False,
+                    'Prompt defining SQLatte chat personality'
+                )
+
+                self._set_config(
+                    'prompts.sql_generation',
+                    prompts_config.get('sql_generation', ''),
+                    'prompts',
+                    'text',
+                    False,
+                    'Prompt for natural language to SQL translation'
+                )
+
+                self._set_config(
+                    'prompts.insights_generation',
+                    prompts_config.get('insights_generation', ''),
+                    'prompts',
+                    'text',
+                    False,
+                    'Prompt for generating insights from query results'
+                )
+
+                print("   ✅ Prompts configuration bootstrapped")
         # ============================================
         # Bootstrap Plugin Configurations
         # ============================================

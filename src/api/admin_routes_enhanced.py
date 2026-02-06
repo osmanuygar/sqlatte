@@ -758,3 +758,164 @@ async def get_system_info():
             "snapshots": config_manager.db_enabled
         }
     }
+
+
+# ============================================
+# PROMPTS MANAGEMENT ROUTES (Phase 2)
+# ============================================
+
+@router.get("/prompts")
+async def get_prompts():
+    """
+    Get all prompts (read from config)
+    """
+    try:
+        config = config_manager.get_config()
+        prompts = config.get('prompts', {})
+
+        return {
+            "success": True,
+            "prompts": {
+                "intent_detection": prompts.get('intent_detection', ''),
+                "barista_personality": prompts.get('barista_personality', ''),
+                "sql_generation": prompts.get('sql_generation', ''),
+                "insights_generation": prompts.get('insights_generation', '')
+            },
+            "editable": True
+        }
+
+    except Exception as e:
+        print(f"Error getting prompts: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.post("/prompts/update")
+async def update_prompt(request: Request):
+    """
+    Update a specific prompt
+
+    Body:
+    {
+        "prompt_type": "intent_detection",  // or barista_personality, sql_generation, insights_generation
+        "prompt_value": "new prompt text...",
+        "persist": true  // save to DB
+    }
+    """
+    try:
+        body = await request.json()
+        prompt_type = body.get('prompt_type')
+        prompt_value = body.get('prompt_value', '')
+        persist = body.get('persist', True)
+
+        if not prompt_type:
+            return {
+                "success": False,
+                "error": "prompt_type is required"
+            }
+
+        # Validate prompt_type
+        valid_types = ['intent_detection', 'barista_personality', 'sql_generation', 'insights_generation']
+        if prompt_type not in valid_types:
+            return {
+                "success": False,
+                "error": f"Invalid prompt_type. Must be one of: {valid_types}"
+            }
+
+        # Update config
+        updates = {
+            'prompts': {
+                prompt_type: prompt_value
+            }
+        }
+
+        config_manager.update_config(
+            updates=updates,
+            persist=persist,
+            user='admin',
+            reason=f'Updated {prompt_type} prompt via admin panel'
+        )
+
+        return {
+            "success": True,
+            "message": f"Prompt '{prompt_type}' updated successfully",
+            "persisted": persist
+        }
+
+    except Exception as e:
+        print(f"Error updating prompt: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.post("/prompts/reset")
+async def reset_prompt(request: Request):
+    """
+    Reset a prompt to default value from config.yaml
+
+    Body:
+    {
+        "prompt_type": "intent_detection"
+    }
+    """
+    try:
+        body = await request.json()
+        prompt_type = body.get('prompt_type')
+
+        if not prompt_type:
+            return {
+                "success": False,
+                "error": "prompt_type is required"
+            }
+
+        # Read default from config.yaml
+        import yaml
+        import os
+
+        PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+        CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
+
+        with open(CONFIG_PATH, 'r') as f:
+            yaml_config = yaml.safe_load(f)
+
+        default_prompts = yaml_config.get('prompts', {})
+        default_value = default_prompts.get(prompt_type, '')
+
+        if not default_value:
+            return {
+                "success": False,
+                "error": f"No default prompt found for '{prompt_type}' in config.yaml"
+            }
+
+        # Update with default
+        updates = {
+            'prompts': {
+                prompt_type: default_value
+            }
+        }
+
+        config_manager.update_config(
+            updates=updates,
+            persist=True,
+            user='admin',
+            reason=f'Reset {prompt_type} prompt to default'
+        )
+
+        return {
+            "success": True,
+            "message": f"Prompt '{prompt_type}' reset to default",
+            "default_value": default_value
+        }
+
+    except Exception as e:
+        logger.error(f"Error resetting prompt: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }

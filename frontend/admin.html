@@ -578,6 +578,10 @@
                 <span>🔌</span>
                 Providers
             </div>
+            <div class="tab" onclick="switchTab('prompts')">
+                <span>📝</span>
+                Prompts
+            </div>
             <div class="tab" onclick="switchTab('email')">
                 <span>📧</span>
                 Email & SMTP
@@ -817,6 +821,138 @@
 
                     <div id="db-test-result" class="test-result"></div>
                 </div>
+            </div>
+        </div>
+        <!-- TAB: Prompts (Editable) -->
+        <div id="tab-prompts" class="tab-content">
+            <div class="info-panel" style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a7b 100%); border-color: #3a6a8f;">
+                <h3 style="color: #81d4fa;">📝 Prompts Configuration</h3>
+                <p style="color: #b3e5fc; font-size: 13px; margin-top: 8px;">
+                    Customize how SQLatte interacts with your data and generates responses.
+                    Changes are saved to database and take effect immediately after hot reload.
+                </p>
+            </div>
+
+            <div class="admin-grid" style="grid-template-columns: 1fr;">
+                <!-- Intent Detection Prompt -->
+                <div class="config-card">
+                    <h2>
+                        <span>🎯</span>
+                        Intent Detection Prompt
+                    </h2>
+                    <div class="form-group">
+                        <label>Used by: All LLM Providers (Anthropic, Gemini, Vertex AI)</label>
+                        <textarea
+                            id="prompt-intent"
+                            rows="12"
+                            style="font-family: 'Courier New', monospace; font-size: 12px; resize: vertical;"
+                        >Loading...</textarea>
+                        <small>Determines if your question requires SQL or is general conversation.</small>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 12px;">
+                        <button class="btn btn-success" onclick="savePrompt('intent_detection')" style="flex: 1;">
+                            <span>💾</span>
+                            Save & Persist
+                        </button>
+                        <button class="btn btn-warning" onclick="resetPrompt('intent_detection')" style="flex: 1;">
+                            <span>↺</span>
+                            Reset to Default
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Chat Personality Prompt -->
+                <div class="config-card">
+                    <h2>
+                        <span>☕</span>
+                        Barista Personality Prompt
+                    </h2>
+                    <div class="form-group">
+                        <label>Used by: Chat Response Generation</label>
+                        <textarea
+                            id="prompt-personality"
+                            rows="12"
+                            style="font-family: 'Courier New', monospace; font-size: 12px; resize: vertical;"
+                        >Loading...</textarea>
+                        <small>Defines SQLatte's friendly, helpful personality for conversations.</small>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 12px;">
+                        <button class="btn btn-success" onclick="savePrompt('barista_personality')" style="flex: 1;">
+                            <span>💾</span>
+                            Save & Persist
+                        </button>
+                        <button class="btn btn-warning" onclick="resetPrompt('barista_personality')" style="flex: 1;">
+                            <span>↺</span>
+                            Reset to Default
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SQL Generation Prompt -->
+                <div class="config-card">
+                    <h2>
+                        <span>💾</span>
+                        SQL Generation Prompt
+                    </h2>
+                    <div class="form-group">
+                        <label>Used by: Natural Language to SQL Translation</label>
+                        <textarea
+                            id="prompt-sql"
+                            rows="20"
+                            style="font-family: 'Courier New', monospace; font-size: 12px; resize: vertical;"
+                        >Loading...</textarea>
+                        <small>Contains all the rules for generating accurate SQL queries from your questions.</small>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 12px;">
+                        <button class="btn btn-success" onclick="savePrompt('sql_generation')" style="flex: 1;">
+                            <span>💾</span>
+                            Save & Persist
+                        </button>
+                        <button class="btn btn-warning" onclick="resetPrompt('sql_generation')" style="flex: 1;">
+                            <span>↺</span>
+                            Reset to Default
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Insights Generation Prompt -->
+                <div class="config-card">
+                    <h2>
+                        <span>💡</span>
+                        Insights Generation Prompt
+                    </h2>
+                    <div class="form-group">
+                        <label>Used by: LLM Insights Engine</label>
+                        <textarea
+                            id="prompt-insights"
+                            rows="15"
+                            style="font-family: 'Courier New', monospace; font-size: 12px; resize: vertical;"
+                        >Loading...</textarea>
+                        <small>Analyzes query results and generates actionable insights.</small>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 12px;">
+                        <button class="btn btn-success" onclick="savePrompt('insights_generation')" style="flex: 1;">
+                            <span>💾</span>
+                            Save & Persist
+                        </button>
+                        <button class="btn btn-warning" onclick="resetPrompt('insights_generation')" style="flex: 1;">
+                            <span>↺</span>
+                            Reset to Default
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; padding: 16px; background: #2a2a2a; border-radius: 8px; border: 1px solid #444;">
+                <p style="color: #10b981; font-size: 13px; margin-bottom: 8px;">
+                    <strong>💡 Tips:</strong>
+                </p>
+                <ul style="color: #a0a0a0; font-size: 12px; margin-left: 20px;">
+                    <li>Changes are saved to database and persist across restarts</li>
+                    <li>Use placeholders like {schema_info}, {question}, {user_question} in your prompts</li>
+                    <li>Test your changes before applying to production</li>
+                    <li>Click "Hot Reload" after saving to apply changes immediately</li>
+                </ul>
             </div>
         </div>
 
@@ -1220,6 +1356,144 @@
             } catch (error) {
                 console.error('Error loading config:', error);
                 showToast('❌ Failed to load configuration', 'error');
+            }
+        }
+
+        // ============================================
+        // LOAD PROMPTS (Read-Only)
+        // ============================================
+        async function loadPrompts() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/prompts`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const prompts = data.prompts;
+
+                    // Populate textareas
+                    document.getElementById('prompt-intent').value = prompts.intent_detection || 'Not available';
+                    document.getElementById('prompt-personality').value = prompts.barista_personality || 'Not available';
+                    document.getElementById('prompt-sql').value = prompts.sql_generation || 'Not available';
+                    document.getElementById('prompt-insights').value = prompts.insights_generation || 'Not available';
+
+                    console.log('✅ Prompts loaded successfully');
+                } else {
+                    console.error('❌ Failed to load prompts:', data.error);
+                    showToast('⚠️ Could not load prompts', 'warning');
+                }
+            } catch (error) {
+                console.error('Error loading prompts:', error);
+                showToast('❌ Error loading prompts', 'error');
+            }
+        }
+
+        // Load prompts when tab is opened
+        document.addEventListener('DOMContentLoaded', () => {
+            // Listen for tab changes
+            const originalSwitchTab = window.switchTab;
+            window.switchTab = function(tabName) {
+                originalSwitchTab.call(this, tabName);
+
+                // Load prompts when prompts tab is opened
+                if (tabName === 'prompts') {
+                    loadPrompts();
+                }
+            };
+        });
+
+        // ============================================
+        // SAVE PROMPT
+        // ============================================
+        async function savePrompt(promptType) {
+            console.log('💾 Saving prompt:', promptType);
+
+            const idMap = {
+                'intent_detection': 'prompt-intent',
+                'barista_personality': 'prompt-personality',
+                'sql_generation': 'prompt-sql',
+                'insights_generation': 'prompt-insights'
+            };
+
+            const textareaId = idMap[promptType];
+            console.log('Looking for textarea:', textareaId);
+
+            const textarea = document.getElementById(textareaId);
+
+            if (!textarea) {
+                console.error('❌ Textarea not found!');
+                console.log('Available textareas:', Array.from(document.querySelectorAll('textarea')).map(t => t.id));
+                alert('Error: Could not find textarea for ' + promptType);
+                return;
+            }
+
+            const promptValue = textarea.value;
+            console.log('✅ Found textarea, value length:', promptValue.length);
+
+            if (!promptValue || promptValue.trim() === '') {
+                showToast('⚠️ Prompt cannot be empty', 'warning');
+                return;
+            }
+
+            try {
+                console.log('📤 Sending update request...');
+
+                const response = await fetch(`${API_BASE}/admin/prompts/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt_type: promptType,
+                        prompt_value: promptValue,
+                        persist: true
+                    })
+                });
+
+                console.log('📥 Response status:', response.status);
+
+                const result = await response.json();
+                console.log('📋 Result:', result);
+
+                if (result.success) {
+                    showToast('✅ Saved! Click Hot Reload to apply.', 'success');
+                } else {
+                    showToast('❌ Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('❌ Save error:', error);
+                showToast('❌ Failed to save: ' + error.message, 'error');
+            }
+        }
+
+        // ============================================
+        // RESET PROMPT TO DEFAULT
+        // ============================================
+        async function resetPrompt(promptType) {
+            if (!confirm(`Are you sure you want to reset "${promptType}" to default?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/prompts/reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt_type: promptType
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`✅ ${promptType} reset to default`, 'success');
+
+                    // Update textarea with default value
+                    const textarea = document.getElementById(`prompt-${promptType.replace('_', '-')}`);
+                    textarea.value = result.default_value;
+                } else {
+                    showToast(`❌ Error: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error resetting prompt:', error);
+                showToast('❌ Failed to reset prompt', 'error');
             }
         }
 
