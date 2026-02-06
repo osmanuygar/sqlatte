@@ -50,6 +50,13 @@
 - Hybrid mode combining LLM and statistical analysis
 - Smart handling of incomplete real-time data
 
+📝 **Runtime Prompt Management**
+- Edit AI prompts directly from admin panel
+- Intent detection, personality, SQL generation, and insights prompts
+- Save and persist custom prompts to database
+- Reset to defaults with one click
+- Changes apply immediately with hot reload
+
 📅 **Scheduled Queries & Email Reports**
 - Automate recurring reports with flexible scheduling
 - Email delivery with CSV, Excel, and HTML formats
@@ -121,6 +128,41 @@ insights:
 ```
 **Leave it at `false`** - SQLatte works perfectly without it!
 
+#### Runtime Prompts (Optional - Customizable via Admin Panel)
+```yaml
+
+# ============================================
+# PROMPTS CONFIGURATION
+# ============================================
+# Customize AI behavior - editable via Admin Panel
+prompts:
+  intent_detection: |
+    Analyze this user question and determine if it requires SQL or chat.
+    Rules:
+    1. Data/analytics questions → "sql"
+    2. Greetings/general → "chat"
+    3. SQL but no tables selected → "chat"
+    
+  barista_personality: |
+    You are SQLatte ☕ - a friendly AI assistant.
+    - Helpful and friendly, like a barista
+    - Knowledgeable about SQL and databases
+    - Use coffee metaphors occasionally
+    
+  sql_generation: |
+    Generate SQL query from natural language.
+    Rules:
+    1. Valid SQL syntax only
+    2. Use JOINs for multiple tables
+    3. Include LIMIT clause (default 100)
+    4. PARTITION OPTIMIZATION: Always filter by 'dt' column when available
+    
+  insights_generation: |
+    Analyze query results and generate actionable insights.
+    Identify: trends, anomalies, recommendations, summaries
+```
+You can edit these prompts via the **Admin Panel → Prompts tab** without touching config files!
+
 ---
 
 ### 3. Run
@@ -146,7 +188,61 @@ http://localhost:8000/analytics
 
 
 ---
+## ⚙️ Admin Panel
 
+SQLatte includes a comprehensive admin panel for runtime configuration and management.
+
+### Features
+
+**Provider Configuration**
+- Switch LLM providers (Anthropic, Gemini, Vertex AI)
+- Update database connections
+- Test connections before applying
+
+**📝 Runtime Prompt Management** (New!)
+- Edit AI prompts without code changes
+- Four customizable prompts:
+  - **Intent Detection** - Determines SQL vs chat
+  - **Barista Personality** - Chat response style
+  - **SQL Generation** - Natural language to SQL rules
+  - **Insights Generation** - Data analysis patterns
+- Save changes to database
+- Reset to defaults anytime
+- Apply immediately with hot reload
+
+**Email & Scheduler**
+- Configure SMTP settings
+- Manage scheduled queries
+- Set up email reports
+
+**Configuration Management**
+- Export/import configurations
+- Create snapshots for rollback
+- View change history
+- Hot reload without restart
+
+**Analytics Dashboard**
+- Query performance metrics
+- Usage statistics
+- System health monitoring
+
+### Access
+```bash
+# Open admin panel
+http://localhost:8000/admin
+```
+
+Navigate through tabs:
+- 🔌 **Providers** - LLM and database settings
+- 📝 **Prompts** - Edit AI behavior (New!)
+- 📧 **Email & SMTP** - Email configuration
+- 📅 **Scheduler** - Scheduled queries
+- 💡 **Insights** - Insights engine settings
+- 📊 **Export** - Export formats
+- 📜 **History** - Configuration changes
+- 📸 **Snapshots** - Backup and restore
+
+---
 ## 🔌 Plugin System
 
 SQLatte features a powerful plugin architecture that allows you to extend functionality without modifying core code.
@@ -193,8 +289,7 @@ plugins:
     allowed_db_types:
       - "trino"
 ```
-
-**Usage:**
+*Usage:*
 
 ```html
 <!-- Load auth widget -->
@@ -210,6 +305,7 @@ window.addEventListener('load', () => {
 });
 </script>
 ```
+
 ### Creating Custom Plugins
 
 SQLatte's plugin system is built on a base plugin class that provides hooks for:
