@@ -128,6 +128,41 @@ insights:
 ```
 **Leave it at `false`** - SQLatte works perfectly without it!
 
+#### Runtime Prompts (Optional - Customizable via Admin Panel)
+```yaml
+
+# ============================================
+# PROMPTS CONFIGURATION
+# ============================================
+# Customize AI behavior - editable via Admin Panel
+prompts:
+  intent_detection: |
+    Analyze this user question and determine if it requires SQL or chat.
+    Rules:
+    1. Data/analytics questions → "sql"
+    2. Greetings/general → "chat"
+    3. SQL but no tables selected → "chat"
+    
+  barista_personality: |
+    You are SQLatte ☕ - a friendly AI assistant.
+    - Helpful and friendly, like a barista
+    - Knowledgeable about SQL and databases
+    - Use coffee metaphors occasionally
+    
+  sql_generation: |
+    Generate SQL query from natural language.
+    Rules:
+    1. Valid SQL syntax only
+    2. Use JOINs for multiple tables
+    3. Include LIMIT clause (default 100)
+    4. PARTITION OPTIMIZATION: Always filter by 'dt' column when available
+    
+  insights_generation: |
+    Analyze query results and generate actionable insights.
+    Identify: trends, anomalies, recommendations, summaries
+```
+You can edit these prompts via the **Admin Panel → Prompts tab** without touching config files!
+
 ---
 
 ### 3. Run
@@ -270,44 +305,6 @@ window.addEventListener('load', () => {
 });
 </script>
 ```
-
-#### Runtime Prompts (Optional - Customizable via Admin Panel)
-```yaml
-
-# ============================================
-# PROMPTS CONFIGURATION
-# ============================================
-# Customize AI behavior - editable via Admin Panel
-prompts:
-  intent_detection: |
-    Analyze this user question and determine if it requires SQL or chat.
-    Rules:
-    1. Data/analytics questions → "sql"
-    2. Greetings/general → "chat"
-    3. SQL but no tables selected → "chat"
-    
-  barista_personality: |
-    You are SQLatte ☕ - a friendly AI assistant.
-    - Helpful and friendly, like a barista
-    - Knowledgeable about SQL and databases
-    - Use coffee metaphors occasionally
-    
-  sql_generation: |
-    Generate SQL query from natural language.
-    Rules:
-    1. Valid SQL syntax only
-    2. Use JOINs for multiple tables
-    3. Include LIMIT clause (default 100)
-    4. PARTITION OPTIMIZATION: Always filter by 'dt' column when available
-    
-  insights_generation: |
-    Analyze query results and generate actionable insights.
-    Identify: trends, anomalies, recommendations, summaries
-```
-
-You can edit these prompts via the **Admin Panel → Prompts tab** without touching config files!
-
-
 
 ### Creating Custom Plugins
 
