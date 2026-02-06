@@ -74,3 +74,35 @@ class LLMProvider(ABC):
     def health_check(self) -> bool:
         """Check if the LLM provider is accessible"""
         pass
+
+    # ============================================
+    # Prompt Management
+    # ============================================
+    def get_prompt(self, prompt_type: str, default: str = "") -> str:
+        """
+        Get prompt from config with fallback to default
+
+        Args:
+            prompt_type: Type of prompt (intent_detection, barista_personality, sql_generation, insights_generation)
+            default: Default prompt if not found in config
+
+        Returns:
+            Prompt text
+        """
+        try:
+            # Try to get from config
+            from src.core.config_manager_enhanced import config_manager
+            config = config_manager.get_config()
+
+            prompts = config.get('prompts', {})
+            prompt = prompts.get(prompt_type, default)
+
+            # If empty, use default
+            if not prompt or prompt.strip() == '':
+                return default
+
+            return prompt
+
+        except Exception as e:
+            print(f"⚠️ Could not load prompt '{prompt_type}' from config: {e}")
+            return default
