@@ -19,6 +19,18 @@ analytics:
     database: "sqlatte_analytics"
     user: "sqlatte"
     password: "sqlatte"
+    
+config_db:
+  enabled: false
+  type: postgresql  # veya sqlite
+
+  postgresql:
+    host: localhost
+    database: sqlatte_config  # ⚠️ AYRI DATABASE!
+    user: "sqlatte"
+    password: "sqlatte"
+
+  encryption_key: "******"
 
 # ============================================
 # UTHENTICATION PLUGIN
