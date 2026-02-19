@@ -26,6 +26,7 @@
     // State
     let isModalOpen = false;
     let selectedTables = [];
+    let allTables = [];
     let currentSchema = '';
     let sessionId = null;
     let queryHistory = [];
@@ -232,212 +233,283 @@
         document.head.appendChild(script);
     }
 
-    function detectChartType(columns, data) {
-        if (!data || data.length === 0) {
-            return { type: null, suitable: false, reason: 'No data' };
-        }
+    // ============================================
+    // GELIŞMIŞ CHART — Auth widget seviyesi
+    // ============================================
 
-        const numColumns = columns.length;
-        const hasNumeric = data.some(row =>
-            row.some(cell => typeof cell === 'number' || !isNaN(parseFloat(cell)))
-        );
-
-        if (!hasNumeric) {
-            return { type: null, suitable: false, reason: 'No numeric data' };
-        }
-
-        if (numColumns === 2) {
-            const firstColIsText = data.every(row =>
-                typeof row[0] === 'string' || isNaN(parseFloat(row[0]))
-            );
-            const secondColIsNumeric = data.every(row => !isNaN(parseFloat(row[1])));
-
-            if (firstColIsText && secondColIsNumeric) {
-                if (data.length <= 10) {
-                    return { type: 'pie', suitable: true, reason: 'Categorical data (≤10 items)', labelCol: 0, valueCol: 1 };
-                } else {
-                    return { type: 'bar', suitable: true, reason: 'Comparison data (>10 items)', labelCol: 0, valueCol: 1 };
-                }
-            }
-        }
-
-        const firstColIsDate = data.every(row => {
-            const val = row[0];
-            return !isNaN(Date.parse(val)) || /^\d{4}-\d{2}-\d{2}/.test(val);
-        });
-
-        if (firstColIsDate && numColumns >= 2) {
-            return { type: 'line', suitable: true, reason: 'Time series detected', labelCol: 0, valueCols: Array.from({ length: numColumns - 1 }, (_, i) => i + 1) };
-        }
-
-        return { type: 'bar', suitable: true, reason: 'Default visualization', labelCol: 0, valueCol: 1 };
-    }
-
-    function showChart(resultId, chartType = null) {
+    function showChart(resultId, chartType) {
         const cached = window.sqlatteResultsCache[resultId];
         if (!cached) {
             alert('Results not found. Please run the query again.');
             return;
         }
-
         const { columns, data } = cached;
-
-        loadChartJS(() => {
-            const detection = detectChartType(columns, data);
-
-            if (!detection.suitable) {
-                alert(`Cannot create chart: ${detection.reason}`);
-                return;
-            }
-
-            const finalChartType = chartType || detection.type;
-            createChartModal(resultId, columns, data, finalChartType, detection);
-        });
+        loadChartJS(() => openChartConfigModal(resultId, columns, data));
     }
 
-    function createChartModal(resultId, columns, data, chartType, detection) {
-        const existing = document.getElementById('sqlatte-chart-modal');
+    function openChartConfigModal(resultId, columns, data) {
+        const existing = document.getElementById('sqlatte-chart-config-modal');
         if (existing) existing.remove();
 
+        // Kolon tiplerini tespit et
+        const numericCols = [];
+        const dimensionCols = [];
+        columns.forEach((col, i) => {
+            const sample = data[0] ? data[0][i] : null;
+            if (sample !== null && !isNaN(parseFloat(sample)) && isFinite(sample)) {
+                numericCols.push(col);
+            } else {
+                dimensionCols.push(col);
+            }
+        });
+        // Fallback: eğer dimension yok, ilk kolonu al
+        if (dimensionCols.length === 0 && columns.length > 0) dimensionCols.push(columns[0]);
+
+        const modal = document.createElement('div');
+        modal.id = 'sqlatte-chart-config-modal';
+        modal.style.cssText = `
+            position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 999999999; padding: 20px;
+        `;
+
+        modal.innerHTML = `
+            <div style="background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+                        padding: 28px; border-radius: 14px; border: 1px solid #444;
+                        max-width: 480px; width: 100%;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+                    <h3 style="margin:0; color:#D4A574; font-size:16px;">📊 Chart Configuration</h3>
+                    <button onclick="SQLatteWidget.closeChart()"
+                        style="background:#333; color:white; border:none; padding:6px 12px;
+                               border-radius:6px; cursor:pointer; font-size:13px;">✕ Close</button>
+                </div>
+
+                <div style="margin-bottom:18px;">
+                    <label style="display:block; margin-bottom:8px; font-size:13px; font-weight:600; color:#e0e0e0;">
+                        📐 Dimension (X-axis / Labels):
+                    </label>
+                    <select id="chart-cfg-dimension"
+                        style="width:100%; padding:9px 12px; background:#0a0a0a; color:#e0e0e0;
+                               border:1px solid #444; border-radius:7px; font-size:13px;">
+                        ${dimensionCols.map(col => `<option value="${col}">${col}</option>`).join('')}
+                        ${numericCols.map(col => `<option value="${col}">${col} (numeric)</option>`).join('')}
+                    </select>
+                </div>
+
+                <div style="margin-bottom:18px;">
+                    <label style="display:block; margin-bottom:8px; font-size:13px; font-weight:600; color:#e0e0e0;">
+                        📈 Metrics (Y-axis) — birden fazla seçilebilir:
+                    </label>
+                    <div style="background:#0a0a0a; border:1px solid #444; border-radius:7px;
+                                padding:12px; max-height:180px; overflow-y:auto;">
+                        ${numericCols.length > 0
+                            ? numericCols.map(col => `
+                                <label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; color:#e0e0e0; font-size:13px;">
+                                    <input type="checkbox" value="${col}" checked
+                                        style="accent-color:#D4A574; width:15px; height:15px;" />
+                                    ${col}
+                                </label>`).join('')
+                            : `<label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; color:#e0e0e0; font-size:13px;">
+                                   <input type="checkbox" value="${columns[columns.length - 1]}" checked
+                                       style="accent-color:#D4A574; width:15px; height:15px;" />
+                                   ${columns[columns.length - 1]}
+                               </label>`
+                        }
+                    </div>
+                    <small style="color:#666; font-size:11px; margin-top:4px; display:block;">
+                        Pie/Doughnut chart için tek metric seçin
+                    </small>
+                </div>
+
+                <div style="margin-bottom:24px;">
+                    <label style="display:block; margin-bottom:8px; font-size:13px; font-weight:600; color:#e0e0e0;">
+                        🎨 Chart Type:
+                    </label>
+                    <select id="chart-cfg-type"
+                        style="width:100%; padding:9px 12px; background:#0a0a0a; color:#e0e0e0;
+                               border:1px solid #444; border-radius:7px; font-size:13px;">
+                        <option value="bar">📊 Bar Chart</option>
+                        <option value="line">📈 Line Chart</option>
+                        <option value="pie">🥧 Pie Chart</option>
+                        <option value="doughnut">🍩 Doughnut</option>
+                    </select>
+                </div>
+
+                <button onclick="SQLatteWidget._buildChart('${resultId}')"
+                    style="width:100%; padding:12px; background:linear-gradient(135deg,#8B6F47 0%,#A67C52 100%);
+                           color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer;">
+                    ✨ Chart Oluştur
+                </button>
+            </div>
+        `;
         const sqlatteModal = document.getElementById('sqlatte-modal');
         if (sqlatteModal) sqlatteModal.classList.add('sqlatte-modal-hidden-for-chart');
 
+        document.body.appendChild(modal);
+    }
+
+    function _buildChart(resultId) {
+        const cached = window.sqlatteResultsCache[resultId];
+        if (!cached) return;
+
+        const dimension = document.getElementById('chart-cfg-dimension').value;
+        const chartType = document.getElementById('chart-cfg-type').value;
+        const checkedBoxes = document.querySelectorAll('#sqlatte-chart-config-modal input[type=checkbox]:checked');
+        const metrics = Array.from(checkedBoxes).map(cb => cb.value);
+
+        if (!dimension) { alert('Dimension seçin.'); return; }
+        if (metrics.length === 0) { alert('En az bir metric seçin.'); return; }
+
+        document.getElementById('sqlatte-chart-config-modal').remove();
+        renderAdvancedChart(resultId, cached.columns, cached.data, dimension, metrics, chartType);
+    }
+
+    function renderAdvancedChart(resultId, columns, data, dimension, metrics, chartType) {
+        const existing = document.getElementById('sqlatte-chart-display-modal');
+        if (existing) existing.remove();
+
+        const dimIdx = columns.indexOf(dimension);
+        const labels = data.map(row => String(row[dimIdx] ?? ''));
+
+        const COLORS = [
+            '#D4A574', '#4ade80', '#60a5fa', '#f472b6', '#fb923c',
+            '#a78bfa', '#34d399', '#fbbf24', '#f87171', '#38bdf8'
+        ];
+
+        const datasets = metrics.map((metric, i) => {
+            const metIdx = columns.indexOf(metric);
+            const values = data.map(row => parseFloat(row[metIdx]) || 0);
+            const color = COLORS[i % COLORS.length];
+
+            if (chartType === 'pie' || chartType === 'doughnut') {
+                return {
+                    label: metric,
+                    data: values,
+                    backgroundColor: values.map((_, j) => COLORS[j % COLORS.length]),
+                    borderColor: '#1a1a1a',
+                    borderWidth: 2
+                };
+            }
+            return {
+                label: metric,
+                data: values,
+                backgroundColor: chartType === 'line' ? color.replace(')', ', 0.2)').replace('rgb', 'rgba') : color,
+                borderColor: color,
+                borderWidth: 2,
+                fill: chartType === 'line',
+                tension: 0.4,
+                pointBackgroundColor: color,
+                pointRadius: 4
+            };
+        });
+
         const modal = document.createElement('div');
-        modal.id = 'sqlatte-chart-modal';
-        modal.className = 'sqlatte-chart-modal';
+        modal.id = 'sqlatte-chart-display-modal';
+        modal.style.cssText = `
+            position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 999999999; padding: 20px;
+        `;
 
         modal.innerHTML = `
-            <div class="sqlatte-chart-modal-content">
-                <div class="sqlatte-chart-header">
-                    <h3>📊 Data Visualization</h3>
-                    <div class="sqlatte-chart-controls">
-                        <select id="sqlatte-chart-type-select" class="sqlatte-chart-type-select">
-                            <option value="pie" ${chartType === 'pie' ? 'selected' : ''}>🥧 Pie Chart</option>
-                            <option value="bar" ${chartType === 'bar' ? 'selected' : ''}>📊 Bar Chart</option>
-                            <option value="line" ${chartType === 'line' ? 'selected' : ''}>📈 Line Chart</option>
-                            <option value="doughnut" ${chartType === 'doughnut' ? 'selected' : ''}>🍩 Doughnut</option>
-                        </select>
-                        <button class="sqlatte-chart-close" onclick="SQLatteWidget.closeChart()">✕</button>
+            <div style="background: linear-gradient(135deg,#1a1a1a 0%,#2d2d2d 100%);
+                        padding:24px; border-radius:14px; border:1px solid #444;
+                        max-width:1100px; width:100%; max-height:90vh; overflow-y:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <div>
+                        <h3 style="margin:0; color:#D4A574; font-size:16px;">
+                            📊 ${dimension} vs ${metrics.join(', ')}
+                        </h3>
+                        <small style="color:#666; font-size:11px;">${data.length} rows • ${chartType} chart</small>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button onclick="SQLatteWidget._openConfigAgain('${resultId}')"
+                            style="background:#333; color:#D4A574; border:1px solid #D4A574; padding:7px 14px;
+                                   border-radius:6px; cursor:pointer; font-size:12px; font-weight:600;">
+                            ⚙️ Yeniden Yapılandır
+                        </button>
+                        <button onclick="SQLatteWidget.closeChart()"
+                            style="background:#333; color:white; border:none; padding:7px 14px;
+                                   border-radius:6px; cursor:pointer; font-size:12px;">
+                            ✕ Kapat
+                        </button>
                     </div>
                 </div>
-                <div class="sqlatte-chart-body">
-                    <canvas id="sqlatte-chart-canvas"></canvas>
+                <div style="position:relative; height:480px;">
+                    <canvas id="sqlatte-adv-chart-canvas-${resultId}"></canvas>
                 </div>
-                <div class="sqlatte-chart-footer">
-                    <small>💡 ${detection.reason}</small>
+                <div style="margin-top:16px; display:flex; flex-wrap:wrap; gap:8px;">
+                    ${metrics.map((m, i) => `
+                        <span style="display:inline-flex; align-items:center; gap:5px; padding:4px 10px;
+                                     background:#1a1a1a; border:1px solid #333; border-radius:20px; font-size:11px; color:#e0e0e0;">
+                            <span style="width:10px;height:10px;border-radius:50%;background:${COLORS[i % COLORS.length]};display:inline-block;"></span>
+                            ${m}
+                        </span>`).join('')}
                 </div>
             </div>
         `;
+        const sqlatteModal = document.getElementById('sqlatte-modal');
+        if (sqlatteModal) sqlatteModal.classList.add('sqlatte-modal-hidden-for-chart');
 
         document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('sqlatte-chart-modal-open'), 10);
-        renderChart(columns, data, chartType, detection);
 
-        document.getElementById('sqlatte-chart-type-select').addEventListener('change', (e) => {
-            renderChart(columns, data, e.target.value, detection);
-        });
-    }
-
-    function renderChart(columns, data, chartType, detection) {
-        const canvas = document.getElementById('sqlatte-chart-canvas');
-        if (!canvas) return;
-
-        if (window.sqlatteCurrentChart) window.sqlatteCurrentChart.destroy();
-
-        const ctx = canvas.getContext('2d');
-        const chartData = prepareChartData(columns, data, chartType, detection);
-
-        window.sqlatteCurrentChart = new Chart(ctx, {
-            type: chartType,
-            data: chartData,
-            options: getChartOptions(chartType)
-        });
-    }
-
-    function prepareChartData(columns, data, chartType, detection) {
-        const labelCol = detection.labelCol || 0;
-        const valueCol = detection.valueCol || 1;
-
-        const labels = data.map(row => String(row[labelCol]));
-        const values = data.map(row => parseFloat(row[valueCol]) || 0);
-
-        const colors = [
-            'rgba(255, 99, 132, 0.8)', 'rgba(54, 162, 235, 0.8)',
-            'rgba(255, 206, 86, 0.8)', 'rgba(75, 192, 192, 0.8)',
-            'rgba(153, 102, 255, 0.8)', 'rgba(255, 159, 64, 0.8)',
-            'rgba(201, 203, 207, 0.8)', 'rgba(255, 99, 255, 0.8)',
-            'rgba(99, 255, 132, 0.8)', 'rgba(132, 99, 255, 0.8)'
-        ];
-
-        if (chartType === 'pie' || chartType === 'doughnut') {
-            return {
-                labels: labels,
-                datasets: [{
-                    label: columns[valueCol] || 'Value',
-                    data: values,
-                    backgroundColor: colors.slice(0, values.length),
-                    borderColor: 'rgba(255, 255, 255, 1)',
-                    borderWidth: 2
-                }]
-            };
-        } else if (chartType === 'line') {
-            return {
-                labels: labels,
-                datasets: [{
-                    label: columns[valueCol] || 'Value',
-                    data: values,
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.4
-                }]
-            };
-        } else {
-            return {
-                labels: labels,
-                datasets: [{
-                    label: columns[valueCol] || 'Value',
-                    data: values,
-                    backgroundColor: colors[0],
-                    borderColor: colors[0].replace('0.8', '1'),
-                    borderWidth: 2
-                }]
-            };
-        }
-    }
-
-    function getChartOptions(chartType) {
-        const baseOptions = {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: { display: true, position: 'bottom', labels: { color: '#e0e0e0' } },
-                tooltip: { backgroundColor: 'rgba(0, 0, 0, 0.8)', borderColor: '#D4A574', borderWidth: 1 }
+        const ctx = document.getElementById(`sqlatte-adv-chart-canvas-${resultId}`).getContext('2d');
+        new Chart(ctx, {
+            type: (chartType === 'pie' || chartType === 'doughnut') ? chartType : (chartType === 'line' ? 'line' : 'bar'),
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#e0e0e0', font: { size: 12 } }
+                    },
+                    tooltip: {
+                        backgroundColor: '#1a1a1a',
+                        borderColor: '#444',
+                        borderWidth: 1,
+                        titleColor: '#D4A574',
+                        bodyColor: '#e0e0e0',
+                        callbacks: chartType === 'pie' || chartType === 'doughnut' ? {
+                            label: ctx => {
+                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                const pct = total ? ((ctx.raw / total) * 100).toFixed(1) : 0;
+                                return ` ${ctx.label}: ${ctx.raw.toLocaleString()} (${pct}%)`;
+                            }
+                        } : {}
+                    }
+                },
+                scales: (chartType !== 'pie' && chartType !== 'doughnut') ? {
+                    x: {
+                        ticks: { color: '#a0a0a0', maxRotation: 45 },
+                        grid: { color: 'rgba(255,255,255,0.05)' }
+                    },
+                    y: {
+                        ticks: {
+                            color: '#a0a0a0',
+                            callback: v => v >= 1000000 ? (v/1000000).toFixed(1)+'M'
+                                         : v >= 1000 ? (v/1000).toFixed(1)+'K' : v
+                        },
+                        grid: { color: 'rgba(255,255,255,0.05)' }
+                    }
+                } : {}
             }
-        };
+        });
+    }
 
-        if (chartType === 'line' || chartType === 'bar') {
-            baseOptions.scales = {
-                x: { ticks: { color: '#e0e0e0' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
-                y: { ticks: { color: '#e0e0e0' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
-            };
-        }
-
-        return baseOptions;
+    function _openConfigAgain(resultId) {
+        document.getElementById('sqlatte-chart-display-modal').remove();
+        const cached = window.sqlatteResultsCache[resultId];
+        if (cached) openChartConfigModal(resultId, cached.columns, cached.data);
     }
 
     function closeChart() {
-        const modal = document.getElementById('sqlatte-chart-modal');
-        if (modal) {
-            modal.classList.remove('sqlatte-chart-modal-open');
-            setTimeout(() => modal.remove(), 300);
-        }
-        if (window.sqlatteCurrentChart) {
-            window.sqlatteCurrentChart.destroy();
-            window.sqlatteCurrentChart = null;
-        }
-
+        const m1 = document.getElementById('sqlatte-chart-display-modal');
+        const m2 = document.getElementById('sqlatte-chart-config-modal');
+        const m3 = document.getElementById('sqlatte-chart-modal');
+        if (m1) m1.remove();
+        if (m2) m2.remove();
+        if (m3) m3.remove();
         const sqlatteModal = document.getElementById('sqlatte-modal');
         if (sqlatteModal) sqlatteModal.classList.remove('sqlatte-modal-hidden-for-chart');
     }
@@ -1270,6 +1342,14 @@
                         📅 Schedules
                     </button>
                 </div>
+                <div class="sqlatte-toolbar-search" style="margin-bottom: 6px;">
+                    <input type="text"
+                           id="sqlatte-table-search"
+                           placeholder="🔍 Search tables..."
+                           oninput="SQLatteWidget.filterTables(this.value)"
+                           style="width:100%; padding:7px 12px; background:#0a0a0a; border:1px solid #333;
+                                  border-radius:6px; color:#e0e0e0; font-size:12px; font-family:inherit; box-sizing:border-box;" />
+                </div>
                 <div class="sqlatte-toolbar-tables">
                     <label>Tables:</label>
                     <select id="sqlatte-table-select" multiple onchange="SQLatteWidget.handleTableChange()">
@@ -1428,18 +1508,8 @@
             }
 
             const data = await response.json();
-            select.innerHTML = '';
-
-            if (data.tables && data.tables.length > 0) {
-                data.tables.forEach(table => {
-                    const option = document.createElement('option');
-                    option.value = table;
-                    option.textContent = table;
-                    select.appendChild(option);
-                });
-            } else {
-                select.innerHTML = '<option value="">No tables available</option>';
-            }
+            allTables = data.tables || []; // Global'e kaydet
+            updateTableList(allTables);
 
         } catch (error) {
             console.error('Error loading tables:', error);
@@ -1455,6 +1525,23 @@
                 </div>
             `);
         }
+    }
+
+    function updateTableList(tables) {
+        const select = document.getElementById('sqlatte-table-select');
+        if (!select) return;
+        if (tables.length === 0) {
+            select.innerHTML = '<option value="">No tables available</option>';
+        } else {
+            select.innerHTML = tables.map(t => `<option value="${t}">${t}</option>`).join('');
+        }
+    }
+
+    function filterTables(searchTerm) {
+        const filtered = allTables.filter(table =>
+            table.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        updateTableList(filtered);
     }
 
     async function handleTableChange() {
@@ -1628,16 +1715,13 @@
         }
 
         // Results
-        const detection = detectChartType(columns, data);
+
 
         html += '<div class="sqlatte-results-container">';
 
         html += `<div class="sqlatte-results-toolbar">`;
         html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">📥 CSV</button>`;
-
-        if (detection.suitable) {
-            html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize">📊 Chart</button>`;
-        }
+        html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize">📊 Chart</button>`;
 
         if (queryId) {
             html += `<button class="sqlatte-fav-btn" onclick="SQLatteWidget.addToFavorites('${queryId}')" title="Add to Favorites">⭐ Save</button>`;
@@ -3082,6 +3166,9 @@
         exportCSV: exportToCSV,
         showChart: showChart,
         closeChart: closeChart,
+        filterTables: filterTables,
+        _buildChart: _buildChart,
+        _openConfigAgain: _openConfigAgain,
         getSessionId: function() { return sessionId; },
 
         // SQL Actions - NEW!
