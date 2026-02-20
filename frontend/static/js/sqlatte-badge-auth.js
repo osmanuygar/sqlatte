@@ -367,6 +367,7 @@
         const allowedDBs = configData.allowed_db_types || ['trino'];
         const catalogs = configData.allowed_catalogs || [];
         const schemas = configData.allowed_schemas || [];
+        const catalogSchemaMap = configData.catalog_schema_map || {};  // YENİ
 
         body.innerHTML = `
             <form id="sqlatte-auth-login-form" onsubmit="event.preventDefault(); SQLatteAuthWidget.handleLogin();">
@@ -389,15 +390,25 @@
                 ${catalogs.length > 0 ? `
                 <div class="sqlatte-form-group">
                     <label>Catalog</label>
-                    <select id="sqlatte-catalog" required>
+                    <select id="sqlatte-catalog" required
+                            onchange="SQLatteAuthWidget.onCatalogChange(this.value)">
                         <option value="">Select catalog...</option>
                         ${catalogs.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
                     </select>
                 </div>
                 ` : ''}
 
-                <!-- Schema (only if configured) -->
-                ${schemas.length > 0 ? `
+                <!-- Schema -->
+                <!-- Eğer catalog_schema_map varsa: catalog seçilince dolacak (başta boş) -->
+                <!-- Eğer eski flat list varsa: direkt dolu gelir -->
+                ${catalogs.length > 0 ? `
+                <div class="sqlatte-form-group">
+                    <label>Schema</label>
+                    <select id="sqlatte-schema" required>
+                        <option value="">← Select a catalog first</option>
+                    </select>
+                </div>
+                ` : schemas.length > 0 ? `
                 <div class="sqlatte-form-group">
                     <label>Schema</label>
                     <select id="sqlatte-schema" required>
@@ -419,9 +430,50 @@
             <div class="sqlatte-auth-info">
                 <strong>📊 Database:</strong> ${configData.db_provider || 'Trino'}<br>
                 ${catalogs.length > 0 ? `<strong>📚 Available Catalogs:</strong> ${catalogs.join(', ')}<br>` : ''}
-                ${schemas.length > 0 ? `<strong>📁 Available Schemas:</strong> ${schemas.join(', ')}` : ''}
+                ${Object.keys(catalogSchemaMap).length > 0
+                    ? Object.entries(catalogSchemaMap)
+                        .map(([cat, schs]) => `<strong>📁 ${cat}:</strong> ${schs.join(', ')}`)
+                        .join('<br>') + '<br>'
+                    : schemas.length > 0
+                        ? `<strong>📁 Available Schemas:</strong> ${schemas.join(', ')}`
+                        : ''
+                }
             </div>
         `;
+    }
+
+    function onCatalogChange(selectedCatalog) {
+        const schemaSelect = document.getElementById('sqlatte-schema');
+        if (!schemaSelect) return;
+
+        // catalog_schema_map'ten o catalog'a ait schema'ları al
+        const catalogSchemaMap = configData.catalog_schema_map || {};
+        const fallbackSchemas = configData.allowed_schemas || [];
+
+        // Map'te varsa onu kullan, yoksa fallback olarak tüm schema'lar
+        const availableSchemas = catalogSchemaMap[selectedCatalog] || fallbackSchemas;
+
+        if (!selectedCatalog) {
+            // Catalog seçilmemişse schema'yı sıfırla
+            schemaSelect.innerHTML = '<option value="">← Select a catalog first</option>';
+            return;
+        }
+
+        if (availableSchemas.length === 0) {
+            schemaSelect.innerHTML = '<option value="">No schemas available</option>';
+            return;
+        }
+
+        // Schema'ları doldur
+        schemaSelect.innerHTML = `
+            <option value="">Select schema...</option>
+            ${availableSchemas.map(sch => `<option value="${sch}">${sch}</option>`).join('')}
+        `;
+
+        // Eğer sadece 1 schema varsa otomatik seç
+        if (availableSchemas.length === 1) {
+            schemaSelect.value = availableSchemas[0];
+        }
     }
 
     // ============================================
@@ -3042,6 +3094,7 @@ em {
         toggleHistory: toggleConversationHistory,
         clearConversation: clearConversation,
         loadHistory: loadConversationHistory,
+        onCatalogChange: onCatalogChange,
 
         // Chat
         sendMessage: sendMessage,
