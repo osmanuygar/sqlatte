@@ -47,18 +47,17 @@ plugins:
     db_host: "trino_hostname"
     db_port: 443
 
+    
     # Catalog/Schema Restrictions
     # If empty lists, all catalogs/schemas are allowed
     # If filled, only these will be available in login form
     allowed_catalogs:
-      - "hive"
-      - "impala"
-      - "test"
-
-    allowed_schemas:
-      - "test"
-      - "cloudflare"
-      - "test"
+      - name: "hive"
+        allowed_schemas: ["edr", "hive"]
+      - name: "network"
+        allowed_schemas: [ "cloudflare" ]
+      - name: "mongo_stores_db"
+        allowed_schemas: [ "mongo" ]
 
     # Database Type Restrictions
     allowed_db_types:
