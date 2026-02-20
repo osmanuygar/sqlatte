@@ -58,8 +58,21 @@ class AuthPlugin(BasePlugin):
 
         # Optional config-based restrictions (backward compatible)
         self.allowed_db_types = config.get('allowed_db_types', [])
-        self.allowed_catalogs = config.get('allowed_catalogs', [])
-        self.allowed_schemas = config.get('allowed_schemas', [])
+        raw_catalogs = config.get('allowed_catalogs', [])
+
+        if raw_catalogs and isinstance(raw_catalogs[0], dict):
+            # Yeni format: [{name: "...", allowed_schemas: [...]}]
+            self.catalog_schema_map = {
+                item['name']: item.get('allowed_schemas', [])
+                for item in raw_catalogs
+            }
+            self.allowed_catalogs = list(self.catalog_schema_map.keys())
+        else:
+            # Eski format: ["catalog1", "catalog2"] - backward compatible
+            self.catalog_schema_map = {}
+            self.allowed_catalogs = raw_catalogs
+
+        self.allowed_schemas = config.get('allowed_schemas', [])  # fallback
         self.db_provider = config.get('db_provider', None)  # Optional
         self.db_host = config.get('db_host', None)  # Optional
         self.db_port = config.get('db_port', None)  # Optional
@@ -91,6 +104,7 @@ class AuthPlugin(BasePlugin):
                 "allowed_db_types": self.allowed_db_types,
                 "allowed_catalogs": self.allowed_catalogs,
                 "allowed_schemas": self.allowed_schemas,
+                "catalog_schema_map": self.catalog_schema_map,
                 "db_provider": self.db_provider,
                 "db_host": self.db_host,
                 "db_port": self.db_port
@@ -659,7 +673,7 @@ class AuthPlugin(BasePlugin):
                                 context_summary += f"User: {msg['content']}\n"
                             elif msg['role'] == 'assistant':
                                 # Truncate long responses
-                                content = msg['content'][:100]
+                                content = str(msg['content'])[:100]
                                 context_summary += f"Assistant: {content}...\n"
 
                         enhanced_question = f"{question}\n\nContext from previous messages: {context_summary}"
