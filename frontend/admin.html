@@ -1504,7 +1504,9 @@
             console.log('  - Insights config:', config.insights);
             console.log('  - Export config:', config.export);
 
-            // Helper functions for type conversion
+            // ─────────────────────────────────────────────
+            // HELPER: Type conversions
+            // ─────────────────────────────────────────────
             const toBool = (val) => {
                 if (typeof val === 'boolean') return val;
                 if (typeof val === 'string') return val.toLowerCase() === 'true';
@@ -1517,7 +1519,35 @@
                 return isNaN(num) ? defaultVal : num;
             };
 
-            // LLM Config
+            // ─────────────────────────────────────────────
+            // HELPER: Masked / sensitive field handler
+            // - If value is '***masked***' → leave field EMPTY,
+            //   show placeholder so user knows it's already set
+            // - If value is real (first-time setup) → fill it in
+            // - If value is empty/null → leave empty (no password set)
+            // ─────────────────────────────────────────────
+            const setMaskedField = (fieldId, value) => {
+                const el = document.getElementById(fieldId);
+                if (!el) return;
+                if (value && value !== '***masked***') {
+                    // Real value visible (shouldn't normally happen for secrets,
+                    // but handle it gracefully just in case)
+                    el.value = value;
+                    el.placeholder = '';
+                } else if (value === '***masked***') {
+                    // Already set on the server — leave input empty,
+                    // inform the user via placeholder
+                    el.value = '';
+                    el.placeholder = '••••••• (already set — leave empty to keep)';
+                } else {
+                    // Not set at all
+                    el.value = '';
+                }
+            };
+
+            // ─────────────────────────────────────────────
+            // LLM CONFIG
+            // ─────────────────────────────────────────────
             const llmProvider = config.llm?.provider || 'anthropic';
             document.getElementById('llm-provider').value = llmProvider;
             updateLLMFields();
@@ -1525,56 +1555,66 @@
             if (llmProvider === 'anthropic') {
                 const anthropicConfig = config.llm?.anthropic || {};
                 document.getElementById('anthropic-model').value = anthropicConfig.model || 'claude-sonnet-4-20250514';
+                // 🔒 API key — use masked helper, never display raw value
+                setMaskedField('anthropic-api-key', anthropicConfig.api_key);
+
             } else if (llmProvider === 'gemini') {
                 const geminiConfig = config.llm?.gemini || {};
                 document.getElementById('gemini-model').value = geminiConfig.model || 'gemini-2.5-flash';
+                // 🔒 API key
+                setMaskedField('gemini-api-key', geminiConfig.api_key);
+
             } else if (llmProvider === 'vertexai') {
                 const vertexConfig = config.llm?.vertexai || {};
                 document.getElementById('vertexai-project-id').value = vertexConfig.project_id || '';
                 document.getElementById('vertexai-location').value = vertexConfig.location || 'us-central1';
                 document.getElementById('vertexai-model').value = vertexConfig.model || 'gemini-2.5-flash';
-                document.getElementById('vertexai-credentials-path').value = vertexConfig.credentials_path || '';
+                // 🔒 Credentials path — masked if already set
+                setMaskedField('vertexai-credentials-path', vertexConfig.credentials_path);
             }
 
-            // DB Config
-            const dbProvider = config.database.provider;
+            // ─────────────────────────────────────────────
+            // DATABASE CONFIG
+            // ─────────────────────────────────────────────
+            const dbProvider = config.database?.provider || 'trino';
             document.getElementById('db-provider').value = dbProvider;
             updateDBFields();
 
             if (dbProvider === 'bigquery') {
-                // ✅ Load BigQuery config
-                const bqConfig = config.database.bigquery || {};
+                const bqConfig = config.database?.bigquery || {};
                 document.getElementById('db-bigquery-project').value = bqConfig.project_id || '';
                 document.getElementById('db-bigquery-dataset').value = bqConfig.dataset || '';
                 document.getElementById('db-bigquery-location').value = bqConfig.location || 'US';
                 document.getElementById('db-bigquery-timeout').value = bqConfig.timeout || 300;
                 document.getElementById('db-bigquery-max-results').value = bqConfig.max_results || 10000;
 
+                // 🔒 credentials_path — show partial path if masked
                 const credPath = bqConfig.credentials_path;
-                if (credPath && credPath.includes('...')) {
+                if (credPath && credPath !== '***masked***' && !credPath.includes('...')) {
                     document.getElementById('db-bigquery-credentials-path').value = credPath;
                 } else {
-                    document.getElementById('db-bigquery-credentials-path').value = credPath || '';
+                    setMaskedField('db-bigquery-credentials-path', credPath);
                 }
 
-                const credJson = bqConfig.credentials_json;
-                if (credJson === '***masked***' || (credJson && credJson.includes('...'))) {
-                    document.getElementById('db-bigquery-credentials-json').value = '***masked***';
-                } else {
-                    document.getElementById('db-bigquery-credentials-json').value = credJson || '';
-                }
+                // 🔒 credentials_json — always masked
+                setMaskedField('db-bigquery-credentials-json', bqConfig.credentials_json);
+
             } else {
-                // ✅ Load standard database config
-                const dbConfig = config.database[dbProvider] || {};
+                // Standard databases (Trino, PostgreSQL, MySQL, ClickHouse)
+                const dbConfig = config.database?.[dbProvider] || {};
                 document.getElementById('db-host').value = dbConfig.host || 'localhost';
                 document.getElementById('db-port').value = toInt(dbConfig.port, 443);
                 document.getElementById('db-catalog').value = dbConfig.catalog || '';
                 document.getElementById('db-schema').value = dbConfig.schema || dbConfig.database || 'default';
                 document.getElementById('db-http-scheme').value = dbConfig.http_scheme || 'https';
                 document.getElementById('db-username').value = dbConfig.username || dbConfig.user || 'default';
+                // 🔒 Password — masked helper
+                setMaskedField('db-password', dbConfig.password);
             }
 
-            // Email Config
+            // ─────────────────────────────────────────────
+            // EMAIL CONFIG
+            // ─────────────────────────────────────────────
             const emailConfig = config.email || {};
             const smtpConfig = emailConfig.smtp || {};
             document.getElementById('email-enabled').checked = toBool(emailConfig.enabled);
@@ -1584,8 +1624,12 @@
             document.getElementById('email-from').value = smtpConfig.from_email || '';
             document.getElementById('email-from-name').value = smtpConfig.from_name || 'SQLatte Reports';
             document.getElementById('email-use-tls').checked = toBool(smtpConfig.use_tls !== false);
+            // 🔒 SMTP password — masked helper
+            setMaskedField('email-password', smtpConfig.password);
 
-            // Scheduler Config
+            // ─────────────────────────────────────────────
+            // SCHEDULER CONFIG
+            // ─────────────────────────────────────────────
             const schedulerConfig = config.scheduler || {};
             document.getElementById('scheduler-enabled').checked = toBool(schedulerConfig.enabled);
             document.getElementById('scheduler-timezone').value = schedulerConfig.timezone || 'UTC';
@@ -1593,21 +1637,27 @@
             document.getElementById('scheduler-timeout').value = toInt(schedulerConfig.job_timeout_seconds, 300);
             document.getElementById('scheduler-history-days').value = toInt(schedulerConfig.keep_history_days, 30);
 
-            // Insights Config
+            // ─────────────────────────────────────────────
+            // INSIGHTS CONFIG
+            // ─────────────────────────────────────────────
             const insightsConfig = config.insights || {};
             document.getElementById('insights-enabled').checked = toBool(insightsConfig.enabled);
             document.getElementById('insights-mode').value = insightsConfig.mode || 'hybrid';
             document.getElementById('insights-max').value = toInt(insightsConfig.max_insights, 3);
             document.getElementById('insights-statistical').checked = toBool(insightsConfig.include_statistical !== false);
 
-            // Export Config
+            // ─────────────────────────────────────────────
+            // EXPORT CONFIG
+            // ─────────────────────────────────────────────
             const exportConfig = config.export || {};
             document.getElementById('export-max-rows').value = toInt(exportConfig.max_rows, 1000);
             document.getElementById('export-max-size').value = toInt(exportConfig.max_file_size_mb, 25);
             document.getElementById('export-filename').value = exportConfig.filename_template || '{{schedule_name}}_{{date}}_{{time}}.{{format}}';
 
             if (exportConfig.formats) {
-                currentFormats = Array.isArray(exportConfig.formats) ? exportConfig.formats : exportConfig.formats.split(',');
+                currentFormats = Array.isArray(exportConfig.formats)
+                    ? exportConfig.formats
+                    : exportConfig.formats.split(',');
                 renderFormats();
             }
         }
