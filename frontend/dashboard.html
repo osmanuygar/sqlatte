@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLatte Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        /* ===== HEADER ===== */
+        .dashboard-header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #242424 100%);
+            border-bottom: 1px solid #333;
+            padding: 20px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .back-btn {
+            background: rgba(212,165,116,0.12);
+            border: 1px solid rgba(212,165,116,0.3);
+            color: #D4A574;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .back-btn:hover { background: rgba(212,165,116,0.2); }
+
+        .header-title-block h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .header-title-block p {
+            font-size: 13px;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #D4A574; color: #1a1a1a; }
+        .btn-primary:hover { background: #C49060; }
+        .btn-danger { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+        .btn-danger:hover { background: rgba(239,68,68,0.25); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ===== MAIN CONTENT ===== */
+        .dashboard-body {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 28px 24px 60px;
+        }
+
+        /* ===== LOADING / ERROR ===== */
+        .state-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 60vh;
+            gap: 16px;
+            color: #888;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid #333;
+            border-top-color: #D4A574;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ===== SECTION TITLE ===== */
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #D4A574;
+            margin: 28px 0 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 0.3px;
+        }
+        .section-title::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(to right, #333, transparent);
+        }
+
+        /* ===== INSIGHT CARDS ===== */
+        .insights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 14px;
+        }
+
+        .insight-card {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 10px;
+            padding: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            transition: border-color 0.2s;
+        }
+        .insight-card:hover { border-color: #444; }
+        .insight-card.success { border-left: 3px solid #4ade80; }
+        .insight-card.warning { border-left: 3px solid #fbbf24; }
+        .insight-card.info    { border-left: 3px solid #60a5fa; }
+
+        .insight-icon { font-size: 22px; flex-shrink: 0; line-height: 1; }
+        .insight-msg  { font-size: 14px; color: #ccc; line-height: 1.5; }
+
+        /* ===== METRIC CARDS ===== */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 14px;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #1e1e1e 100%);
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 20px;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .metric-card:hover { transform: translateY(-2px); border-color: rgba(212,165,116,0.3); }
+
+        .metric-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .metric-value {
+            font-size: 26px;
+            font-weight: 700;
+            color: #D4A574;
+            line-height: 1;
+            word-break: break-all;
+        }
+        .metric-sub {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .metric-sub-item {
+            background: #242424;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 11px;
+            color: #888;
+        }
+        .metric-sub-item span { color: #bbb; font-weight: 600; display: block; }
+
+        /* ===== CHART GRID ===== */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+            gap: 20px;
+        }
+
+        .chart-card {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 20px;
+            transition: border-color 0.2s;
+        }
+        .chart-card:hover { border-color: #444; }
+
+        .chart-card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #D4A574;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 280px;
+        }
+
+        /* ===== DATA TABLE ===== */
+        .table-container {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .table-toolbar {
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .table-toolbar-left { font-size: 14px; color: #888; }
+        .table-toolbar-left strong { color: #D4A574; }
+
+        .search-input {
+            background: #242424;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #e0e0e0;
+            padding: 8px 14px;
+            font-size: 13px;
+            width: 260px;
+            outline: none;
+        }
+        .search-input:focus { border-color: #D4A574; }
+
+        .table-scroll { overflow-x: auto; max-height: 440px; overflow-y: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        thead th {
+            background: #242424;
+            color: #D4A574;
+            font-weight: 600;
+            padding: 12px 16px;
+            text-align: left;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            user-select: none;
+        }
+        thead th:hover { background: #2a2a2a; }
+        thead th .sort-icon { opacity: 0.4; margin-left: 4px; }
+        thead th.sorted .sort-icon { opacity: 1; }
+
+        tbody tr { border-bottom: 1px solid #1e1e1e; }
+        tbody tr:hover { background: #1e1e1e; }
+        tbody td { padding: 10px 16px; color: #ccc; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        tbody td.numeric { text-align: right; color: #D4A574; font-weight: 600; }
+
+        .table-footer {
+            padding: 12px 20px;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* ===== SQL BLOCK ===== */
+        .sql-block {
+            background: #141414;
+            border: 1px solid #2a2a2a;
+            border-radius: 10px;
+            padding: 16px 20px;
+            overflow-x: auto;
+        }
+        .sql-block pre {
+            font-family: 'Fira Mono', 'Consolas', monospace;
+            font-size: 13px;
+            color: #D4A574;
+            white-space: pre-wrap;
+        }
+
+        /* ===== TOAST ===== */
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 9999;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        #toast.success { background: #166534; color: #4ade80; }
+        #toast.error   { background: #7f1d1d; color: #f87171; }
+        #toast.info    { background: #1e3a5f; color: #60a5fa; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+        @media (max-width: 768px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .dashboard-header { flex-wrap: wrap; }
+            .header-actions { width: 100%; justify-content: flex-end; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="dashboard-header">
+    <div class="header-left">
+        <button class="back-btn" onclick="goBack()">← Back</button>
+        <div class="header-title-block">
+            <h1 id="dashTitle">Loading...</h1>
+            <p id="dashMeta">–</p>
+        </div>
+    </div>
+    <div class="header-actions">
+        <button class="btn btn-primary" id="refreshBtn" onclick="refreshDashboard()">
+            🔄 Refresh Data
+        </button>
+        <button class="btn btn-danger" id="deleteBtn" onclick="deleteDashboard()">
+            🗑️ Delete
+        </button>
+    </div>
+</div>
+
+<!-- BODY -->
+<div class="dashboard-body">
+    <div id="loadingState" class="state-center">
+        <div class="spinner"></div>
+        <p>Loading dashboard...</p>
+    </div>
+
+    <div id="errorState" class="state-center" style="display:none;">
+        <p style="font-size:40px">⚠️</p>
+        <p id="errorMsg" style="color:#f87171;">Something went wrong</p>
+        <button class="btn btn-primary" onclick="loadDashboard()" style="margin-top:12px">Retry</button>
+    </div>
+
+    <div id="mainContent" style="display:none;">
+
+        <!-- INSIGHTS -->
+        <div id="insightsSection"></div>
+
+        <!-- METRIC CARDS -->
+        <div id="metricsSection"></div>
+
+        <!-- CHARTS -->
+        <div id="chartsSection"></div>
+
+        <!-- DATA TABLE -->
+        <div id="tableSection"></div>
+
+        <!-- SQL -->
+        <div id="sqlSection"></div>
+
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ============================================
+// STATE
+// ============================================
+const API_BASE = window.location.origin;
+let dashboardData = null;
+let chartInstances = {};
+let sortState = { col: -1, asc: true };
+let filteredData = [];
+
+// Get dashboard ID from URL
+const urlParams = new URLSearchParams(window.location.search);
+const DASHBOARD_ID = urlParams.get('id');
+
+// ============================================
+// INIT
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    if (!DASHBOARD_ID) {
+        showError('No dashboard ID provided. Use ?id=... in URL.');
+        return;
+    }
+    loadDashboard();
+});
+
+// ============================================
+// LOAD DASHBOARD
+// ============================================
+async function loadDashboard() {
+    showLoading();
+    try {
+        const res = await fetch(`${API_BASE}/api/dashboards/${DASHBOARD_ID}`);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+        dashboardData = await res.json();
+        renderDashboard(dashboardData);
+        showMain();
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+// ============================================
+// RENDER
+// ============================================
+function renderDashboard(d) {
+    // Header
+    document.getElementById('dashTitle').textContent = d.title || 'Dashboard';
+    const created = new Date(d.created_at).toLocaleString();
+    document.getElementById('dashMeta').textContent =
+        `${d.row_count.toLocaleString()} rows  ·  Updated ${created}  ·  ${d.question || ''}`;
+
+    // Sections
+    renderInsights(d.cached_insights || []);
+    renderMetrics(d.metric_cards || []);
+    renderCharts(d.chart_configs || [], d.cached_columns || [], d.cached_data || []);
+    renderTable(d.cached_columns || [], d.cached_data || []);
+    renderSQL(d.sql || '');
+}
+
+// --- INSIGHTS ---
+function renderInsights(insights) {
+    const sec = document.getElementById('insightsSection');
+    if (!insights.length) { sec.innerHTML = ''; return; }
+
+    sec.innerHTML = `
+        <div class="section-title">💡 Insights</div>
+        <div class="insights-grid">
+            ${insights.map(ins => `
+                <div class="insight-card ${ins.severity || 'info'}">
+                    <span class="insight-icon">${ins.icon || '💡'}</span>
+                    <span class="insight-msg">${escHtml(ins.message || '')}</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// --- METRIC CARDS ---
+function renderMetrics(metrics) {
+    const sec = document.getElementById('metricsSection');
+    if (!metrics.length) { sec.innerHTML = ''; return; }
+
+    sec.innerHTML = `
+        <div class="section-title">📐 Metrics</div>
+        <div class="metrics-grid">
+            ${metrics.map(m => `
+                <div class="metric-card">
+                    <div class="metric-label">${escHtml(m.label)}</div>
+                    <div class="metric-value">${fmt(m.sum)}</div>
+                    <div class="metric-sub">
+                        <div class="metric-sub-item">Avg<span>${fmt(m.avg)}</span></div>
+                        <div class="metric-sub-item">Max<span>${fmt(m.max)}</span></div>
+                        <div class="metric-sub-item">Min<span>${fmt(m.min)}</span></div>
+                        <div class="metric-sub-item">Rows<span>${m.count.toLocaleString()}</span></div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// --- CHARTS ---
+function renderCharts(charts, columns, data) {
+    const sec = document.getElementById('chartsSection');
+    if (!charts.length) { sec.innerHTML = ''; return; }
+
+    // Destroy old instances
+    Object.values(chartInstances).forEach(c => c.destroy());
+    chartInstances = {};
+
+    const cards = charts.map((chart, idx) => {
+        const canvasId = `chart_${idx}`;
+        return `
+            <div class="chart-card">
+                <div class="chart-card-title">
+                    ${chart.type === 'line' ? '📈' : '📊'} ${escHtml(chart.title)}
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="${canvasId}"></canvas>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    sec.innerHTML = `
+        <div class="section-title">📊 Charts</div>
+        <div class="charts-grid">${cards}</div>
+    `;
+
+    // Render charts after DOM update
+    requestAnimationFrame(() => {
+        charts.forEach((chart, idx) => {
+            const canvas = document.getElementById(`chart_${idx}`);
+            if (!canvas) return;
+            try {
+                const ctx = canvas.getContext('2d');
+                chartInstances[idx] = new Chart(ctx, chart.chart_config);
+            } catch (e) {
+                console.error('Chart render error:', e);
+            }
+        });
+    });
+}
+
+// --- TABLE ---
+function renderTable(columns, data) {
+    const sec = document.getElementById('tableSection');
+    if (!columns.length) { sec.innerHTML = ''; return; }
+
+    filteredData = [...data];
+
+    sec.innerHTML = `
+        <div class="section-title">📋 Data Table</div>
+        <div class="table-container">
+            <div class="table-toolbar">
+                <div class="table-toolbar-left">
+                    Showing <strong id="rowCountDisplay">${data.length.toLocaleString()}</strong> rows
+                    ${data.length < (dashboardData?.row_count || 0)
+                        ? ` of <strong>${(dashboardData?.row_count || 0).toLocaleString()}</strong> total`
+                        : ''}
+                </div>
+                <input class="search-input" type="text"
+                    placeholder="🔍 Filter rows..."
+                    oninput="filterTable(this.value)">
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr id="tableHead"></tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+            <div class="table-footer">
+                <span id="tableFooterLeft">${columns.length} columns</span>
+                <span>Cached (max 500 rows)</span>
+            </div>
+        </div>
+    `;
+
+    buildTableHead(columns);
+    buildTableBody(columns, filteredData);
+}
+
+function buildTableHead(columns) {
+    const head = document.getElementById('tableHead');
+    if (!head) return;
+    head.innerHTML = columns.map((col, i) => `
+        <th onclick="sortTable(${i})" class="${sortState.col === i ? 'sorted' : ''}">
+            ${escHtml(col)}
+            <span class="sort-icon">${sortState.col === i ? (sortState.asc ? '▲' : '▼') : '⇅'}</span>
+        </th>
+    `).join('');
+}
+
+function buildTableBody(columns, data) {
+    const body = document.getElementById('tableBody');
+    if (!body) return;
+
+    if (!data.length) {
+        body.innerHTML = `<tr><td colspan="${columns.length}" style="text-align:center;color:#666;padding:32px">No data</td></tr>`;
+        return;
+    }
+
+    body.innerHTML = data.slice(0, 200).map(row => {
+        const cells = columns.map((col, i) => {
+            const val = Array.isArray(row) ? row[i] : row[col];
+            const isNum = val !== null && val !== '' && !isNaN(Number(val));
+            return `<td class="${isNum ? 'numeric' : ''}" title="${escHtml(String(val ?? ''))}">${escHtml(String(val ?? ''))}</td>`;
+        }).join('');
+        return `<tr>${cells}</tr>`;
+    }).join('');
+}
+
+function filterTable(query) {
+    if (!dashboardData) return;
+    const q = query.toLowerCase().trim();
+    const columns = dashboardData.cached_columns || [];
+    const data = dashboardData.cached_data || [];
+
+    filteredData = q
+        ? data.filter(row =>
+            (Array.isArray(row) ? row : Object.values(row))
+                .some(v => String(v ?? '').toLowerCase().includes(q))
+          )
+        : [...data];
+
+    const countEl = document.getElementById('rowCountDisplay');
+    if (countEl) countEl.textContent = filteredData.length.toLocaleString();
+
+    buildTableBody(columns, filteredData);
+}
+
+function sortTable(colIdx) {
+    if (!dashboardData) return;
+    const columns = dashboardData.cached_columns || [];
+    sortState.asc = sortState.col === colIdx ? !sortState.asc : true;
+    sortState.col = colIdx;
+
+    filteredData.sort((a, b) => {
+        const av = Array.isArray(a) ? a[colIdx] : a[columns[colIdx]];
+        const bv = Array.isArray(b) ? b[colIdx] : b[columns[colIdx]];
+        const an = Number(av), bn = Number(bv);
+        const cmp = (!isNaN(an) && !isNaN(bn)) ? an - bn : String(av ?? '').localeCompare(String(bv ?? ''));
+        return sortState.asc ? cmp : -cmp;
+    });
+
+    buildTableHead(columns);
+    buildTableBody(columns, filteredData);
+}
+
+// --- SQL ---
+function renderSQL(sql) {
+    const sec = document.getElementById('sqlSection');
+    sec.innerHTML = `
+        <div class="section-title">🔍 SQL Query</div>
+        <div class="sql-block"><pre>${escHtml(sql)}</pre></div>
+    `;
+}
+
+// ============================================
+// ACTIONS
+// ============================================
+async function refreshDashboard() {
+    const btn = document.getElementById('refreshBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Refreshing...';
+
+    try {
+        const res = await fetch(`${API_BASE}/api/dashboards/${DASHBOARD_ID}/refresh`, {
+            method: 'POST'
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.detail || 'Refresh failed');
+
+        dashboardData = result.dashboard;
+        renderDashboard(dashboardData);
+        showToast('✅ Dashboard refreshed with latest data', 'success');
+    } catch (e) {
+        showToast(`❌ ${e.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Refresh Data';
+    }
+}
+
+async function deleteDashboard() {
+    if (!confirm(`Delete dashboard "${dashboardData?.title}"? This cannot be undone.`)) return;
+
+    const btn = document.getElementById('deleteBtn');
+    btn.disabled = true;
+
+    try {
+        const res = await fetch(`${API_BASE}/api/dashboards/${DASHBOARD_ID}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Delete failed');
+        }
+        showToast('🗑️ Dashboard deleted', 'info');
+        setTimeout(() => goBack(), 1200);
+    } catch (e) {
+        showToast(`❌ ${e.message}`, 'error');
+        btn.disabled = false;
+    }
+}
+
+function goBack() {
+    if (window.parent && window.parent !== window) {
+        // Inside iframe → trigger parent navigation
+        window.parent.postMessage({ action: 'showSection', section: 'dashboards' }, '*');
+    } else {
+        window.history.back();
+    }
+}
+
+// ============================================
+// UI HELPERS
+// ============================================
+function showLoading() {
+    document.getElementById('loadingState').style.display = 'flex';
+    document.getElementById('errorState').style.display = 'none';
+    document.getElementById('mainContent').style.display = 'none';
+}
+function showError(msg) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('errorState').style.display = 'flex';
+    document.getElementById('errorMsg').textContent = msg;
+    document.getElementById('mainContent').style.display = 'none';
+}
+function showMain() {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('errorState').style.display = 'none';
+    document.getElementById('mainContent').style.display = 'block';
+}
+
+function showToast(msg, type = 'info') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = type;
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+
+function fmt(n) {
+    if (n === null || n === undefined) return '–';
+    const num = parseFloat(n);
+    if (isNaN(num)) return String(n);
+    if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+    if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+    return num % 1 === 0 ? num.toLocaleString() : num.toFixed(2);
+}
+
+function escHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = String(str);
+    return d.innerHTML;
+}
+</script>
+</body>
+</html>
