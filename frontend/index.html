@@ -144,6 +144,11 @@
             height: 100%;
             border: none;
         }
+        /* Dashboards section iframe - taller for dashboard content */
+        .dashboards-container iframe {
+            height: calc(100vh - 120px);
+            min-height: 600px;
+        }
 
         /* ===================================== */
         /* LOADING STATE */
@@ -293,6 +298,10 @@
                     <span class="nav-icon">📅</span>
                     <span class="nav-label">Schedules</span>
                 </a>
+                <a class="nav-item" onclick="showSection('dashboards')">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">Dashboards</span>
+                </a>
                 <a class="nav-item" onclick="showSection('admin')">
                     <span class="nav-icon">⚙️</span>
                     <span class="nav-label">Configuration</span>
@@ -398,6 +407,17 @@
                 </div>
                 <div class="iframe-container">
                     <iframe id="schedules-iframe" src="/admin/schedules"></iframe>
+                </div>
+            </section>
+
+            <!-- DASHBOARDS SECTION -->
+            <section id="dashboards" class="content-section">
+                <div class="page-header">
+                    <h2>📊 Dashboards</h2>
+                    <p>Auto-generated dashboards from your favorite queries</p>
+                </div>
+                <div class="iframe-container" id="dashboards-container">
+                    <iframe id="dashboards-iframe" src="/dashboards.html"></iframe>
                 </div>
             </section>
 
@@ -507,6 +527,26 @@
         document.querySelectorAll('.content-section').forEach(section => {
             observer.observe(section);
         });
+    </script>
+    <script>
+    // Expose function so dashboards.html iframe can call it
+    function openDashboardView(url) {
+        // Replace dashboards iframe with dashboard detail view
+        const iframe = document.getElementById('dashboards-iframe');
+        if (iframe) {
+            iframe.src = url;
+        }
+    }
+
+    // Listen for back action from dashboard detail iframe
+    window.addEventListener('message', (e) => {
+        if (e.data?.action === 'showSection' && e.data?.section === 'dashboards') {
+            const iframe = document.getElementById('dashboards-iframe');
+            if (iframe) {
+                iframe.src = '/dashboards.html';
+            }
+        }
+    });
     </script>
 </body>
 </html>

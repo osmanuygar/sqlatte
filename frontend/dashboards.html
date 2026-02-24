@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLatte Dashboards</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        /* ===== HEADER ===== */
+        .page-header {
+            background: linear-gradient(135deg, #1a1a1a, #242424);
+            border-bottom: 1px solid #2a2a2a;
+            padding: 24px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .page-header p { font-size: 14px; color: #888; margin-top: 4px; }
+
+        /* ===== BUTTONS ===== */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #D4A574; color: #1a1a1a; }
+        .btn-primary:hover { background: #C49060; transform: translateY(-1px); }
+        .btn-ghost {
+            background: rgba(212,165,116,0.1);
+            color: #D4A574;
+            border: 1px solid rgba(212,165,116,0.25);
+        }
+        .btn-ghost:hover { background: rgba(212,165,116,0.2); }
+        .btn-danger-sm {
+            background: transparent;
+            border: 1px solid rgba(239,68,68,0.3);
+            color: #f87171;
+            padding: 7px 14px;
+            font-size: 13px;
+        }
+        .btn-danger-sm:hover { background: rgba(239,68,68,0.15); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ===== CONTENT ===== */
+        .content { max-width: 1300px; margin: 0 auto; padding: 28px 24px 60px; }
+
+        /* ===== STATS BAR ===== */
+        .stats-bar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .stat-chip {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-size: 14px;
+            color: #888;
+        }
+        .stat-chip strong { color: #D4A574; }
+
+        /* ===== EMPTY STATE ===== */
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: #555;
+        }
+        .empty-state .empty-icon { font-size: 64px; margin-bottom: 20px; }
+        .empty-state h2 { font-size: 22px; color: #888; margin-bottom: 10px; }
+        .empty-state p { font-size: 14px; margin-bottom: 28px; }
+
+        /* ===== DASHBOARD GRID ===== */
+        .dashboards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 20px;
+        }
+
+        .dashboard-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #1d1d1d 100%);
+            border: 1px solid #2a2a2a;
+            border-radius: 14px;
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            cursor: pointer;
+            transition: all 0.25s;
+            position: relative;
+            overflow: hidden;
+        }
+        .dashboard-card::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #D4A574, #A67C52);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .dashboard-card:hover {
+            border-color: rgba(212,165,116,0.4);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 28px rgba(0,0,0,0.4);
+        }
+        .dashboard-card:hover::before { opacity: 1; }
+
+        .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+
+        .card-icon {
+            width: 44px; height: 44px;
+            background: linear-gradient(135deg, rgba(212,165,116,0.2), rgba(166,124,82,0.1));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+
+        .card-title { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.3; }
+        .card-question { font-size: 12px; color: #666; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .card-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .badge {
+            background: #242424;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+            color: #888;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .badge span { color: #D4A574; font-weight: 700; }
+
+        .card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 10px;
+            border-top: 1px solid #222;
+        }
+        .card-date { font-size: 11px; color: #555; }
+
+        .card-actions { display: flex; gap: 8px; }
+
+        /* ===== MODAL ===== */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 16px;
+            padding: 32px;
+            width: 100%;
+            max-width: 560px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+        .modal p { font-size: 14px; color: #888; margin-bottom: 24px; }
+
+        .form-group { margin-bottom: 18px; }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #aaa;
+            margin-bottom: 8px;
+        }
+
+        .form-control {
+            width: 100%;
+            background: #242424;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #e0e0e0;
+            padding: 10px 14px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-control:focus { border-color: #D4A574; }
+
+        /* Favorites list in modal */
+        .favorites-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; }
+        .fav-item {
+            background: #242424;
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .fav-item:hover { border-color: rgba(212,165,116,0.4); background: #2a2a2a; }
+        .fav-item.selected { border-color: #D4A574; background: rgba(212,165,116,0.08); }
+        .fav-item-name { font-size: 14px; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; }
+        .fav-item-question { font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fav-item-meta { font-size: 11px; color: #555; margin-top: 4px; }
+
+        .no-favorites {
+            text-align: center;
+            padding: 40px 20px;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+
+        /* ===== LOADING ===== */
+        .spinner {
+            width: 32px; height: 32px;
+            border: 3px solid #333;
+            border-top-color: #D4A574;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 40px auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ===== TOAST ===== */
+        #toast {
+            position: fixed; bottom: 20px; right: 20px;
+            padding: 12px 20px; border-radius: 8px;
+            font-size: 14px; font-weight: 600;
+            z-index: 9999; display: none;
+        }
+        #toast.success { background: #166534; color: #4ade80; }
+        #toast.error   { background: #7f1d1d; color: #f87171; }
+        #toast.info    { background: #1e3a5f; color: #60a5fa; }
+
+        @media (max-width: 640px) {
+            .dashboards-grid { grid-template-columns: 1fr; }
+            .page-header { flex-wrap: wrap; gap: 16px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+    <div>
+        <h1>📊 Dashboards</h1>
+        <p>Auto-generated dashboards from your favorite queries</p>
+    </div>
+    <button class="btn btn-primary" onclick="openGenerateModal()">
+        ✨ Generate Dashboard
+    </button>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+    <div class="stats-bar" id="statsBar" style="display:none">
+        <div class="stat-chip">Total: <strong id="statTotal">0</strong></div>
+        <div class="stat-chip">Storage: <strong id="statStorage">–</strong></div>
+    </div>
+
+    <div id="loadingState" style="text-align:center;padding:60px">
+        <div class="spinner"></div>
+    </div>
+
+    <div id="emptyState" class="empty-state" style="display:none">
+        <div class="empty-icon">📊</div>
+        <h2>No Dashboards Yet</h2>
+        <p>Generate your first dashboard from a saved favorite query.</p>
+        <button class="btn btn-primary" onclick="openGenerateModal()">
+            ✨ Generate First Dashboard
+        </button>
+    </div>
+
+    <div class="dashboards-grid" id="dashboardsGrid" style="display:none"></div>
+</div>
+
+<!-- GENERATE MODAL -->
+<div class="modal-overlay" id="generateModal" style="display:none" onclick="closeModalOnBg(event)">
+    <div class="modal">
+        <h2>✨ Generate Dashboard</h2>
+        <p>Select a favorite query to build an auto-dashboard with charts and insights.</p>
+
+        <div class="form-group">
+            <label>Dashboard Title (optional)</label>
+            <input class="form-control" type="text" id="dashTitle"
+                placeholder="Leave empty to use query name...">
+        </div>
+
+        <div class="form-group">
+            <label>Select Favorite Query</label>
+            <div class="favorites-list" id="favoritesList">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn btn-ghost" onclick="closeGenerateModal()">Cancel</button>
+            <button class="btn btn-primary" id="generateBtn" onclick="generateDashboard()" disabled>
+                ✨ Generate
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API_BASE = window.location.origin;
+let selectedQueryId = null;
+let allDashboards = [];
+
+// ============================================
+// INIT
+// ============================================
+document.addEventListener('DOMContentLoaded', loadDashboards);
+
+// Listen for postMessage from parent (back button in dashboard.html)
+window.addEventListener('message', (e) => {
+    if (e.data?.action === 'showSection' && e.data?.section === 'dashboards') {
+        loadDashboards();
+    }
+});
+
+// ============================================
+// LOAD DASHBOARDS
+// ============================================
+async function loadDashboards() {
+    try {
+        const [dashRes, statsRes] = await Promise.all([
+            fetch(`${API_BASE}/api/dashboards`),
+            fetch(`${API_BASE}/api/dashboards/stats`)
+        ]);
+
+        const dashData = await dashRes.json();
+        const statsData = await statsRes.json();
+
+        allDashboards = dashData.dashboards || [];
+
+        // Stats bar
+        document.getElementById('statTotal').textContent = statsData.total_dashboards || 0;
+        document.getElementById('statStorage').textContent = statsData.storage || '–';
+        document.getElementById('statsBar').style.display = allDashboards.length ? 'flex' : 'none';
+
+        renderDashboardGrid(allDashboards);
+    } catch (e) {
+        console.error('Failed to load dashboards:', e);
+        showToast('❌ Failed to load dashboards', 'error');
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('emptyState').style.display = 'block';
+    }
+}
+
+function renderDashboardGrid(dashboards) {
+    document.getElementById('loadingState').style.display = 'none';
+
+    if (!dashboards.length) {
+        document.getElementById('emptyState').style.display = 'block';
+        document.getElementById('dashboardsGrid').style.display = 'none';
+        return;
+    }
+
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('dashboardsGrid').style.display = 'grid';
+
+    const grid = document.getElementById('dashboardsGrid');
+    grid.innerHTML = dashboards.map(d => `
+        <div class="dashboard-card" onclick="openDashboard('${d.id}')">
+            <div class="card-header">
+                <div style="flex:1">
+                    <div class="card-icon">📊</div>
+                </div>
+            </div>
+            <div>
+                <div class="card-title">${escHtml(d.title)}</div>
+                ${d.question ? `<div class="card-question">💬 ${escHtml(d.question)}</div>` : ''}
+            </div>
+            <div class="card-badges">
+                ${d.chart_count ? `<div class="badge">📈 <span>${d.chart_count}</span> charts</div>` : ''}
+                ${d.metric_count ? `<div class="badge">📐 <span>${d.metric_count}</span> metrics</div>` : ''}
+                ${d.insight_count ? `<div class="badge">💡 <span>${d.insight_count}</span> insights</div>` : ''}
+                <div class="badge">📋 <span>${fmtNum(d.row_count)}</span> rows</div>
+            </div>
+            <div class="card-footer">
+                <span class="card-date">${fmtDate(d.created_at)}</span>
+                <div class="card-actions" onclick="event.stopPropagation()">
+                    <button class="btn btn-ghost" style="padding:7px 14px;font-size:13px"
+                        onclick="regenerateDashboard('${d.id}', '${escHtml(d.title)}')">
+                        🔄 Refresh
+                    </button>
+                    <button class="btn btn-danger-sm"
+                        onclick="deleteDashboard('${d.id}', '${escHtml(d.title)}')">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ============================================
+// OPEN DASHBOARD
+// ============================================
+function openDashboard(id) {
+    // Navigate parent to dashboard view
+    const url = `/dashboard.html?id=${id}`;
+    if (window.parent && window.parent !== window) {
+        window.parent.openDashboardView(url);
+    } else {
+        window.location.href = url;
+    }
+}
+
+// ============================================
+// GENERATE MODAL
+// ============================================
+async function openGenerateModal() {
+    selectedQueryId = null;
+    document.getElementById('dashTitle').value = '';
+    document.getElementById('generateBtn').disabled = true;
+    document.getElementById('generateModal').style.display = 'flex';
+
+    // Load favorites
+    await loadFavorites();
+}
+
+function closeGenerateModal() {
+    document.getElementById('generateModal').style.display = 'none';
+}
+
+function closeModalOnBg(e) {
+    if (e.target === document.getElementById('generateModal')) closeGenerateModal();
+}
+
+async function loadFavorites() {
+    const list = document.getElementById('favoritesList');
+    list.innerHTML = '<div class="spinner"></div>';
+
+    try {
+        const res = await fetch(`${API_BASE}/favorites`);
+        const data = await res.json();
+        const favs = data.favorites || [];
+
+        if (!favs.length) {
+            list.innerHTML = `
+                <div class="no-favorites">
+                    ⭐ No favorites yet.<br>
+                    Save a query as favorite from the assistant first.
+                </div>`;
+            return;
+        }
+
+        list.innerHTML = favs.map(f => `
+            <div class="fav-item" id="fav_${f.id}" onclick="selectFavorite('${f.id}')">
+                <div class="fav-item-name">⭐ ${escHtml(f.favorite_name || f.question || 'Unnamed')}</div>
+                ${f.question && f.favorite_name ? `<div class="fav-item-question">${escHtml(f.question)}</div>` : ''}
+                <div class="fav-item-meta">
+                    ${f.tables?.length ? `Tables: ${f.tables.join(', ')}  ·  ` : ''}
+                    ${f.row_count ? `${fmtNum(f.row_count)} rows` : ''}
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        list.innerHTML = `<div class="no-favorites" style="color:#f87171">❌ Failed to load favorites</div>`;
+    }
+}
+
+function selectFavorite(id) {
+    // Deselect previous
+    document.querySelectorAll('.fav-item').forEach(el => el.classList.remove('selected'));
+    const el = document.getElementById(`fav_${id}`);
+    if (el) el.classList.add('selected');
+
+    selectedQueryId = id;
+    document.getElementById('generateBtn').disabled = false;
+}
+
+async function generateDashboard() {
+    if (!selectedQueryId) return;
+
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Generating...';
+
+    try {
+        const title = document.getElementById('dashTitle').value.trim();
+        const res = await fetch(`${API_BASE}/api/dashboards/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query_id: selectedQueryId, title: title || null })
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.detail || 'Generation failed');
+
+        showToast(`✅ Dashboard "${result.dashboard.title}" created!`, 'success');
+        closeGenerateModal();
+
+        // Refresh grid
+        await loadDashboards();
+
+        // Auto-open the new dashboard
+        setTimeout(() => openDashboard(result.dashboard.id), 600);
+
+    } catch (e) {
+        showToast(`❌ ${e.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '✨ Generate';
+    }
+}
+
+// ============================================
+// REFRESH (card action)
+// ============================================
+async function regenerateDashboard(id, title) {
+    showToast(`🔄 Refreshing "${title}"...`, 'info');
+    try {
+        const res = await fetch(`${API_BASE}/api/dashboards/${id}/refresh`, { method: 'POST' });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail);
+        }
+        showToast(`✅ "${title}" refreshed`, 'success');
+        await loadDashboards();
+    } catch (e) {
+        showToast(`❌ ${e.message}`, 'error');
+    }
+}
+
+// ============================================
+// DELETE
+// ============================================
+async function deleteDashboard(id, title) {
+    if (!confirm(`Delete dashboard "${title}"?`)) return;
+    try {
+        const res = await fetch(`${API_BASE}/api/dashboards/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail);
+        }
+        showToast(`🗑️ Dashboard deleted`, 'info');
+        allDashboards = allDashboards.filter(d => d.id !== id);
+        renderDashboardGrid(allDashboards);
+        document.getElementById('statTotal').textContent = allDashboards.length;
+    } catch (e) {
+        showToast(`❌ ${e.message}`, 'error');
+    }
+}
+
+// ============================================
+// UTILS
+// ============================================
+function escHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = String(str ?? '');
+    return d.innerHTML;
+}
+
+function fmtNum(n) {
+    if (!n && n !== 0) return '0';
+    return Number(n).toLocaleString();
+}
+
+function fmtDate(iso) {
+    if (!iso) return '';
+    try {
+        return new Date(iso).toLocaleDateString(undefined, { day:'2-digit', month:'short', year:'numeric' });
+    } catch { return iso; }
+}
+
+function showToast(msg, type = 'info') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = type;
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3500);
+}
+</script>
+</body>
+</html>

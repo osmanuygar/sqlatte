@@ -30,6 +30,8 @@ from src.api.admin_routes_enhanced import router as admin_router
 from src.api.demo_routes import router as demo_router
 from src.api.analytics_routes import router as analytics_router
 from src.core.analytics_db_postgres import analytics_db
+from src.api.dashboard_routes import router as dashboard_router
+from src.core.dashboard_manager import initialize_dashboard_manager
 #from src.core.simple_insights import simple_insights
 from src.core.llm_insights_engine import (
     initialize_insights_engine,
@@ -181,7 +183,7 @@ app.include_router(admin_router)
 app.include_router(demo_router)
 app.include_router(analytics_router)
 app.include_router(scheduled_routes.router)
-
+app.include_router(dashboard_router)
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
@@ -1023,10 +1025,26 @@ async def get_history_stats():
     return query_history.get_stats()
 
 
-# ============================================
-# SHUTDOWN
-# ============================================
+@app.get("/dashboard.html", response_class=HTMLResponse)
+async def dashboard_view_page():
+    """Serve dashboard view page"""
+    path = os.path.join(PROJECT_ROOT, 'frontend', 'dashboard.html')
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Dashboard page not found</h1>", status_code=404)
 
+
+@app.get("/dashboards.html", response_class=HTMLResponse)
+async def dashboards_list_page():
+    """Serve dashboards list page"""
+    path = os.path.join(PROJECT_ROOT, 'frontend', 'dashboards.html')
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Dashboards page not found</h1>", status_code=404)
 # ============================================
 # SCHEDULED QUERY EXECUTOR
 # ============================================
@@ -1192,6 +1210,16 @@ async def startup_event():
             email_service = None
     else:
         print("📅 Scheduled Queries disabled in config")
+    # Dashboard Manager init
+    print("\n📊 Initializing Dashboard Manager...")
+    try:
+        initialize_dashboard_manager(analytics_db=analytics_db)
+        print("✅ Dashboard Manager initialized")
+    except Exception as e:
+        print(f"⚠️ Dashboard Manager init failed: {e}")
+        # Fallback to in-memory
+        initialize_dashboard_manager(analytics_db=None)
+        print("✅ Dashboard Manager initialized (in-memory fallback)")
 
     print("✅ SQLatte startup complete!\n")
 
