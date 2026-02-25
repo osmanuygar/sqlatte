@@ -533,7 +533,13 @@ async function generateDashboard() {
             body: JSON.stringify({ query_id: selectedQueryId, title: title || null })
         });
         const result = await res.json();
-        if (!res.ok) throw new Error(result.detail || 'Generation failed');
+        if (!res.ok) {
+            const detail = result.detail;
+            const msg = typeof detail === 'object'
+                ? (detail.message || detail.error || JSON.stringify(detail))
+                : (detail || 'Generation failed');
+            throw new Error(msg);
+        }
 
         showToast(`✅ Dashboard "${result.dashboard.title}" created!`, 'success');
         closeGenerateModal();

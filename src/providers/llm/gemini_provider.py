@@ -154,7 +154,7 @@ class GeminiProvider(LLMProvider):
                                     yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')  -> Yesterday's dt=yesterday 
 
                                   Format your response as:
-                                  SQL: <your SQL query>
+                                  SQL: [your SQL query, it should be only sql]
                                   EXPLANATION: [brief explanation including JOIN strategy if applicable]""")
 
         # Format prompt
