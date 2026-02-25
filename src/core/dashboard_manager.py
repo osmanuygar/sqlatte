@@ -176,90 +176,206 @@ def analyze_columns(columns: List[str], data: List[List[Any]]) -> Dict:
     }
 
 
+def _looks_like_date(val: str) -> bool:
+    """Quick check: does this string look like a real date (not 'Monday', 'Q1', etc.)"""
+    import re as _re
+    v = str(val).strip()
+    return bool(
+        _re.fullmatch(r'\d{4}', v) or                          # 2024
+        _re.fullmatch(r'\d{4}-\d{2}', v) or                   # 2024-01
+        _re.fullmatch(r'\d{8}', v) or                           # 20240101
+        _re.search(r'\d{4}[-/]\d{2}[-/]\d{2}', v) or        # 2024-01-15
+        _re.search(r'\d{2}[-/]\d{2}[-/]\d{4}', v)            # 15/01/2024
+    )
+
+
+def _parse_date_key(val):
+    """
+    Parse a date string into a comparable sort key.
+    Handles: ISO dates, YYYYMMDD, YYYY-MM, YYYY, datetime strings.
+    Falls back to raw string (works correctly for ISO-formatted strings).
+    """
+    import re as _re
+    from datetime import datetime as _dt
+    v = str(val).strip()
+
+    # YYYYMMDD  e.g. "20240115"
+    if _re.fullmatch(r'\d{8}', v):
+        return v  # lexicographic = chronological for this format
+
+    # YYYY-MM  e.g. "2024-01"
+    if _re.fullmatch(r'\d{4}-\d{2}', v):
+        return v
+
+    # YYYY  e.g. "2024"
+    if _re.fullmatch(r'\d{4}', v):
+        return v
+
+    formats = [
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%d-%m-%Y",
+        "%Y/%m/%d",
+    ]
+    for fmt in formats:
+        try:
+            return _dt.strptime(v, fmt)
+        except ValueError:
+            pass
+    return v  # fallback: raw string sort
+
+
 def generate_chart_configs(
     columns: List[str],
     data: List[List[Any]],
     analysis: Dict,
-    max_charts: int = 6
+    max_charts: int = 20
 ) -> List[Dict]:
     """
-    Auto-generate Chart.js config objects from query results.
+    Auto-generate Chart.js configs from query results.
 
-    Strategy:
-      - For each dimension x metric combination → bar chart
-      - If date col exists → line chart for time series
-      - Max categories per chart: 20 (top by metric value)
+    Rules:
+    - date_col × each metric  → line chart (chronologically sorted)
+    - string dim × each metric → bar chart (sorted by value desc, top 25)
+    - All combinations are generated, capped at max_charts=20
     """
+    if not columns or not data or not (analysis.get("metrics") or []):
+        return []
+
     charts = []
-    metrics = analysis["metrics"]
-    dimensions = [d for d in analysis["dimensions"] if d not in analysis["date_cols"]]
-    date_cols = analysis["date_cols"]
+    metrics = analysis.get("metrics", [])
+    date_cols = analysis.get("date_cols", [])
+    dimensions = [d for d in analysis.get("dimensions", []) if d not in date_cols]
 
     COLORS = [
-        "rgba(212, 165, 116, 0.85)",   # SQLatte primary
-        "rgba(166, 124, 82, 0.85)",
-        "rgba(107, 68, 35, 0.85)",
+        "rgba(212, 165, 116, 0.85)",
         "rgba(74, 222, 128, 0.75)",
         "rgba(96, 165, 250, 0.75)",
         "rgba(248, 113, 113, 0.75)",
         "rgba(167, 139, 250, 0.75)",
         "rgba(251, 191, 36, 0.75)",
+        "rgba(166, 124, 82, 0.85)",
+        "rgba(45, 212, 191, 0.75)",
+        "rgba(236, 72, 153, 0.75)",
+        "rgba(107, 68, 35, 0.85)",
     ]
-    BORDER_COLORS = [c.replace("0.85", "1").replace("0.75", "1") for c in COLORS]
+    BORDER = [c.replace("0.85", "1").replace("0.75", "1") for c in COLORS]
 
-    def extract_chart_data(dim_col: str, metric_col: str, top_n: int = 20) -> Tuple[List, List]:
-        """Extract labels/values for a dim x metric pair, sorted by metric desc"""
-        dim_idx = columns.index(dim_col) if dim_col in columns else None
-        met_idx = columns.index(metric_col) if metric_col in columns else None
+    def _cidx(name):
+        try:
+            return columns.index(name)
+        except ValueError:
+            return None
 
-        if dim_idx is None or met_idx is None:
+    def _agg(dim_col, metric_col):
+        di, mi = _cidx(dim_col), _cidx(metric_col)
+        if di is None or mi is None:
+            return {}
+        acc: Dict[str, float] = {}
+        for row in data:
+            rd = row if isinstance(row, (list, tuple)) else [row.get(c) for c in columns]
+            dv = str(rd[di]) if rd[di] is not None else "NULL"
+            try:
+                mv = float(rd[mi]) if rd[mi] is not None else 0.0
+            except (TypeError, ValueError):
+                mv = 0.0
+            acc[dv] = acc.get(dv, 0.0) + mv
+        return acc
+
+    def extract_bar(dim_col, metric_col, top_n=25):
+        """
+        Preserve original query row order.
+        Aggregates duplicate dim values (sum) but keeps first-seen insertion order.
+        Only falls back to value-desc sort when there are more rows than top_n
+        (i.e. truncation is needed — then show the most significant ones).
+        """
+        di, mi = _cidx(dim_col), _cidx(metric_col)
+        if di is None or mi is None:
             return [], []
 
-        agg = {}
+        # Use an ordered dict to preserve first-seen row order
+        seen_order = []
+        agg: Dict[str, float] = {}
         for row in data:
-            row_data = row if isinstance(row, (list, tuple)) else [row.get(c) for c in columns]
-            dim_val = str(row_data[dim_idx]) if row_data[dim_idx] is not None else "NULL"
+            rd = row if isinstance(row, (list, tuple)) else [row.get(c) for c in columns]
+            dv = str(rd[di]) if rd[di] is not None else "NULL"
             try:
-                met_val = float(row_data[met_idx]) if row_data[met_idx] is not None else 0
+                mv = float(rd[mi]) if rd[mi] is not None else 0.0
             except (TypeError, ValueError):
-                met_val = 0
-            agg[dim_val] = agg.get(dim_val, 0) + met_val
+                mv = 0.0
+            if dv not in agg:
+                seen_order.append(dv)
+            agg[dv] = agg.get(dv, 0.0) + mv
 
-        # Sort by value desc, take top_n
-        sorted_items = sorted(agg.items(), key=lambda x: x[1], reverse=True)[:top_n]
-        labels = [item[0] for item in sorted_items]
-        values = [round(item[1], 2) for item in sorted_items]
-        return labels, values
+        if len(seen_order) <= top_n:
+            # All rows fit → keep original order
+            items = [(k, agg[k]) for k in seen_order]
+        else:
+            # Too many rows → show top-N by value (truncation case only)
+            items = sorted(agg.items(), key=lambda x: x[1], reverse=True)[:top_n]
 
-    def extract_time_series(date_col: str, metric_col: str) -> Tuple[List, List]:
-        """Extract time-series data sorted by date"""
-        date_idx = columns.index(date_col) if date_col in columns else None
-        met_idx = columns.index(metric_col) if metric_col in columns else None
+        return [i[0] for i in items], [round(i[1], 2) for i in items]
 
-        if date_idx is None or met_idx is None:
+    def extract_timeseries(date_col, metric_col):
+        """
+        For date columns: sort chronologically.
+        If values can't be parsed as real dates (e.g. 'Monday', 'Q1'),
+        fall back to original query row order instead of alphabetical.
+        """
+        di, mi = _cidx(date_col), _cidx(metric_col)
+        if di is None or mi is None:
             return [], []
 
-        agg = {}
+        # Collect in original row order first
+        seen_order = []
+        agg: Dict[str, float] = {}
         for row in data:
-            row_data = row if isinstance(row, (list, tuple)) else [row.get(c) for c in columns]
-            date_val = str(row_data[date_idx]) if row_data[date_idx] is not None else "NULL"
+            rd = row if isinstance(row, (list, tuple)) else [row.get(c) for c in columns]
+            dv = str(rd[di]) if rd[di] is not None else "NULL"
             try:
-                met_val = float(row_data[met_idx]) if row_data[met_idx] is not None else 0
+                mv = float(rd[mi]) if rd[mi] is not None else 0.0
             except (TypeError, ValueError):
-                met_val = 0
-            agg[date_val] = agg.get(date_val, 0) + met_val
+                mv = 0.0
+            if dv not in agg:
+                seen_order.append(dv)
+            agg[dv] = agg.get(dv, 0.0) + mv
 
-        sorted_items = sorted(agg.items(), key=lambda x: x[0])
-        return [i[0] for i in sorted_items], [round(i[1], 2) for i in sorted_items]
+        # Try chronological sort — only apply if ALL values parse successfully
+        parsed = []
+        all_parsed = True
+        for k in seen_order:
+            pk = _parse_date_key(k)
+            # _parse_date_key returns a datetime if parsed, else the raw string
+            # If it returned the raw string unchanged → not a real date
+            if pk == k and not _looks_like_date(k):
+                all_parsed = False
+                break
+            parsed.append((k, pk, agg[k]))
 
-    color_idx = 0
+        if all_parsed and parsed:
+            try:
+                parsed.sort(key=lambda x: x[1])
+                items = [(x[0], x[2]) for x in parsed]
+            except TypeError:
+                items = [(k, agg[k]) for k in seen_order]
+        else:
+            # Not real dates → preserve original query order
+            items = [(k, agg[k]) for k in seen_order]
 
-    # 1. Time series charts (date dim × metric)
-    for date_col in date_cols[:1]:  # max 1 date col
-        for metric in metrics[:2]:  # max 2 metrics per date
+        return [i[0] for i in items], [round(i[1], 2) for i in items]
+
+    ci = 0  # color rotation index
+
+    # ── 1. Line charts: every date_col × every metric ──
+    for date_col in date_cols:
+        for metric in metrics:
             if len(charts) >= max_charts:
                 break
-            labels, values = extract_time_series(date_col, metric)
+            labels, values = extract_timeseries(date_col, metric)
             if not labels:
                 continue
             charts.append({
@@ -274,23 +390,25 @@ def generate_chart_configs(
                         "datasets": [{
                             "label": metric,
                             "data": values,
-                            "borderColor": BORDER_COLORS[color_idx % len(BORDER_COLORS)],
-                            "backgroundColor": COLORS[color_idx % len(COLORS)],
+                            "borderColor": BORDER[ci % len(BORDER)],
+                            "backgroundColor": COLORS[ci % len(COLORS)],
                             "fill": True,
-                            "tension": 0.4
+                            "tension": 0.4,
+                            "pointRadius": 4,
+                            "pointHoverRadius": 7,
                         }]
                     },
                     "options": _chart_options(f"{metric} / {date_col}", x_type="time_category")
                 }
             })
-            color_idx += 1
+            ci += 1
 
-    # 2. Bar charts (string dim × metric)
-    for dim in dimensions[:3]:  # max 3 dimensions
-        for metric in metrics[:2]:  # max 2 metrics per dim
+    # ── 2. Bar charts: every string dim × every metric ──
+    for dim in dimensions:
+        for metric in metrics:
             if len(charts) >= max_charts:
                 break
-            labels, values = extract_chart_data(dim, metric)
+            labels, values = extract_bar(dim, metric)
             if not labels:
                 continue
             charts.append({
@@ -305,16 +423,128 @@ def generate_chart_configs(
                         "datasets": [{
                             "label": metric,
                             "data": values,
-                            "backgroundColor": COLORS[color_idx % len(COLORS)],
-                            "borderColor": BORDER_COLORS[color_idx % len(BORDER_COLORS)],
+                            "backgroundColor": COLORS[ci % len(COLORS)],
+                            "borderColor": BORDER[ci % len(BORDER)],
                             "borderWidth": 1,
-                            "borderRadius": 6
+                            "borderRadius": 6,
                         }]
                     },
                     "options": _chart_options(f"{metric} by {dim}")
                 }
             })
-            color_idx += 1
+            ci += 1
+
+    # ── 3. Fallback: no dims/dates → metric comparison charts ──
+    # Handles pure-aggregate results like:
+    #   SELECT SUM(revenue), COUNT(*), AVG(margin) FROM orders WHERE dt=...
+    if not charts and metrics:
+        summaries = analysis.get("metric_summaries", {})
+
+        if len(data) == 1:
+            # Single row aggregate: all metrics as one grouped bar
+            labels = [m.replace("_", " ").title() for m in metrics]
+            values = []
+            for m in metrics:
+                mi = _cidx(m)
+                val = data[0][mi] if mi is not None and data[0][mi] is not None else 0
+                try:
+                    values.append(round(float(val), 2))
+                except (TypeError, ValueError):
+                    values.append(0)
+
+            if any(v != 0 for v in values):
+                charts.append({
+                    "type": "bar",
+                    "title": "Metrics Overview",
+                    "x_col": "metric",
+                    "y_col": "value",
+                    "chart_config": {
+                        "type": "bar",
+                        "data": {
+                            "labels": labels,
+                            "datasets": [{
+                                "label": "Value",
+                                "data": values,
+                                "backgroundColor": COLORS[:len(labels)],
+                                "borderColor": BORDER[:len(labels)],
+                                "borderWidth": 1,
+                                "borderRadius": 6,
+                            }]
+                        },
+                        "options": _chart_options("Metrics Overview")
+                    }
+                })
+
+        elif len(data) > 1:
+            # Multiple rows, no dim/date: use row index as x-axis, one chart per metric
+            row_labels = [str(i + 1) for i in range(len(data))]
+
+            for metric in metrics:
+                if len(charts) >= max_charts:
+                    break
+                mi = _cidx(metric)
+                if mi is None:
+                    continue
+                values = []
+                for row in data:
+                    rd = row if isinstance(row, (list, tuple)) else [row.get(c) for c in columns]
+                    try:
+                        values.append(round(float(rd[mi]), 2) if rd[mi] is not None else 0)
+                    except (TypeError, ValueError):
+                        values.append(0)
+
+                if not any(v != 0 for v in values):
+                    continue
+
+                charts.append({
+                    "type": "bar",
+                    "title": metric.replace("_", " ").title(),
+                    "x_col": "row",
+                    "y_col": metric,
+                    "chart_config": {
+                        "type": "bar",
+                        "data": {
+                            "labels": row_labels,
+                            "datasets": [{
+                                "label": metric,
+                                "data": values,
+                                "backgroundColor": COLORS[ci % len(COLORS)],
+                                "borderColor": BORDER[ci % len(BORDER)],
+                                "borderWidth": 1,
+                                "borderRadius": 6,
+                            }]
+                        },
+                        "options": _chart_options(metric.replace("_", " ").title())
+                    }
+                })
+                ci += 1
+
+            # SUM comparison chart when multiple metrics, multiple rows
+            if summaries and len(summaries) >= 2 and len(charts) < max_charts:
+                sum_labels = [m.replace("_", " ").title() for m in summaries]
+                sum_values = [round(v["sum"], 2) for v in summaries.values()]
+                if any(v != 0 for v in sum_values):
+                    charts.append({
+                        "type": "bar",
+                        "title": "Total Comparison (SUM)",
+                        "x_col": "metric",
+                        "y_col": "sum",
+                        "chart_config": {
+                            "type": "bar",
+                            "data": {
+                                "labels": sum_labels,
+                                "datasets": [{
+                                    "label": "Total",
+                                    "data": sum_values,
+                                    "backgroundColor": COLORS[:len(sum_labels)],
+                                    "borderColor": BORDER[:len(sum_labels)],
+                                    "borderWidth": 1,
+                                    "borderRadius": 6,
+                                }]
+                            },
+                            "options": _chart_options("Total Comparison (SUM)")
+                        }
+                    })
 
     return charts
 

@@ -129,10 +129,27 @@ async def generate_dashboard(request: DashboardGenerateRequest):
         raise HTTPException(status_code=400, detail="Favorite query has no SQL")
 
     question = favorite.get("question", "")
-    favorite_name = favorite.get("favorite_name") or question or "Dashboard"
+    favorite_name = favorite.get("favorite_name", "")
 
-    # Determine title
-    title = request.title or favorite_name
+    # Title priority:
+    # 1. User typed a title in the modal
+    # 2. The favorite has a custom name (set when starring the query)
+    # 3. Truncated question (first 60 chars)
+    # 4. Fallback
+    if request.title and request.title.strip():
+        title = request.title.strip()
+    elif favorite_name and favorite_name.strip():
+        title = favorite_name.strip()
+    elif question:
+        clean_q = question.replace("\n", " ").strip()
+        title = clean_q[:60] + ("\u2026" if len(clean_q) > 60 else "")
+    else:
+        title = "Dashboard"
+
+    logger.info(
+        f"\U0001f4ca Dashboard title resolved: \'{title}\' "
+        f"(user_input=\'{request.title}\', fav_name=\'{favorite_name}\')"
+    )
 
     # --- 2. Execute SQL ---
     try:
