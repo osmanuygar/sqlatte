@@ -86,6 +86,15 @@
         .btn-primary:hover { background: #C49060; }
         .btn-danger { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
         .btn-danger:hover { background: rgba(239,68,68,0.25); }
+        .btn-share {
+        background: rgba(99,102,241,0.15);
+        border: 1px solid rgba(99,102,241,0.4);
+        color: #818cf8;
+        }
+        .btn-share:hover {
+            background: rgba(99,102,241,0.25);
+            border-color: #818cf8;
+        }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* ===== MAIN CONTENT ===== */
@@ -355,6 +364,9 @@
         </div>
     </div>
     <div class="header-actions">
+        <button class="btn btn-share" id="shareBtn" onclick="shareDashboard()">
+        🔗 Share Link
+        </button>
         <button class="btn btn-primary" id="refreshBtn" onclick="refreshDashboard()">
             🔄 Refresh Data
         </button>
@@ -665,6 +677,172 @@ function renderSQL(sql) {
 // ============================================
 // ACTIONS
 // ============================================
+
+function shareDashboard() {
+    // Eğer zaten açıksa tekrar açma
+    if (document.getElementById('sq-share-overlay')) return;
+
+    const shareUrl = window.location.origin + '/dashboard.html?id=' + DASHBOARD_ID;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'sq-share-overlay';
+    overlay.setAttribute('style', [
+        'position:fixed',
+        'inset:0',
+        'background:rgba(0,0,0,0.75)',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'z-index:9999'
+    ].join(';'));
+
+    const box = document.createElement('div');
+    box.setAttribute('style', [
+        'background:#1a1a1a',
+        'border:1px solid #333',
+        'border-radius:12px',
+        'padding:28px 32px',
+        'width:500px',
+        'max-width:calc(100vw - 40px)',
+        'box-shadow:0 20px 60px rgba(0,0,0,0.6)'
+    ].join(';'));
+
+    // Başlık
+    const title = document.createElement('div');
+    title.setAttribute('style', 'color:#fff;font-size:18px;font-weight:700;margin-bottom:6px;');
+    title.textContent = '🔗 Share Dashboard';
+
+    // Açıklama
+    const desc = document.createElement('div');
+    desc.setAttribute('style', 'color:#888;font-size:13px;margin-bottom:18px;');
+    desc.textContent = 'Bu linki paylaşarak dashboard\'u doğrudan açabilirsiniz.';
+
+    // URL satırı
+    const row = document.createElement('div');
+    row.setAttribute('style', 'display:flex;gap:8px;');
+
+    const urlInput = document.createElement('input');
+    urlInput.id = 'sq-share-input';   // ← benzersiz prefix "sq-" ile çakışma önlendi
+    urlInput.type = 'text';
+    urlInput.readOnly = true;
+    urlInput.value = shareUrl;
+    urlInput.setAttribute('style', [
+        'flex:1',
+        'background:#0f0f0f',
+        'border:1px solid #444',
+        'border-radius:8px',
+        'padding:10px 14px',
+        'color:#D4A574',
+        'font-size:13px',
+        'font-family:Consolas,monospace',
+        'outline:none'
+    ].join(';'));
+
+    const copyBtn = document.createElement('button');
+    copyBtn.id = 'sq-copy-btn';
+    copyBtn.textContent = '📋 Copy';
+    copyBtn.setAttribute('style', [
+        'background:#D4A574',
+        'color:#1a1a1a',
+        'border:none',
+        'border-radius:8px',
+        'padding:10px 18px',
+        'font-weight:700',
+        'cursor:pointer',
+        'font-size:13px',
+        'white-space:nowrap'
+    ].join(';'));
+
+    copyBtn.addEventListener('click', function() {
+        var val = urlInput.value;
+        var btn = document.getElementById('sq-copy-btn');
+
+        function onSuccess() {
+            btn.textContent = '✅ Copied!';
+            btn.style.background = '#16a34a';
+            btn.style.color = '#fff';
+            showToast('🔗 Link kopyalandı!', 'success');
+            setTimeout(function() {
+                var ol = document.getElementById('sq-share-overlay');
+                if (ol) ol.remove();
+                document.removeEventListener('keydown', sqEscHandler);
+            }, 1000);
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(val).then(onSuccess).catch(function() {
+                urlInput.select();
+                document.execCommand('copy');
+                onSuccess();
+            });
+        } else {
+            urlInput.select();
+            urlInput.setSelectionRange(0, 99999);
+            document.execCommand('copy');
+            onSuccess();
+        }
+    });
+
+    // Hint
+    const hint = document.createElement('div');
+    hint.setAttribute('style', 'color:#555;font-size:11px;margin-top:10px;');
+    hint.textContent = '💡 Sunucuya erişimi olan herkes bu linki açabilir.';
+
+    // Footer
+    const footer = document.createElement('div');
+    footer.setAttribute('style', 'margin-top:20px;text-align:right;');
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.setAttribute('style', [
+        'background:transparent',
+        'border:1px solid #333',
+        'border-radius:8px',
+        'color:#888',
+        'padding:8px 20px',
+        'cursor:pointer',
+        'font-size:13px'
+    ].join(';'));
+    closeBtn.addEventListener('click', function() {
+        var ol = document.getElementById('sq-share-overlay');
+        if (ol) ol.remove();
+        document.removeEventListener('keydown', sqEscHandler);
+    });
+
+    // DOM birleştir
+    row.appendChild(urlInput);
+    row.appendChild(copyBtn);
+    footer.appendChild(closeBtn);
+    box.appendChild(title);
+    box.appendChild(desc);
+    box.appendChild(row);
+    box.appendChild(hint);
+    box.appendChild(footer);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    // Dışarı tıklayınca kapat
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) {
+            overlay.remove();
+            document.removeEventListener('keydown', sqEscHandler);
+        }
+    });
+
+    // ESC ile kapat
+    function sqEscHandler(e) {
+        if (e.key === 'Escape') {
+            var ol = document.getElementById('sq-share-overlay');
+            if (ol) ol.remove();
+            document.removeEventListener('keydown', sqEscHandler);
+        }
+    }
+    document.addEventListener('keydown', sqEscHandler);
+
+    // Input'u otomatik seç
+    setTimeout(function() { urlInput.select(); }, 50);
+}
+
 async function refreshDashboard() {
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true;
