@@ -130,27 +130,6 @@ async def get_current_config():
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.get("/config/full")
-async def get_full_config():
-    """
-    Get full configuration (including sensitive data)
-    ⚠️ WARNING: This exposes sensitive information!
-
-    Should be protected with authentication in production
-    """
-    try:
-        full_config = config_manager.get_config()
-
-        return {
-            "success": True,
-            "config": full_config,
-            "warning": "This response contains sensitive data"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.post("/config")
 async def update_config(request: ConfigUpdateRequest, http_request: Request):
     """

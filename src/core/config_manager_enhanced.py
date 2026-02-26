@@ -427,12 +427,9 @@ class ConfigManager:
                 base[key] = value
 
     def _mask_sensitive(self, value: str) -> str:
-        """Mask sensitive values for display"""
-        if not value or len(value) < 8:
-            return '***masked***'
-
-        # Show first 3 and last 3 characters
-        return f"{value[:3]}...{value[-3:]}"
+        if not value:
+            return ''
+        return '***masked***'  # karakter sayısı bile belli olmasın
 
     def _save_to_file(self):
         """Save current config to YAML file"""

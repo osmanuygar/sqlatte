@@ -31,6 +31,7 @@
 - 🔗 **Multi-Table JOINs** - Automatically detects and creates table relationships
 - 🧠 **Conversation Memory** - Remembers chat history per session (in-memory)
 - 🧠 **AI-Powered Insights Engine**
+- 📊 **Auto Dashboards** - Generate visual reports from queries
 - 🎯 **Context-Aware Responses** - Understands follow-up questions
 - ⚙️ **Admin Panel** - Runtime configuration without restart
 - ⭐ **Query History & Favorites** - Save and replay queries
@@ -43,6 +44,13 @@
 - 🐳 **Docker Ready** - Easy deployment with Docker & Docker Compose
 
 ### Latest Features (2026)
+
+📊 **Dashboard System** - 
+Automatically generate visual reports from your favorite queries with one click. 
+- Supports line charts, bar charts, pie charts, and tables. 
+- Configure chart types and settings directly from the admin panel.
+- Save dashboards for quick access to key metrics and insights.
+
 
 🧠 **AI-Powered Insights Engine**
 - Automatic data analysis and pattern detection
