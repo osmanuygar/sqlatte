@@ -32,8 +32,12 @@ config_db:
 
   encryption_key: "******"
 
+admin:
+  enabled: true
+  username: "admin"
+  password: "admin!"
 # ============================================
-# UTHENTICATION PLUGIN
+# AUTHENTICATION PLUGIN
 # ============================================
 plugins:
   auth:
