@@ -1,19 +1,16 @@
-"""
-SQLatte Admin API Routes - Enhanced with DB Config Management
-Provides comprehensive configuration management with:
-- Runtime configuration updates
-- Configuration history & audit trail
-- Configuration snapshots & rollback
-- Test before apply
-- Hot reload without restart
-"""
-
 import os
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, HTTPException, Request, Depends, Form, Cookie
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 from src.core.config_manager_enhanced import config_manager
+from src.api.admin_auth import (
+    require_admin,
+    verify_credentials,
+    create_session,
+    destroy_session,
+    validate_session,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -67,41 +64,168 @@ class RestoreSnapshotRequest(BaseModel):
     snapshot_name: str
 
 
+@router.get("/login", response_class=HTMLResponse, include_in_schema=False)
+async def login_page(
+    request: Request,
+    sqlatte_admin: Optional[str] = Cookie(default=None)
+):
+    """Login sayfasını serve et. Zaten login'se /admin/'a redirect."""
+    if validate_session(sqlatte_admin):
+        return RedirectResponse("/admin/", status_code=302)
+
+    login_html_path = os.path.join(
+        os.path.dirname(__file__),
+        "../../frontend/admin-login.html"
+    )
+    if os.path.exists(login_html_path):
+        with open(login_html_path, "r") as f:
+            return HTMLResponse(content=f.read())
+
+    # Fallback: basit form (admin-login.html bulunamazsa)
+    return HTMLResponse(content="""
+        <html><body style="background:#0a0a0a;color:#e0e0e0;display:flex;
+            align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+            <div style="background:#1e1e1e;border:1px solid #2a2a2a;border-radius:12px;padding:40px;width:360px">
+                <h2 style="color:#D4A574;margin-bottom:24px">☕ SQLatte Admin</h2>
+                <form method="post" action="/admin/login">
+                    <input name="username" placeholder="Username"
+                        style="width:100%;padding:10px;background:#141414;border:1px solid #333;
+                        border-radius:8px;color:#fff;margin-bottom:12px"><br>
+                    <input name="password" type="password" placeholder="Password"
+                        style="width:100%;padding:10px;background:#141414;border:1px solid #333;
+                        border-radius:8px;color:#fff;margin-bottom:16px"><br>
+                    <button type="submit"
+                        style="width:100%;padding:12px;background:#D4A574;border:none;
+                        border-radius:8px;font-weight:700;cursor:pointer">Login →</button>
+                </form>
+            </div>
+        </body></html>
+    """)
+
+
+@router.post("/login", include_in_schema=False)
+async def login_post(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = "/admin/"
+):
+    """
+    Form POST → credentials doğrula → cookie set et → redirect.
+    JavaScript fetch ile de çağrılabilir (JSON body değil Form data).
+    """
+    if verify_credentials(username, password):
+        token = create_session(username)
+        response = RedirectResponse(next, status_code=302)
+        response.set_cookie(
+            key="sqlatte_admin",
+            value=token,
+            httponly=True,       # JS erişemez
+            secure=False,        # Production'da True yap (HTTPS)
+            samesite="lax",
+            max_age=_get_session_ttl_seconds()
+        )
+        return response
+
+    # Hatalı credentials → login sayfasına hata ile dön
+    return RedirectResponse("/admin/login?error=1", status_code=302)
+
+
+@router.post("/login/json", include_in_schema=False)
+async def login_json(request: Request):
+    """
+    JavaScript fetch için JSON endpoint.
+    Body: { "username": "...", "password": "..." }
+    Response: { "success": true/false }
+    """
+    body = await request.json()
+    username = body.get("username", "")
+    password = body.get("password", "")
+
+    if verify_credentials(username, password):
+        token = create_session(username)
+        response = JSONResponse({"success": True})
+        response.set_cookie(
+            key="sqlatte_admin",
+            value=token,
+            httponly=True,
+            secure=False,        # Production'da True yap (HTTPS)
+            samesite="lax",
+            max_age=_get_session_ttl_seconds()
+        )
+        return response
+
+    return JSONResponse(
+        {"success": False, "detail": "Invalid credentials"},
+        status_code=401
+    )
+
+
+@router.get("/logout", include_in_schema=False)
+async def logout(sqlatte_admin: Optional[str] = Cookie(default=None)):
+    """Session'ı yok et ve login sayfasına yönlendir."""
+    if sqlatte_admin:
+        destroy_session(sqlatte_admin)
+    response = RedirectResponse("/admin/login", status_code=302)
+    response.delete_cookie("sqlatte_admin")
+    return response
+
+
+def _get_session_ttl_seconds() -> int:
+    """Cookie max_age için session TTL."""
+    from src.api.admin_auth import _session_ttl
+    return _session_ttl()
+
 # ============================================
 # ADMIN PAGE
 # ============================================
 
 @router.get("/", response_class=HTMLResponse)
-async def admin_page():
+async def admin_page(
+    request: Request,
+    admin_user: str = Depends(require_admin)   # ← BU SATIRI EKLE
+):
     """Serve admin configuration page"""
     admin_html_path = os.path.join(
         os.path.dirname(__file__),
-        '../../frontend/admin.html'
+        "../../frontend/admin.html"
     )
 
     if not os.path.exists(admin_html_path):
         return HTMLResponse(
-            content="""
-            <html>
-                <body style="font-family: sans-serif; padding: 40px; text-align: center;">
-                    <h1>⚠️ Admin Page Not Found</h1>
-                    <p>Create frontend/admin.html to enable the admin interface</p>
-                </body>
-            </html>
-            """,
+            content="<h1>Admin page not found</h1>",
             status_code=404
         )
 
-    with open(admin_html_path, 'r') as f:
-        return HTMLResponse(content=f.read())
+    with open(admin_html_path, "r") as f:
+        content = f.read()
 
+    # Admin header'a kullanıcı adı ve logout butonu inject et
+    logout_snippet = f"""
+    <script>
+        // Inject logout button into admin header
+        document.addEventListener('DOMContentLoaded', () => {{
+            const actions = document.querySelector('.admin-actions');
+            if (actions) {{
+                const logoutBtn = document.createElement('a');
+                logoutBtn.href = '/admin/logout';
+                logoutBtn.className = 'btn btn-secondary';
+                logoutBtn.innerHTML = '🚪 Logout ({admin_user})';
+                logoutBtn.style.textDecoration = 'none';
+                actions.prepend(logoutBtn);
+            }}
+        }});
+    </script>
+    """
+    content = content.replace("</body>", logout_snippet + "\n</body>")
+    return HTMLResponse(content=content)
 
 # ============================================
 # CONFIG MANAGEMENT
 # ============================================
 
 @router.get("/config")
-async def get_current_config():
+async def get_current_config(admin_user: str = Depends(require_admin)):
     """
     Get current configuration (with sensitive data masked)
     """
@@ -131,7 +255,7 @@ async def get_current_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/config")
-async def update_config(request: ConfigUpdateRequest, http_request: Request):
+async def update_config(request: ConfigUpdateRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
     Update configuration with optional persistence
 
@@ -173,7 +297,7 @@ async def update_config(request: ConfigUpdateRequest, http_request: Request):
 
 
 @router.put("/config/llm")
-async def update_llm_config(request: LLMConfigRequest, http_request: Request):
+async def update_llm_config(request: LLMConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
     Update LLM provider configuration
 
@@ -210,7 +334,7 @@ async def update_llm_config(request: LLMConfigRequest, http_request: Request):
 
 
 @router.put("/config/database")
-async def update_database_config(request: DatabaseConfigRequest, http_request: Request):
+async def update_database_config(request: DatabaseConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
     Update Database provider configuration
 
@@ -249,7 +373,7 @@ async def update_database_config(request: DatabaseConfigRequest, http_request: R
 
 
 @router.put("/config/email")
-async def update_email_config(request: EmailConfigRequest, http_request: Request):
+async def update_email_config(request: EmailConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
     Update Email configuration
 
@@ -296,7 +420,7 @@ class SchedulerConfigRequest(BaseModel):
 
 
 @router.put("/config/scheduler")
-async def update_scheduler_config(request: SchedulerConfigRequest, http_request: Request):
+async def update_scheduler_config(request: SchedulerConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
     Update Scheduler configuration
 
@@ -342,7 +466,7 @@ class InsightsConfigRequest(BaseModel):
 
 
 @router.put("/config/insights")
-async def update_insights_config(request: InsightsConfigRequest, http_request: Request):
+async def update_insights_config(request: InsightsConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """Update Insights Engine configuration
     ✅ UPDATED: Now reloads insights engine on apply
     """
@@ -395,7 +519,7 @@ class ExportConfigRequest(BaseModel):
 
 
 @router.put("/config/export")
-async def update_export_config(request: ExportConfigRequest, http_request: Request):
+async def update_export_config(request: ExportConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
     Update Export configuration
 
@@ -434,7 +558,7 @@ async def update_export_config(request: ExportConfigRequest, http_request: Reque
 
 
 @router.post("/test/email")
-async def test_email_connection(request: Dict[str, Any]):
+async def test_email_connection(request: Dict[str, Any], admin_user: str = Depends(require_admin)):
     """
     Test SMTP email connection
 
@@ -482,7 +606,7 @@ async def test_email_connection(request: Dict[str, Any]):
 
 
 @router.put("/config/email")
-async def update_email_config(request: EmailConfigRequest, http_request: Request):
+async def update_email_config(request: EmailConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
     Update Email configuration
 

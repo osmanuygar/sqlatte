@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLatte Admin — Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:        #0a0a0a;
+            --surface:   #141414;
+            --card:      #1e1e1e;
+            --border:    #2a2a2a;
+            --border-h:  #3a3a3a;
+            --caramel:   #D4A574;
+            --caramel-h: #E0B886;
+            --caramel-d: #A67C52;
+            --text:      #e8e0d8;
+            --muted:     #6b6460;
+            --error:     #ef4444;
+            --success:   #10b981;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ── Atmospheric background ── */
+        .bg-glow {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .bg-glow::before {
+            content: '';
+            position: absolute;
+            top: -20%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 700px;
+            height: 500px;
+            background: radial-gradient(ellipse, rgba(107,68,35,0.18) 0%, transparent 70%);
+            filter: blur(40px);
+        }
+        .bg-glow::after {
+            content: '';
+            position: absolute;
+            bottom: -10%;
+            right: -10%;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(212,165,116,0.06) 0%, transparent 70%);
+            filter: blur(60px);
+        }
+
+        /* ── Grain overlay ── */
+        .grain {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0.025;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        }
+
+        /* ── Login card ── */
+        .login-wrap {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 400px;
+            padding: 24px;
+            animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Brand ── */
+        .brand {
+            text-align: center;
+            margin-bottom: 36px;
+        }
+        .brand-icon {
+            font-size: 40px;
+            display: block;
+            margin-bottom: 12px;
+            animation: steam 3s ease-in-out infinite;
+        }
+        @keyframes steam {
+            0%, 100% { transform: translateY(0) rotate(-2deg); }
+            50%       { transform: translateY(-4px) rotate(2deg); }
+        }
+        .brand-title {
+            font-family: 'DM Serif Display', serif;
+            font-size: 28px;
+            color: var(--caramel);
+            letter-spacing: -0.5px;
+        }
+        .brand-sub {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 6px;
+            font-family: 'DM Mono', monospace;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* ── Card ── */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.04) inset;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title span {
+            color: var(--muted);
+            font-weight: 400;
+        }
+
+        /* ── Form ── */
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .input-wrap {
+            position: relative;
+        }
+        .input-wrap .icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 15px;
+            pointer-events: none;
+            opacity: 0.5;
+        }
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 14px 12px 42px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input:focus {
+            border-color: var(--caramel-d);
+            box-shadow: 0 0 0 3px rgba(166,124,82,0.15);
+        }
+        input::placeholder { color: var(--muted); }
+
+        /* password toggle */
+        .pw-toggle {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 16px;
+            transition: color 0.2s;
+            padding: 0;
+        }
+        .pw-toggle:hover { color: var(--caramel); }
+
+        /* ── Error banner ── */
+        .error-banner {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.3);
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 18px;
+            font-size: 13px;
+            color: #f87171;
+            animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+        }
+        .error-banner.show { display: flex; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%       { transform: translateX(-6px); }
+            40%       { transform: translateX(6px); }
+            60%       { transform: translateX(-4px); }
+            80%       { transform: translateX(4px); }
+        }
+
+        /* ── Submit button ── */
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--caramel) 0%, var(--caramel-d) 100%);
+            border: none;
+            border-radius: 10px;
+            color: #1a1008;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .btn-login::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0);
+            transition: background 0.2s;
+        }
+        .btn-login:hover::before { background: rgba(255,255,255,0.08); }
+        .btn-login:active { transform: scale(0.98); }
+        .btn-login:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .btn-login .spinner {
+            display: none;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(26,16,8,0.3);
+            border-top-color: #1a1008;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .btn-login.loading .btn-text { display: none; }
+        .btn-login.loading .spinner { display: block; }
+
+        /* ── Footer ── */
+        .footer {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 11px;
+            color: var(--muted);
+            font-family: 'DM Mono', monospace;
+        }
+        .footer a {
+            color: var(--caramel-d);
+            text-decoration: none;
+        }
+        .footer a:hover { color: var(--caramel); }
+    </style>
+</head>
+<body>
+    <div class="bg-glow"></div>
+    <div class="grain"></div>
+
+    <div class="login-wrap">
+        <div class="brand">
+            <span class="brand-icon">☕</span>
+            <div class="brand-title">SQLatte</div>
+            <div class="brand-sub">Admin Console</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                🔐 Sign in <span>to continue</span>
+            </div>
+
+            <div class="error-banner" id="errorBanner">
+                <span>⚠️</span>
+                <span id="errorMsg">Invalid username or password.</span>
+            </div>
+
+            <div class="form-group">
+                <label>Username</label>
+                <div class="input-wrap">
+                    <span class="icon">👤</span>
+                    <input type="text" id="username" placeholder="admin" autocomplete="username" autofocus>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <div class="input-wrap">
+                    <span class="icon">🔑</span>
+                    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+                    <button class="pw-toggle" onclick="togglePw()" type="button" id="pwToggle">👁</button>
+                </div>
+            </div>
+
+            <button class="btn-login" id="loginBtn" onclick="doLogin()">
+                <span class="btn-text">Enter Admin Panel →</span>
+                <div class="spinner"></div>
+            </button>
+        </div>
+
+        <div class="footer">
+            <a href="/">← Back to SQLatte</a> &nbsp;·&nbsp; v2.0
+        </div>
+    </div>
+
+    <script>
+        // Enter key support
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Enter') doLogin();
+        });
+
+        function togglePw() {
+            const pw = document.getElementById('password');
+            const btn = document.getElementById('pwToggle');
+            if (pw.type === 'password') {
+                pw.type = 'text';
+                btn.textContent = '🙈';
+            } else {
+                pw.type = 'password';
+                btn.textContent = '👁';
+            }
+        }
+
+        function showError(msg) {
+            const banner = document.getElementById('errorBanner');
+            document.getElementById('errorMsg').textContent = msg;
+            banner.classList.remove('show');
+            // re-trigger animation
+            void banner.offsetWidth;
+            banner.classList.add('show');
+        }
+
+        async function doLogin() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('loginBtn');
+
+            if (!username || !password) {
+                showError('Please enter your username and password.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.classList.add('loading');
+
+            try {
+                const res = await fetch('/admin/login/json', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',   // ← cookie'nin set edilmesi için şart
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    window.location.href = '/admin/';
+                } else {
+                    showError('Invalid username or password.');
+                }
+            } catch (err) {
+                showError('Connection failed. Is the server running?');
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('loading');
+            }
+        }
+    </script>
+</body>
+</html>
