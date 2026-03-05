@@ -598,6 +598,10 @@
                 <span>📊</span>
                 Export
             </div>
+            <div class="tab" onclick="switchTab('semantic-layers')">
+                <span>🧩</span>
+                Semantic Layers
+            </div>
             <div class="tab" onclick="switchTab('history')">
                 <span>📜</span>
                 History
@@ -1207,6 +1211,62 @@
             </div>
         </div>
 
+        <!-- TAB: Semantic Layers -->
+        <div id="tab-semantic-layers" class="tab-content">
+            <div class="config-card">
+                <h2>
+                    <span>🧩</span>
+                    Semantic Layer Configuration
+                </h2>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Enable Semantic Layers</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="semantic-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>Default Schema</label>
+                    <input type="text" id="semantic-default-schema" placeholder="default">
+                    <small>Fallback schema for semantic models.</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Semantic Config Path</label>
+                    <input type="text" id="semantic-config-path" placeholder="config/semantic_layers.yaml">
+                    <small>Path to semantic layer definitions file.</small>
+                </div>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Refresh on Startup</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="semantic-refresh-on-startup" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Fail on Validation Error</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="semantic-fail-on-validation-error">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="semantic-persist" checked>
+                    <label for="semantic-persist">💾 Save to Database</label>
+                </div>
+
+                <button class="btn btn-success" onclick="updateSemanticLayers()" style="width: 100%; margin-top: 16px;">
+                    <span>✓</span>
+                    Apply Semantic Layer Settings
+                </button>
+            </div>
+        </div>
+
         <!-- TAB: History -->
         <div id="tab-history" class="tab-content">
             <div class="config-card">
@@ -1247,7 +1307,7 @@
 
                     <div style="margin-bottom: 20px; padding: 16px; background: rgba(212, 165, 116, 0.1); border: 1px solid #D4A574; border-radius: 8px; font-size: 13px;">
                         <strong>💡 What is a Snapshot?</strong><br>
-                        A snapshot saves ALL current configuration settings (LLM, Database, Email, Scheduler, Insights, Export) at this moment. You can restore any snapshot later to quickly rollback to a known working state.
+                        A snapshot saves ALL current configuration settings (LLM, Database, Email, Scheduler, Insights, Export, Semantic Layers) at this moment. You can restore any snapshot later to quickly rollback to a known working state.
                         <br><br>
                         <strong>Use Cases:</strong>
                         <ul style="margin: 8px 0 0 20px; color: #a0a0a0;">
@@ -1282,7 +1342,7 @@
 
                     <div style="margin-bottom: 20px; padding: 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; font-size: 13px; color: #ef4444;">
                         <strong>⚠️ Warning:</strong><br>
-                        Restoring a snapshot will replace ALL current configuration with the saved snapshot state. This includes LLM, Database, Email, Scheduler, Insights, and Export settings.
+                        Restoring a snapshot will replace ALL current configuration with the saved snapshot state. This includes LLM, Database, Email, Scheduler, Insights, Export, and Semantic Layer settings.
                         <br><br>
                         <strong>Recommended:</strong> Create a new snapshot before restoring, so you can rollback if needed.
                     </div>
@@ -1660,6 +1720,16 @@
                     : exportConfig.formats.split(',');
                 renderFormats();
             }
+
+            // ─────────────────────────────────────────────
+            // SEMANTIC LAYERS CONFIG
+            // ─────────────────────────────────────────────
+            const semanticConfig = config.semantic_layers || {};
+            document.getElementById('semantic-enabled').checked = toBool(semanticConfig.enabled);
+            document.getElementById('semantic-default-schema').value = semanticConfig.default_schema || 'default';
+            document.getElementById('semantic-config-path').value = semanticConfig.config_path || 'config/semantic_layers.yaml';
+            document.getElementById('semantic-refresh-on-startup').checked = toBool(semanticConfig.refresh_on_startup !== false);
+            document.getElementById('semantic-fail-on-validation-error').checked = toBool(semanticConfig.fail_on_validation_error);
         }
 
         function updateSystemInfo(data) {
@@ -1674,6 +1744,7 @@
                 <li><strong>Email:</strong> <span class="status-badge ${config.email?.enabled ? 'status-success' : 'status-warning'}">${config.email?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
                 <li><strong>Scheduler:</strong> <span class="status-badge ${config.scheduler?.enabled ? 'status-success' : 'status-warning'}">${config.scheduler?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
                 <li><strong>Insights:</strong> <span class="status-badge ${config.insights?.enabled ? 'status-success' : 'status-warning'}">${config.insights?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
+                <li><strong>Semantic Layers:</strong> <span class="status-badge ${config.semantic_layers?.enabled ? 'status-success' : 'status-warning'}">${config.semantic_layers?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
                 <li><strong>DB Backend:</strong> <span class="status-badge ${dbEnabled ? 'status-success' : 'status-warning'}">${dbEnabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
             `;
         }
@@ -2142,6 +2213,38 @@
 
                 if (result.success) {
                     showToast(`✅ Export configuration updated${persist ? ' and saved' : ''}`, 'success');
+                    loadConfig();
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function updateSemanticLayers() {
+            const config = {
+                enabled: document.getElementById('semantic-enabled').checked,
+                default_schema: document.getElementById('semantic-default-schema').value,
+                config_path: document.getElementById('semantic-config-path').value,
+                refresh_on_startup: document.getElementById('semantic-refresh-on-startup').checked,
+                fail_on_validation_error: document.getElementById('semantic-fail-on-validation-error').checked
+            };
+
+            const persist = document.getElementById('semantic-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/semantic-layers`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        config: config,
+                        persist: persist
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`✅ Semantic layer configuration updated${persist ? ' and saved' : ''}`, 'success');
                     loadConfig();
                 }
             } catch (error) {

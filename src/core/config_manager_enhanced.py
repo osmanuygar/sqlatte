@@ -98,6 +98,8 @@ class ConfigManager:
 
                 # Bootstrap from YAML if DB is empty
                 self.config_db.bootstrap_from_yaml(yaml_config)
+                # Ensure newly introduced semantic layer keys exist on every startup
+                self.config_db.ensure_semantic_layer_configs(yaml_config)
 
                 print(f"✅ Database-backed configuration enabled ({db_type.upper()})")
             else:
@@ -107,6 +109,8 @@ class ConfigManager:
 
                 # Bootstrap from YAML
                 self.config_db.bootstrap_from_yaml(yaml_config)
+                # Keep semantic layer keyset in sync each run
+                self.config_db.ensure_semantic_layer_configs(yaml_config)
 
                 print("✅ Database-backed configuration enabled (In-Memory SQLite)")
 

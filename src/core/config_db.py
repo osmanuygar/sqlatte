@@ -294,6 +294,12 @@ class ConfigDB:
             self._set_config('insights.include_statistical', str(insights_config.get('include_statistical', True)), 'insights', 'bool')
 
         # ============================================
+        # Bootstrap Semantic Layer Configurations
+        # ============================================
+        for entry in self._get_semantic_layer_entries(yaml_config):
+            self._set_config(*entry)
+
+        # ============================================
         # Bootstrap Export Configurations
         # ============================================
         export_config = yaml_config.get('export', {})
@@ -363,6 +369,70 @@ class ConfigDB:
         print("✅ Bootstrap completed successfully")
         return True
 
+    def _get_semantic_layer_entries(self, yaml_config: Dict[str, Any]) -> List[tuple]:
+        """Build semantic layer config entries from YAML defaults."""
+        semantic_config = yaml_config.get('semantic_layers', {})
+        return [
+            (
+                'semantic_layers.enabled',
+                str(semantic_config.get('enabled', False)),
+                'semantic_layers',
+                'bool',
+                False,
+                'Enable semantic layer support',
+            ),
+            (
+                'semantic_layers.default_schema',
+                semantic_config.get('default_schema', 'default'),
+                'semantic_layers',
+                'string',
+                False,
+                'Default semantic layer schema',
+            ),
+            (
+                'semantic_layers.config_path',
+                semantic_config.get('config_path', 'config/semantic_layers.yaml'),
+                'semantic_layers',
+                'string',
+                False,
+                'Semantic layer definitions path',
+            ),
+            (
+                'semantic_layers.refresh_on_startup',
+                str(semantic_config.get('refresh_on_startup', True)),
+                'semantic_layers',
+                'bool',
+                False,
+                'Reload semantic layers during application startup',
+            ),
+            (
+                'semantic_layers.fail_on_validation_error',
+                str(semantic_config.get('fail_on_validation_error', False)),
+                'semantic_layers',
+                'bool',
+                False,
+                'Fail startup when semantic layer validation fails',
+            ),
+        ]
+
+    def ensure_semantic_layer_configs(self, yaml_config: Dict[str, Any]) -> int:
+        """
+        Ensure semantic layer keys exist in DB.
+        This should run on every startup to fill newly introduced keys.
+        """
+        inserted = 0
+        for entry in self._get_semantic_layer_entries(yaml_config):
+            if self._set_config_if_missing(*entry):
+                inserted += 1
+
+        if inserted:
+            self.conn.commit()
+            print(f"🧩 Added {inserted} missing semantic layer config keys")
+        else:
+            print("🧩 Semantic layer config keys already up to date")
+
+        return inserted
+
     def _set_config(self,
                     key: str,
                     value: str,
@@ -394,6 +464,30 @@ class ConfigDB:
             """, (key, stored_value, config_type, value_type, is_sensitive, description))
 
         cursor.close()
+
+    def _set_config_if_missing(self,
+                               key: str,
+                               value: str,
+                               config_type: str,
+                               value_type: str = 'string',
+                               is_sensitive: bool = False,
+                               description: str = None) -> bool:
+        """Insert config only if key does not already exist."""
+        if self._config_key_exists(key):
+            return False
+        self._set_config(key, value, config_type, value_type, is_sensitive, description)
+        return True
+
+    def _config_key_exists(self, key: str) -> bool:
+        """Check whether a config key already exists in storage."""
+        cursor = self.conn.cursor()
+        if self.db_type == "postgresql":
+            cursor.execute("SELECT 1 FROM configurations WHERE config_key = %s", (key,))
+        else:
+            cursor.execute("SELECT 1 FROM configurations WHERE config_key = ?", (key,))
+        exists = cursor.fetchone() is not None
+        cursor.close()
+        return exists
 
     def get_config(self, key: str, default: Any = None, decrypt: bool = True) -> Any:
         """

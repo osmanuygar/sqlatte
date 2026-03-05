@@ -314,6 +314,14 @@ insights:
   max_insights: 3
   include_statistical: true
 
+# Semantic Layer Configuration
+semantic_layers:
+  enabled: false
+  default_schema: "default"
+  config_path: "config/semantic_layers.yaml"
+  refresh_on_startup: true
+  fail_on_validation_error: false
+
 # ============================================
 # PROMPTS CONFIGURATION
 # ============================================

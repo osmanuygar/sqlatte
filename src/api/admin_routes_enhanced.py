@@ -247,6 +247,7 @@ async def get_current_config(admin_user: str = Depends(require_admin)):
                 "has_scheduler_config": 'scheduler' in safe_config,
                 "has_insights_config": 'insights' in safe_config,
                 "has_export_config": 'export' in safe_config,
+                "has_semantic_layers_config": 'semantic_layers' in safe_config,
             }
         }
     except Exception as e:
@@ -518,6 +519,12 @@ class ExportConfigRequest(BaseModel):
     persist: bool = False
 
 
+class SemanticLayersConfigRequest(BaseModel):
+    """Request model for semantic layer config updates"""
+    config: Dict[str, Any]
+    persist: bool = False
+
+
 @router.put("/config/export")
 async def update_export_config(request: ExportConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
@@ -551,6 +558,29 @@ async def update_export_config(request: ExportConfigRequest, http_request: Reque
         return {
             "success": True,
             "message": "Export configuration updated",
+            "config": request.config
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/config/semantic-layers")
+async def update_semantic_layers_config(request: SemanticLayersConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
+    """Update semantic layer configuration."""
+    try:
+        user = http_request.headers.get('X-User', 'api')
+
+        updates = {'semantic_layers': request.config}
+        config_manager.update_config(
+            updates=updates,
+            persist=request.persist,
+            user=user,
+            reason="Semantic layer config updated"
+        )
+
+        return {
+            "success": True,
+            "message": "Semantic layer configuration updated",
             "config": request.config
         }
     except Exception as e:
