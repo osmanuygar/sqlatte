@@ -582,7 +582,7 @@ def get_semantic_layer_db(config: Optional[Dict[str, Any]] = None,
     Get singleton instance of Semantic Layer DB
 
     Args:
-        config: Database configuration
+        config: Database configuration {'config_db': {'host': ..., 'port': ...}}
         use_memory: Use in-memory SQLite (for testing)
     """
     global _semantic_layer_db
@@ -591,13 +591,24 @@ def get_semantic_layer_db(config: Optional[Dict[str, Any]] = None,
         if use_memory:
             _semantic_layer_db = SemanticLayerDB(use_memory=True)
         elif config:
+            # Extract config_db (support both nested and flat)
             db_config = config.get('database', {}).get('config_db', {})
+            if not db_config:
+                db_config = config.get('config_db', {})
+
+            # Support nested postgresql config
+            if 'postgresql' in db_config:
+                pg_config = db_config['postgresql']
+            else:
+                pg_config = db_config
+
+            # Create instance with extracted config
             _semantic_layer_db = SemanticLayerDB(
-                db_host=db_config.get('host', 'localhost'),
-                db_port=db_config.get('port', 5432),
-                db_name=db_config.get('database', 'sqlatte_config'),
-                db_user=db_config.get('user', 'postgres'),
-                db_password=db_config.get('password', '')
+                db_host=pg_config.get('host', 'localhost'),
+                db_port=pg_config.get('port', 5432),
+                db_name=pg_config.get('database', 'sqlatte_config'),
+                db_user=pg_config.get('user', 'postgres'),
+                db_password=pg_config.get('password', '')
             )
         else:
             # Default config
