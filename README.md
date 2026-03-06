@@ -45,12 +45,21 @@
 
 ### Latest Features (2026)
 
+** 🆕 New in v0.5.0 - Semantic Layer (Beta)**
+Transform your data warehouse with business intelligence metadata:
+
+- **🧠 Business-Friendly Names** - "Customer Master" instead of "cust_tbl_v2"
+- **🔗 Automatic JOINs** - Define relationships once, AI uses them automatically
+- **📈 Calculated Metrics** - Centralized business logic (everyone gets same "revenue")
+- **🔍 Auto-Discovery** - Scan database and get instant entity suggestions
+- **🎨 Visual Admin UI** - Browser-based management with 5 tabs
+- **🤖 Enhanced AI** - Richer context = better SQL generation
+
 📊 **Dashboard System** - 
 Automatically generate visual reports from your favorite queries with one click. 
 - Supports line charts, bar charts, pie charts, and tables. 
 - Configure chart types and settings directly from the admin panel.
 - Save dashboards for quick access to key metrics and insights.
-
 
 🧠 **AI-Powered Insights Engine**
 - Automatic data analysis and pattern detection
@@ -407,6 +416,54 @@ Execute       Return
           ↓
     Return to User 
 ```
+
+System Architecture
+```
+┌─────────────────────────────────────────────────┐
+│                 User Interface                  │
+│  (Web Chat │ Widgets │ Admin Panel │ API)      │
+└────────────────────┬────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────┐
+│              Semantic Layer (0.5.0)             │
+│  • Business Metadata  • Relationships           │
+│  • Metrics           • Auto-discovery           │
+└────────────────────┬────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────┐
+│           LLM Provider Factory                  │
+│  (Claude │ Gemini │ Vertex AI)                 │
+└────────────────────┬────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────┐
+│         Database Provider Factory               │
+│  (Trino │ PostgreSQL │ MySQL │ BigQuery)       │
+└─────────────────────────────────────────────────┘
+```
+---
+## 🗄️ Supported Databases
+
+| Database | Status | Notes |
+|----------|--------|-------|
+| ✅ Trino | Stable | Multi-catalog support |
+| ✅ PostgreSQL | Stable | Full feature support |
+| ✅ MySQL | Stable | Full feature support |
+| ✅ BigQuery | Stable | GCP integration |
+| 🔄 ClickHouse | Planned | Coming in v0.6 |
+| 🔄 Snowflake | Planned | Coming in v0.6 |
+
+---
+
+## 🤖 Supported LLM Providers
+
+| Provider | Status | Best For |
+|----------|--------|----------|
+| ✅ Anthropic Claude | Recommended | Most accurate SQL |
+| ✅ Google Gemini | Stable | Free tier available |
+| ✅ Google Vertex AI | Stable | Enterprise GCP |
+| 🔄 OpenAI | Planned | Coming soon |
+
+---
 
 ---
 
