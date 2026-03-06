@@ -1235,37 +1235,35 @@ async def startup_event():
         from src.core.semantic_layer_db import get_semantic_layer_db
 
         current_config = config_manager.get_config()
-        db_config = current_config.get('database', {}).get('config_db', {})
+        db_config = current_config.get('config_db', {})
 
-        # Use same database as config_db if available
-        if db_config and db_config.get('host'):
-            semantic_db = get_semantic_layer_db(config=current_config, use_memory=False)
-            print("✅ Semantic Layer DB initialized (PostgreSQL)")
+        if db_config.get('enabled'):
+            # Pass full config to function
+            semantic_db = get_semantic_layer_db(
+                config=current_config,
+                use_memory=False
+            )
+
+            # Get stats
+            entities = semantic_db.get_entities()
+            relationships = semantic_db.get_relationships()
+            metrics = semantic_db.get_metrics()
+
+            print(f"✅ Semantic Layer initialized (PostgreSQL)")
+            print(f"   └─ Entities: {len(entities)}")
+            print(f"   └─ Relationships: {len(relationships)}")
+            print(f"   └─ Metrics: {len(metrics)}")
+
+            app.state.semantic_db = semantic_db
         else:
-            # Fallback to in-memory SQLite
-            semantic_db = get_semantic_layer_db(use_memory=True)
-            print("✅ Semantic Layer DB initialized (In-Memory SQLite)")
-
-        # Verify and report
-        entities = semantic_db.get_entities()
-        relationships = semantic_db.get_relationships()
-        metrics = semantic_db.get_metrics()
-
-        print(f"   └─ Entities: {len(entities)}")
-        print(f"   └─ Relationships: {len(relationships)}")
-        print(f"   └─ Metrics: {len(metrics)}")
-
-        if len(entities) > 0:
-            print(f"   └─ Semantic layer is active and enhancing queries ✨")
-        else:
-            print(f"   └─ No entities defined yet - use Admin Panel to configure")
+            print("⚠️  Semantic Layer disabled (config_db.enabled = false)")
+            app.state.semantic_db = None
 
     except Exception as e:
-        print(f"⚠️ Semantic Layer initialization failed: {e}")
-        print("   Semantic layer will be unavailable")
-        print("   Core features will work normally")
+        print(f"⚠️  Semantic Layer failed: {e}")
         import traceback
         traceback.print_exc()
+        app.state.semantic_db = None
     print("✅ SQLatte startup complete!\n")
 
 
