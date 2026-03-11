@@ -32,8 +32,12 @@ config_db:
 
   encryption_key: "******"
 
+admin:
+  enabled: true
+  username: "admin"
+  password: "admin!"
 # ============================================
-# UTHENTICATION PLUGIN
+# AUTHENTICATION PLUGIN
 # ============================================
 plugins:
   auth:
@@ -108,6 +112,11 @@ llm:
     # Model name
     # Options: gemini-pro, gemini-1.5-pro, gemini-1.5-flash
     model: "gemini-2.5-flash"
+    #    model_routing:
+    #      intent_detection: "gemini-2.5-flash"
+    #      chat: "gemini-2.5-flash"
+    #      sql: "gemini-2.5-pro"
+    #      insights: "gemini-2.5-flash"
 
     # Token limit
     max_tokens: 1000

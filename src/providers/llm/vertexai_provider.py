@@ -167,7 +167,18 @@ class VertexAIProvider(LLMProvider):
 
     def generate_sql(self, question: str, schema_info: str) -> Tuple[str, str]:
         """Generate SQL query using Vertex AI"""
+        from src.core.semantic_prompt_enhancer import get_semantic_enhancer
 
+        enhancer = get_semantic_enhancer()
+        catalog, schema_name = enhancer.extract_catalog_schema(schema_info)
+
+        enhanced_schema = enhancer.enhance_schema_info(
+            schema_info,
+            catalog=catalog,
+            schema_name=schema_name
+        )
+
+        semantic_instructions = enhancer.get_sql_generation_instructions()
         prompt_template = self.get_prompt('sql_generation',
                                           """You are a SQL expert. Generate a SQL query based on the user's question.
 

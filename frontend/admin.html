@@ -534,6 +534,123 @@
             cursor: pointer;
             font-weight: bold;
         }
+
+        .semantic-subtab {
+            padding: 10px 20px;
+            background: #1a1a1a;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #888;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .semantic-subtab:hover {
+            color: #D4A574;
+            background: #242424;
+        }
+
+        .semantic-subtab.active {
+            color: #D4A574;
+            border-bottom-color: #D4A574;
+        }
+
+        .semantic-section {
+            display: none;
+        }
+
+        .semantic-section.active {
+            display: block;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-dialog {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #D4A574;
+            font-size: 18px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #2a2a2a;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        details summary {
+            user-select: none;
+        }
+        details summary:hover {
+            background: #141414 !important;
+        }
+        details[open] summary {
+            margin-bottom: 8px;
+            border-bottom: 1px solid #333;
+        }
     </style>
 </head>
 <body>
@@ -605,6 +722,10 @@
             <div class="tab" onclick="switchTab('snapshots')">
                 <span>📸</span>
                 Snapshots
+            </div>
+            <div class="tab" onclick="switchTab('semantic')">
+                <span>🧠</span>
+                Semantic Layer
             </div>
         </div>
 
@@ -1319,6 +1440,543 @@
                     8. Auto hot reload<br>
                     9. ✅ Everything back to normal in 30 seconds!
                 </div>
+            </div>
+        </div>
+        <div id="tab-semantic" class="tab-content">
+            <div class="info-banner" style="margin-bottom: 24px;">
+                <strong>🧠 Semantic Layer</strong><br>
+                Define business-friendly names, relationships, and calculated metrics on top of your database tables.
+            </div>
+
+            <!-- Sub-tabs -->
+            <div class="semantic-subtabs" style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 2px solid #2a2a2a; padding-bottom: 12px;">
+                <button class="semantic-subtab active" onclick="semanticLayerApp.switchTab('entities')" data-tab="entities">
+                    📊 Entities
+                </button>
+                <button class="semantic-subtab" onclick="semanticLayerApp.switchTab('relationships')" data-tab="relationships">
+                    🔗 Relationships
+                </button>
+                <button class="semantic-subtab" onclick="semanticLayerApp.switchTab('metrics')" data-tab="metrics">
+                    📈 Metrics
+                </button>
+                <button class="semantic-subtab" onclick="semanticLayerApp.switchTab('discover')" data-tab="discover">
+                    🔍 Auto-Discover
+                </button>
+                <button class="semantic-subtab" onclick="semanticLayerApp.switchTab('info')" data-tab="info">
+                    ℹ️ How to Use
+                </button>
+            </div>
+
+            <!-- ENTITIES SECTION -->
+            <div id="semantic-entities" class="semantic-section active">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3>📊 Entity Manager</h3>
+                    <button class="btn btn-primary" onclick="semanticLayerApp.showEntityModal()">+ Add Entity</button>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                    <input type="text" id="entity-catalog-filter" placeholder="Filter by catalog..."
+                           style="flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                    <input type="text" id="entity-schema-filter" placeholder="Filter by schema..."
+                           style="flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #e0e0e0;">
+                    <button class="btn" onclick="semanticLayerApp.loadEntities()" style="background: #333; padding: 10px 20px;">🔄 Refresh</button>
+                </div>
+
+                <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead style="background: #242424;">
+                            <tr>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Table Name</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Display Name</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Catalog</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Schema</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Primary Key</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="entities-table-body" style="color: #ccc;">
+                            <tr><td colspan="6" style="padding: 40px; text-align: center; color: #666;">Click Refresh to load...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- RELATIONSHIPS SECTION -->
+            <div id="semantic-relationships" class="semantic-section" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3>🔗 Relationship Manager</h3>
+                    <button class="btn btn-primary" onclick="semanticLayerApp.showRelationshipModal()">+ Add Relationship</button>
+                </div>
+
+                <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead style="background: #242424;">
+                            <tr>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Name</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">From</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">To</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Type</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="relationships-table-body" style="color: #ccc;">
+                            <tr><td colspan="5" style="padding: 40px; text-align: center; color: #666;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- METRICS SECTION -->
+            <div id="semantic-metrics" class="semantic-section" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3>📈 Metric Manager</h3>
+                    <button class="btn btn-primary" onclick="semanticLayerApp.showMetricModal()">+ Add Metric</button>
+                </div>
+
+                <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead style="background: #242424;">
+                            <tr>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Name</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Display Name</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">SQL Expression</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Format</th>
+                                <th style="padding: 12px; text-align: left; color: #D4A574;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="metrics-table-body" style="color: #ccc;">
+                            <tr><td colspan="5" style="padding: 40px; text-align: center; color: #666;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- AUTO-DISCOVER SECTION -->
+            <div id="semantic-discover" class="semantic-section" style="display: none;">
+                <h3 style="margin-bottom: 20px;">🔍 Auto-Discover Entities</h3>
+                <div class="config-card">
+                    <div class="form-group">
+                        <label>Catalog (optional)</label>
+                        <input type="text" id="discover-catalog" placeholder="e.g., hive">
+                    </div>
+                    <div class="form-group">
+                        <label>Schema (optional)</label>
+                        <input type="text" id="discover-schema" placeholder="e.g., default">
+                    </div>
+                    <div class="form-group">
+                        <label>Tables (comma-separated)</label>
+                        <input type="text" id="discover-tables" placeholder="e.g., customers, orders">
+                    </div>
+                    <button class="btn btn-primary" onclick="semanticLayerApp.discoverEntities()">🔍 Discover</button>
+                </div>
+                <div id="discovery-results" style="margin-top: 24px; display: none;">
+                    <h4 style="color: #D4A574;">Results</h4>
+                    <div id="discovery-results-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODALS (hidden by default) -->
+        <div id="entity-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center;">
+            <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:24px; width:90%; max-width:500px;">
+                <h3 style="color:#D4A574; margin-bottom:20px;">📊 Create Entity</h3>
+                <div class="form-group"><label>Table Name *</label><input type="text" id="entity-table-name"></div>
+                <div class="form-group"><label>Display Name</label><input type="text" id="entity-display-name"></div>
+                <div class="form-group"><label>Catalog</label><input type="text" id="entity-catalog"></div>
+                <div class="form-group"><label>Schema</label><input type="text" id="entity-schema"></div>
+                <div class="form-group"><label>Primary Key</label><input type="text" id="entity-primary-key"></div>
+                <div style="display:flex; gap:12px; margin-top:20px;">
+                    <button class="btn" onclick="semanticLayerApp.closeEntityModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="semanticLayerApp.createEntity()">Create</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="relationship-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center;">
+            <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:24px; width:90%; max-width:600px;">
+                <h3 style="color:#D4A574; margin-bottom:20px;">🔗 Create Relationship</h3>
+                <div class="form-group"><label>Name *</label><input type="text" id="rel-name"></div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                    <div>
+                        <div class="form-group"><label>From Entity *</label><select id="rel-from-entity" onchange="semanticLayerApp.loadFromColumns()"></select></div>
+                        <div class="form-group"><label>From Column *</label><select id="rel-from-column"></select></div>
+                    </div>
+                    <div>
+                        <div class="form-group"><label>To Entity *</label><select id="rel-to-entity" onchange="semanticLayerApp.loadToColumns()"></select></div>
+                        <div class="form-group"><label>To Column *</label><select id="rel-to-column"></select></div>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="rel-type">
+                            <option value="one_to_one">One-to-One</option>
+                            <option value="many_to_one" selected>Many-to-One</option>
+                            <option value="one_to_many">One-to-Many</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Join Type</label>
+                        <select id="rel-join-type">
+                            <option value="LEFT" selected>LEFT</option>
+                            <option value="INNER">INNER</option>
+                            <option value="RIGHT">RIGHT</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex; gap:12px; margin-top:20px;">
+                    <button class="btn" onclick="semanticLayerApp.closeRelationshipModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="semanticLayerApp.createRelationship()">Create</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="metric-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center;">
+            <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:24px; width:90%; max-width:500px;">
+                <h3 style="color:#D4A574; margin-bottom:20px;">📈 Create Metric</h3>
+                <div class="form-group"><label>Name *</label><input type="text" id="metric-name"></div>
+                <div class="form-group"><label>Display Name</label><input type="text" id="metric-display-name"></div>
+                <div class="form-group"><label>SQL Expression *</label><textarea id="metric-sql" rows="3"></textarea></div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                    <div class="form-group">
+                        <label>Format</label>
+                        <select id="metric-format">
+                            <option value="">None</option>
+                            <option value="currency">Currency</option>
+                            <option value="percentage">Percentage</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Category</label><input type="text" id="metric-category"></div>
+                </div>
+                <div style="display:flex; gap:12px; margin-top:20px;">
+                    <button class="btn" onclick="semanticLayerApp.closeMetricModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="semanticLayerApp.createMetric()">Create</button>
+                </div>
+            </div>
+        </div>
+        <div id="semantic-info" class="semantic-section" style="display: none;">
+            <h3 style="margin-bottom: 20px;">ℹ️ How to Use Semantic Layer</h3>
+
+            <!-- Overview Card -->
+            <div class="config-card" style="margin-bottom: 20px;">
+                <h4 style="color: #D4A574; margin-bottom: 12px;">📖 What is Semantic Layer?</h4>
+                <p style="color: #a0a0a0; line-height: 1.6;">
+                    Semantic Layer adds <strong>business context</strong> on top of your raw database tables.
+                    It helps the AI understand your data better by providing:
+                </p>
+                <ul style="color: #ccc; margin-left: 20px; line-height: 1.8;">
+                    <li><strong>Business Names:</strong> "Customer Master" instead of "cust_tbl_v2"</li>
+                    <li><strong>Relationships:</strong> Automatic JOIN generation between tables</li>
+                    <li><strong>Metrics:</strong> Pre-defined calculations everyone uses consistently</li>
+                    <li><strong>Dimensions:</strong> What fields to group by (region, category, etc.)</li>
+                </ul>
+            </div>
+
+            <!-- Quick Start Guide -->
+            <div class="config-card" style="margin-bottom: 20px;">
+                <h4 style="color: #D4A574; margin-bottom: 12px;">🚀 Quick Start (3 Steps)</h4>
+
+                <div style="padding-left: 20px; border-left: 3px solid #D4A574; margin-bottom: 16px;">
+                    <h5 style="color: #60a5fa; margin-bottom: 8px;">Step 1: Create Entities</h5>
+                    <p style="color: #a0a0a0; margin-bottom: 8px;">Use <strong>Auto-Discover</strong> to scan your database:</p>
+                    <code style="display: block; background: #0a0a0a; padding: 12px; border-radius: 6px; color: #4ade80; margin-bottom: 8px;">
+                        Catalog: hive<br>
+                        Schema: default<br>
+                        Tables: customers, orders, products
+                    </code>
+                    <p style="color: #888; font-size: 13px;">Click "Discover" → Review suggestions → Create entities</p>
+                </div>
+
+                <div style="padding-left: 20px; border-left: 3px solid #D4A574; margin-bottom: 16px;">
+                    <h5 style="color: #60a5fa; margin-bottom: 8px;">Step 2: Define Relationships</h5>
+                    <p style="color: #a0a0a0; margin-bottom: 8px;">Connect your tables:</p>
+                    <code style="display: block; background: #0a0a0a; padding: 12px; border-radius: 6px; color: #4ade80; margin-bottom: 8px;">
+                        From: orders.customer_id<br>
+                        To: customers.id<br>
+                        Type: many_to_one
+                    </code>
+                    <p style="color: #888; font-size: 13px;">AI will automatically generate JOINs!</p>
+                </div>
+
+                <div style="padding-left: 20px; border-left: 3px solid #D4A574;">
+                    <h5 style="color: #60a5fa; margin-bottom: 8px;">Step 3: Create Metrics</h5>
+                    <p style="color: #a0a0a0; margin-bottom: 8px;">Define business calculations:</p>
+                    <code style="display: block; background: #0a0a0a; padding: 12px; border-radius: 6px; color: #4ade80; margin-bottom: 8px;">
+                        Name: total_revenue<br>
+                        SQL: SUM(orders.amount)<br>
+                        Format: currency
+                    </code>
+                    <p style="color: #888; font-size: 13px;">Everyone gets the same "revenue" calculation!</p>
+                </div>
+            </div>
+
+            <!-- LLM Prompt Integration -->
+            <div class="config-card" style="margin-bottom: 20px; border: 2px solid #D4A574;">
+                <h4 style="color: #D4A574; margin-bottom: 12px;">🤖 LLM Prompt Integration</h4>
+                <p style="color: #a0a0a0; margin-bottom: 16px;">
+                    To use semantic layer, your LLM provider's <code style="background: #0a0a0a; padding: 2px 6px; border-radius: 3px;">generate_sql()</code> method needs to enhance the schema with semantic context.
+                </p>
+
+                <h5 style="color: #60a5fa; margin-bottom: 8px;">📝 Required Code Changes:</h5>
+                <p style="color: #a0a0a0; margin-bottom: 8px;">In each LLM provider file (e.g., <code>anthropic_provider.py</code>):</p>
+
+                <pre style="background: #0a0a0a; padding: 16px; border-radius: 8px; overflow-x: auto; color: #e0e0e0; font-size: 13px; line-height: 1.6; border: 1px solid #333;">
+        <span style="color: #888;"># In src/providers/llm/anthropic_provider.py</span>
+
+        <span style="color: #c678dd;">def</span> <span style="color: #61afef;">generate_sql</span>(self, question: str, schema_info: str) -> Tuple[str, str]:
+            <span style="color: #98c379;">"""Generate SQL with semantic enhancement"""</span>
+
+            <span style="color: #888;"># ✅ ADD THIS BLOCK</span>
+            <span style="color: #c678dd;">from</span> src.core.semantic_prompt_enhancer <span style="color: #c678dd;">import</span> get_semantic_enhancer
+
+            enhancer = get_semantic_enhancer()
+
+            <span style="color: #888;"># Extract catalog/schema from schema_info</span>
+            catalog, schema_name = enhancer.extract_catalog_schema(schema_info)
+
+            <span style="color: #888;"># Enhance schema with semantic context</span>
+            enhanced_schema = enhancer.enhance_schema_info(
+                schema_info,
+                catalog=catalog,
+                schema_name=schema_name
+            )
+
+            <span style="color: #888;"># Get additional instructions for SQL generation</span>
+            semantic_instructions = enhancer.get_sql_generation_instructions()
+
+            <span style="color: #888;"># Build prompt with enhanced schema</span>
+            prompt = <span style="color: #98c379;">f"""
+            Generate SQL query from natural language.
+
+            Available Schema:
+            {enhanced_schema}
+
+            {semantic_instructions}
+
+            User Question: {question}
+
+            Generate the SQL query.
+            """</span>
+
+            <span style="color: #888;"># ... rest of your existing code ...</span>
+        </pre>
+
+                <h5 style="color: #60a5fa; margin-top: 16px; margin-bottom: 8px;">📁 Files to Update:</h5>
+                <ul style="color: #ccc; margin-left: 20px; line-height: 1.8;">
+                    <li><code>src/providers/llm/anthropic_provider.py</code></li>
+                    <li><code>src/providers/llm/gemini_provider.py</code></li>
+                    <li><code>src/providers/llm/vertexai_provider.py</code></li>
+                </ul>
+            </div>
+
+            <!-- Example: Before vs After -->
+            <div class="config-card" style="margin-bottom: 20px;">
+                <h4 style="color: #D4A574; margin-bottom: 12px;">📊 Example: Before vs After</h4>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <!-- WITHOUT Semantic Layer -->
+                    <div style="background: #0a0a0a; padding: 16px; border-radius: 8px; border: 1px solid #333;">
+                        <h5 style="color: #f87171; margin-bottom: 12px;">❌ Without Semantic Layer</h5>
+                        <p style="color: #a0a0a0; font-size: 13px; margin-bottom: 12px;"><strong>User asks:</strong> "Show me revenue by region"</p>
+                        <div style="background: #1a1a1a; padding: 12px; border-radius: 6px; margin-bottom: 8px;">
+                            <p style="color: #888; font-size: 12px; margin-bottom: 8px;">LLM sees:</p>
+                            <code style="color: #666; font-size: 11px;">
+                                Table: orders<br>
+                                - id, customer_id, amount<br><br>
+                                Table: customers<br>
+                                - id, name, region
+                            </code>
+                        </div>
+                        <p style="color: #f87171; font-size: 13px;">❓ LLM confused:</p>
+                        <ul style="color: #888; font-size: 12px; margin-left: 16px;">
+                            <li>What is "revenue"? SUM? COUNT?</li>
+                            <li>How to join tables?</li>
+                            <li>Which column is "region"?</li>
+                        </ul>
+                    </div>
+
+                    <!-- WITH Semantic Layer -->
+                    <div style="background: #0a0a0a; padding: 16px; border-radius: 8px; border: 1px solid #4ade80;">
+                        <h5 style="color: #4ade80; margin-bottom: 12px;">✅ With Semantic Layer</h5>
+                        <p style="color: #a0a0a0; font-size: 13px; margin-bottom: 12px;"><strong>User asks:</strong> "Show me revenue by region"</p>
+                        <div style="background: #1a1a1a; padding: 12px; border-radius: 6px; margin-bottom: 8px;">
+                            <p style="color: #888; font-size: 12px; margin-bottom: 8px;">LLM sees:</p>
+                            <code style="color: #4ade80; font-size: 11px;">
+                                📊 Orders (order transactions)<br>
+                                - Metrics: revenue = SUM(amount)<br><br>
+                                📊 Customers (customer master)<br>
+                                - Dimensions: region<br><br>
+                                🔗 Relationship: orders → customers<br>
+                                ON orders.customer_id = customers.id
+                            </code>
+                        </div>
+                        <p style="color: #4ade80; font-size: 13px;">✅ Perfect SQL:</p>
+                        <code style="display: block; background: #1a1a1a; padding: 8px; border-radius: 6px; color: #60a5fa; font-size: 11px;">
+                            SELECT customers.region,<br>
+                            &nbsp;&nbsp;SUM(orders.amount) as revenue<br>
+                            FROM orders<br>
+                            LEFT JOIN customers<br>
+                            &nbsp;&nbsp;ON orders.customer_id = customers.id<br>
+                            GROUP BY customers.region
+                        </code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- What Semantic Layer Adds to Prompt -->
+            <div class="config-card" style="margin-bottom: 20px;">
+                <h4 style="color: #D4A574; margin-bottom: 12px;">📝 What Gets Added to LLM Prompt</h4>
+                <p style="color: #a0a0a0; margin-bottom: 12px;">When semantic layer is active, the prompt includes:</p>
+
+                <div style="background: #0a0a0a; padding: 16px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
+                    <pre style="color: #e0e0e0; font-size: 12px; line-height: 1.6; margin: 0;">
+        <span style="color: #888;">=== BUSINESS CONTEXT (Semantic Layer) ===</span>
+
+        <span style="color: #D4A574;">📊 Available Entities (Tables with Business Names):</span>
+          <span style="color: #60a5fa;">• hive.default.customers</span>
+            Business Name: <span style="color: #4ade80;">Customer Master</span>
+            Description: <span style="color: #888;">Central repository of customer information</span>
+            Dimensions: <span style="color: #c678dd;">region, customer_type, segment</span>
+            Primary Key: <span style="color: #e5c07b;">id</span>
+
+          <span style="color: #60a5fa;">• hive.default.orders</span>
+            Business Name: <span style="color: #4ade80;">Sales Transactions</span>
+            Dimensions: <span style="color: #c678dd;">order_date, status</span>
+            Metrics: <span style="color: #f87171;">amount, quantity</span>
+
+        <span style="color: #D4A574;">🔗 Available Relationships (Automatic JOINs):</span>
+          <span style="color: #60a5fa;">• customer_orders:</span> orders.customer_id → customers.id (many_to_one)
+          <span style="color: #888;">Use: LEFT JOIN customers ON orders.customer_id = customers.id</span>
+
+        <span style="color: #D4A574;">📈 Calculated Metrics (Business Logic):</span>
+          <span style="color: #60a5fa;">• Total Revenue</span>
+            Description: <span style="color: #888;">Sum of all order amounts</span>
+            SQL: <span style="color: #4ade80;">SUM(orders.amount)</span>
+            Format: <span style="color: #c678dd;">currency</span>
+
+          <span style="color: #60a5fa;">• Average Order Value</span>
+            SQL: <span style="color: #4ade80;">AVG(orders.amount)</span>
+
+        <span style="color: #D4A574;">=== SEMANTIC LAYER INSTRUCTIONS ===</span>
+
+        When joining tables:
+          1. Check "Available Relationships" section
+          2. Use the exact join condition specified
+          3. Prefer LEFT JOIN unless specified otherwise
+
+        When calculating metrics:
+          1. Check "Calculated Metrics" section
+          2. Use the exact SQL expression provided
+          3. Everyone calculates metrics the same way
+        </pre>
+                </div>
+            </div>
+
+            <!-- Best Practices -->
+            <div class="config-card" style="margin-bottom: 20px;">
+                <h4 style="color: #D4A574; margin-bottom: 12px;">💡 Best Practices</h4>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <h5 style="color: #4ade80; margin-bottom: 8px;">✅ DO</h5>
+                        <ul style="color: #ccc; font-size: 13px; line-height: 1.8; margin-left: 16px;">
+                            <li>Use clear, business-friendly display names</li>
+                            <li>Document complex metrics with descriptions</li>
+                            <li>Start with 2-3 core tables</li>
+                            <li>Use Auto-Discover for quick setup</li>
+                            <li>Test queries after adding relationships</li>
+                            <li>Keep metric SQL expressions simple</li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h5 style="color: #f87171; margin-bottom: 8px;">❌ DON'T</h5>
+                        <ul style="color: #ccc; font-size: 13px; line-height: 1.8; margin-left: 16px;">
+                            <li>Use technical abbreviations in display names</li>
+                            <li>Create circular relationships</li>
+                            <li>Define too many metrics upfront</li>
+                            <li>Forget to set primary keys</li>
+                            <li>Mix business logic in multiple places</li>
+                            <li>Skip relationship descriptions</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Testing Section -->
+            <div class="config-card" style="background: rgba(96, 165, 250, 0.1); border: 1px solid #60a5fa;">
+                <h4 style="color: #60a5fa; margin-bottom: 12px;">🧪 Test Your Semantic Layer</h4>
+                <p style="color: #a0a0a0; margin-bottom: 12px;">After setting up, test with these queries:</p>
+
+                <div style="background: #0a0a0a; padding: 12px; border-radius: 6px; margin-bottom: 8px;">
+                    <p style="color: #888; font-size: 12px; margin-bottom: 4px;">Test relationships:</p>
+                    <code style="color: #4ade80; font-size: 13px;">"Show me orders with customer names"</code>
+                </div>
+
+                <div style="background: #0a0a0a; padding: 12px; border-radius: 6px; margin-bottom: 8px;">
+                    <p style="color: #888; font-size: 12px; margin-bottom: 4px;">Test metrics:</p>
+                    <code style="color: #4ade80; font-size: 13px;">"What's our total revenue?"</code>
+                </div>
+
+                <div style="background: #0a0a0a; padding: 12px; border-radius: 6px; margin-bottom: 8px;">
+                    <p style="color: #888; font-size: 12px; margin-bottom: 4px;">Test dimensions:</p>
+                    <code style="color: #4ade80; font-size: 13px;">"Show me revenue by region"</code>
+                </div>
+
+                <p style="color: #60a5fa; font-size: 13px; margin-top: 12px;">
+                    ✨ If queries work correctly, your semantic layer is ready!
+                </p>
+            </div>
+
+            <!-- Troubleshooting -->
+            <div class="config-card">
+                <h4 style="color: #D4A574; margin-bottom: 12px;">🔧 Troubleshooting</h4>
+
+                <details style="margin-bottom: 12px;">
+                    <summary style="color: #60a5fa; cursor: pointer; padding: 8px; background: #0a0a0a; border-radius: 6px;">
+                        Semantic layer not enhancing queries?
+                    </summary>
+                    <div style="padding: 12px; color: #a0a0a0; font-size: 13px; line-height: 1.6;">
+                        <p><strong>Check:</strong></p>
+                        <ul style="margin-left: 16px;">
+                            <li>LLM provider has semantic enhancement code added</li>
+                            <li>Entities are defined for your catalog/schema</li>
+                            <li>Server logs show: "Semantic layer is active and enhancing queries ✨"</li>
+                        </ul>
+                        <p style="margin-top: 8px;"><strong>Test API:</strong></p>
+                        <code style="display: block; background: #1a1a1a; padding: 8px; border-radius: 4px; margin-top: 4px;">
+                            curl http://localhost:8000/api/semantic/context?catalog=hive&schema_name=default
+                        </code>
+                    </div>
+                </details>
+
+                <details style="margin-bottom: 12px;">
+                    <summary style="color: #60a5fa; cursor: pointer; padding: 8px; background: #0a0a0a; border-radius: 6px;">
+                        JOINs not working automatically?
+                    </summary>
+                    <div style="padding: 12px; color: #a0a0a0; font-size: 13px; line-height: 1.6;">
+                        <p><strong>Verify:</strong></p>
+                        <ul style="margin-left: 16px;">
+                            <li>Relationships are defined in "Relationships" tab</li>
+                            <li>from_column and to_column names are correct</li>
+                            <li>Both entities exist in the system</li>
+                        </ul>
+                    </div>
+                </details>
+
+                <details>
+                    <summary style="color: #60a5fa; cursor: pointer; padding: 8px; background: #0a0a0a; border-radius: 6px;">
+                        Metrics not being calculated correctly?
+                    </summary>
+                    <div style="padding: 12px; color: #a0a0a0; font-size: 13px; line-height: 1.6;">
+                        <p><strong>Check:</strong></p>
+                        <ul style="margin-left: 16px;">
+                            <li>SQL expression is valid (test in SQL client)</li>
+                            <li>Metric name matches what user asks for</li>
+                            <li>Required entities are available</li>
+                        </ul>
+                    </div>
+                </details>
             </div>
         </div>
     </div>
@@ -2356,6 +3014,380 @@
         window.addEventListener('load', () => {
             loadConfig();
         });
+        // ==========================================
+        // SEMANTIC LAYER JAVASCRIPT
+        // ==========================================
+        // Global Semantic Layer App
+        window.semanticLayerApp = (function() {
+            const API = typeof API_BASE !== 'undefined' ? API_BASE : window.location.origin;
+
+            function switchTab(tabName) {
+                console.log('🧠 Switching to:', tabName);
+                document.querySelectorAll('.semantic-section').forEach(s => s.style.display = 'none');
+                document.querySelectorAll('.semantic-subtab').forEach(t => t.classList.remove('active'));
+
+                const section = document.getElementById('semantic-' + tabName);
+                if (section) section.style.display = 'block';
+
+                const tab = document.querySelector('.semantic-subtab[data-tab="' + tabName + '"]');
+                if (tab) tab.classList.add('active');
+
+                if (tabName === 'entities') loadEntities();
+                else if (tabName === 'relationships') loadRelationships();
+                else if (tabName === 'metrics') loadMetrics();
+            }
+
+            async function loadEntities() {
+                const tbody = document.getElementById('entities-table-body');
+                tbody.innerHTML = '<tr><td colspan="6" style="padding:40px; text-align:center; color:#666;">Loading...</td></tr>';
+
+                try {
+                    const catalog = document.getElementById('entity-catalog-filter').value;
+                    const schema = document.getElementById('entity-schema-filter').value;
+                    let url = API + '/api/semantic/entities?';
+                    if (catalog) url += 'catalog=' + encodeURIComponent(catalog) + '&';
+                    if (schema) url += 'schema_name=' + encodeURIComponent(schema) + '&';
+
+                    console.log('📊 Loading entities from:', url);
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    console.log('📊 Entities data:', data);
+
+                    if (data.success && data.entities && data.entities.length > 0) {
+                        tbody.innerHTML = data.entities.map(e =>
+                            '<tr>' +
+                            '<td style="padding:12px;">' + (e.table_name || '-') + '</td>' +
+                            '<td style="padding:12px;">' + (e.display_name || '-') + '</td>' +
+                            '<td style="padding:12px;">' + (e.catalog || '-') + '</td>' +
+                            '<td style="padding:12px;">' + (e.schema_name || '-') + '</td>' +
+                            '<td style="padding:12px;">' + (e.primary_key || '-') + '</td>' +
+                            '<td style="padding:12px;"><button class="btn" style="padding:6px 12px; font-size:12px; background:rgba(239,68,68,0.15); color:#f87171;" onclick="semanticLayerApp.deleteEntity(' + e.id + ')">Delete</button></td>' +
+                            '</tr>'
+                        ).join('');
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="6" style="padding:40px; text-align:center; color:#666;">No entities found</td></tr>';
+                    }
+                } catch (err) {
+                    console.error('❌ Error:', err);
+                    tbody.innerHTML = '<tr><td colspan="6" style="padding:40px; text-align:center; color:#f87171;">Error: ' + err.message + '</td></tr>';
+                }
+            }
+
+            async function loadRelationships() {
+                const tbody = document.getElementById('relationships-table-body');
+                tbody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center; color:#666;">Loading...</td></tr>';
+
+                try {
+                    console.log('🔗 Loading relationships');
+                    const res = await fetch(API + '/api/semantic/relationships');
+                    const data = await res.json();
+                    console.log('🔗 Relationships data:', data);
+
+                    if (data.success && data.relationships && data.relationships.length > 0) {
+                        tbody.innerHTML = data.relationships.map(r =>
+                            '<tr>' +
+                            '<td style="padding:12px;">' + (r.name || '-') + '</td>' +
+                            '<td style="padding:12px;">' + (r.from_table || '?') + '.' + (r.from_column || '?') + '</td>' +
+                            '<td style="padding:12px;">' + (r.to_table || '?') + '.' + (r.to_column || '?') + '</td>' +
+                            '<td style="padding:12px;">' + (r.relationship_type || '-') + '</td>' +
+                            '<td style="padding:12px;"><button class="btn" style="padding:6px 12px; font-size:12px; background:rgba(239,68,68,0.15); color:#f87171;">Delete</button></td>' +
+                            '</tr>'
+                        ).join('');
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center; color:#666;">No relationships found</td></tr>';
+                    }
+                } catch (err) {
+                    console.error('❌ Error:', err);
+                    tbody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center; color:#f87171;">Error: ' + err.message + '</td></tr>';
+                }
+            }
+
+            async function loadMetrics() {
+                const tbody = document.getElementById('metrics-table-body');
+                tbody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center; color:#666;">Loading...</td></tr>';
+
+                try {
+                    console.log('📈 Loading metrics');
+                    const res = await fetch(API + '/api/semantic/metrics');
+                    const data = await res.json();
+                    console.log('📈 Metrics data:', data);
+
+                    if (data.success && data.metrics && data.metrics.length > 0) {
+                        tbody.innerHTML = data.metrics.map(m =>
+                            '<tr>' +
+                            '<td style="padding:12px;">' + (m.name || '-') + '</td>' +
+                            '<td style="padding:12px;">' + (m.display_name || '-') + '</td>' +
+                            '<td style="padding:12px; max-width:300px; overflow:hidden; text-overflow:ellipsis;">' + (m.sql_expression || '-') + '</td>' +
+                            '<td style="padding:12px;">' + (m.format_type || '-') + '</td>' +
+                            '<td style="padding:12px;"><button class="btn" style="padding:6px 12px; font-size:12px; background:rgba(239,68,68,0.15); color:#f87171;">Delete</button></td>' +
+                            '</tr>'
+                        ).join('');
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center; color:#666;">No metrics found</td></tr>';
+                    }
+                } catch (err) {
+                    console.error('❌ Error:', err);
+                    tbody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center; color:#f87171;">Error: ' + err.message + '</td></tr>';
+                }
+            }
+
+            async function discoverEntities() {
+                const catalog = document.getElementById('discover-catalog').value;
+                const schema = document.getElementById('discover-schema').value;
+                const tables = document.getElementById('discover-tables').value.split(',').map(t => t.trim()).filter(t => t);
+
+                if (!tables.length) { alert('Enter table names'); return; }
+
+                try {
+                    const res = await fetch(API + '/api/semantic/discover', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({catalog, schema, tables})
+                    });
+                    const data = await res.json();
+
+                    if (data.success && data.discovered && data.discovered.length > 0) {
+                        const content = document.getElementById('discovery-results-content');
+                        content.innerHTML = data.discovered.map((e, i) =>
+                            '<div class="config-card" style="margin-bottom:16px;">' +
+                            '<h4 style="color:#D4A574;">' + e.table_name + '</h4>' +
+                            '<p style="color:#a0a0a0;">Display: ' + e.display_name + '<br>Columns: ' + e.columns.length + '</p>' +
+                            '<button class="btn btn-primary" onclick="semanticLayerApp.createFromDiscovery(' + i + ')">✅ Create</button>' +
+                            '</div>'
+                        ).join('');
+                        document.getElementById('discovery-results').style.display = 'block';
+                        window._discoveryResults = data.discovered;
+                    } else {
+                        alert('No entities discovered');
+                    }
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
+            }
+
+            async function createFromDiscovery(idx) {
+                const entity = window._discoveryResults[idx];
+                try {
+                    const res = await fetch(API + '/api/semantic/entities', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            catalog: entity.catalog,
+                            schema_name: entity.schema,
+                            table_name: entity.table_name,
+                            display_name: entity.display_name,
+                            primary_key: entity.primary_key
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        if (typeof showToast === 'function') showToast('Entity created!', 'success');
+                        switchTab('entities');
+                    }
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
+            }
+
+            function showEntityModal() {
+                document.getElementById('entity-modal').style.display = 'flex';
+            }
+
+            function closeEntityModal() {
+                document.getElementById('entity-modal').style.display = 'none';
+            }
+
+            async function createEntity() {
+                const tableName = document.getElementById('entity-table-name').value;
+                if (!tableName) { alert('Table name required'); return; }
+
+                try {
+                    const res = await fetch(API + '/api/semantic/entities', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            table_name: tableName,
+                            display_name: document.getElementById('entity-display-name').value || null,
+                            catalog: document.getElementById('entity-catalog').value || null,
+                            schema_name: document.getElementById('entity-schema').value || null,
+                            primary_key: document.getElementById('entity-primary-key').value || null
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        if (typeof showToast === 'function') showToast('Entity created!', 'success');
+                        closeEntityModal();
+                        loadEntities();
+                    }
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
+            }
+
+            async function showRelationshipModal() {
+                try {
+                    const res = await fetch(API + '/api/semantic/entities');
+                    const data = await res.json();
+                    if (data.success && data.entities) {
+                        const opts = data.entities.map(e =>
+                            '<option value="' + e.id + '" data-table="' + e.table_name + '">' + (e.display_name || e.table_name) + '</option>'
+                        ).join('');
+                        document.getElementById('rel-from-entity').innerHTML = '<option value="">Select...</option>' + opts;
+                        document.getElementById('rel-to-entity').innerHTML = '<option value="">Select...</option>' + opts;
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+                document.getElementById('relationship-modal').style.display = 'flex';
+            }
+
+            function closeRelationshipModal() {
+                document.getElementById('relationship-modal').style.display = 'none';
+            }
+
+            async function loadFromColumns() {
+                const entityId = document.getElementById('rel-from-entity').value;
+                if (!entityId) return;
+                try {
+                    const res = await fetch(API + '/api/semantic/entities/' + entityId);
+                    const data = await res.json();
+                    if (data.success && data.columns) {
+                        document.getElementById('rel-from-column').innerHTML = '<option value="">Select...</option>' +
+                            data.columns.map(c => '<option value="' + c.column_name + '">' + c.column_name + '</option>').join('');
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+
+            async function loadToColumns() {
+                const entityId = document.getElementById('rel-to-entity').value;
+                if (!entityId) return;
+                try {
+                    const res = await fetch(API + '/api/semantic/entities/' + entityId);
+                    const data = await res.json();
+                    if (data.success && data.columns) {
+                        document.getElementById('rel-to-column').innerHTML = '<option value="">Select...</option>' +
+                            data.columns.map(c => '<option value="' + c.column_name + '">' + c.column_name + '</option>').join('');
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+
+            async function createRelationship() {
+                const name = document.getElementById('rel-name').value;
+                const fromId = parseInt(document.getElementById('rel-from-entity').value);
+                const fromCol = document.getElementById('rel-from-column').value;
+                const toId = parseInt(document.getElementById('rel-to-entity').value);
+                const toCol = document.getElementById('rel-to-column').value;
+
+                if (!name || !fromId || !fromCol || !toId || !toCol) {
+                    alert('Fill all required fields');
+                    return;
+                }
+
+                try {
+                    const res = await fetch(API + '/api/semantic/relationships', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            name,
+                            from_entity_id: fromId,
+                            from_column: fromCol,
+                            to_entity_id: toId,
+                            to_column: toCol,
+                            relationship_type: document.getElementById('rel-type').value,
+                            join_type: document.getElementById('rel-join-type').value
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        if (typeof showToast === 'function') showToast('Relationship created!', 'success');
+                        closeRelationshipModal();
+                        switchTab('relationships');
+                    }
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
+            }
+
+            function showMetricModal() {
+                document.getElementById('metric-modal').style.display = 'flex';
+            }
+
+            function closeMetricModal() {
+                document.getElementById('metric-modal').style.display = 'none';
+            }
+
+            async function createMetric() {
+                const name = document.getElementById('metric-name').value;
+                const sql = document.getElementById('metric-sql').value;
+
+                if (!name || !sql) { alert('Name and SQL required'); return; }
+
+                try {
+                    const res = await fetch(API + '/api/semantic/metrics', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            name,
+                            display_name: document.getElementById('metric-display-name').value || null,
+                            sql_expression: sql,
+                            format_type: document.getElementById('metric-format').value || null,
+                            category: document.getElementById('metric-category').value || null
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        if (typeof showToast === 'function') showToast('Metric created!', 'success');
+                        closeMetricModal();
+                        switchTab('metrics');
+                    }
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
+            }
+
+            async function deleteEntity(id) {
+                if (!confirm('Delete this entity?')) return;
+                try {
+                    const res = await fetch(API + '/api/semantic/entities/' + id, {method: 'DELETE'});
+                    const data = await res.json();
+                    if (data.success) {
+                        if (typeof showToast === 'function') showToast('Deleted', 'success');
+                        loadEntities();
+                    }
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
+            }
+
+            console.log('✅ Semantic Layer App Ready');
+
+            return {
+                switchTab,
+                loadEntities,
+                loadRelationships,
+                loadMetrics,
+                discoverEntities,
+                createFromDiscovery,
+                showEntityModal,
+                closeEntityModal,
+                createEntity,
+                showRelationshipModal,
+                closeRelationshipModal,
+                loadFromColumns,
+                loadToColumns,
+                createRelationship,
+                showMetricModal,
+                closeMetricModal,
+                createMetric,
+                deleteEntity
+            };
+        })();
+
+        console.log('🧠 Semantic Layer initialized. Test: semanticLayerApp.loadEntities()');
     </script>
 </body>
 </html>

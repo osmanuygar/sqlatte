@@ -32,6 +32,8 @@ from src.api.analytics_routes import router as analytics_router
 from src.core.analytics_db_postgres import analytics_db
 from src.api.dashboard_routes import router as dashboard_router
 from src.core.dashboard_manager import initialize_dashboard_manager
+from src.api.semantic_routes import router as semantic_router
+
 #from src.core.simple_insights import simple_insights
 from src.core.llm_insights_engine import (
     initialize_insights_engine,
@@ -184,6 +186,7 @@ app.include_router(demo_router)
 app.include_router(analytics_router)
 app.include_router(scheduled_routes.router)
 app.include_router(dashboard_router)
+app.include_router(semantic_router)
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
@@ -220,30 +223,43 @@ QueryResponse = SQLQueryResponse | ChatResponse
 # ============================================
 # ASYNC QUERY PROCESSOR (NON-BLOCKING!)
 # ============================================
-
 def _process_query_sync(
     question: str,
     schema_info: str,
     session_id: str,
-    selected_tables: List[str]
+    selected_tables: list
 ):
     """
-    Synchronous query processing (runs in thread pool)
-    Creates NEW provider instances to avoid thread conflicts
+    Synchronous query processing (runs in thread pool).
+    Her task için ayrı LLM provider oluşturur → farklı model kullanımı.
     """
     try:
-        # CREATE NEW PROVIDERS for this request (thread-safe!)
         current_config = config_manager.get_config()
-        llm = ProviderFactory.create_llm_provider(current_config)
+
+        # ── Task-based LLM providers ─────────────────────────────────────
+        # Her biri config.yaml'daki model_routing'e göre farklı model kullanır.
+        # create_llm_provider_for_task() → routing yoksa default model'e fallback.
+        llm_intent   = ProviderFactory.create_llm_provider_for_task(current_config, "intent_detection")
+        llm_sql      = ProviderFactory.create_llm_provider_for_task(current_config, "sql")
+        llm_chat     = ProviderFactory.create_llm_provider_for_task(current_config, "chat")
+        llm_insights = ProviderFactory.create_llm_provider_for_task(current_config, "insights")
+
+        # Database provider (değişmedi)
         db = ProviderFactory.create_db_provider(current_config)
 
-        print(f"🔄 [Thread {id(llm)}] Processing: {question[:50]}...")
+        print(f"🔄 [ModelRouting] intent={llm_intent.get_model_name()} | "
+              f"sql={llm_sql.get_model_name()} | "
+              f"chat={llm_chat.get_model_name()} | "
+              f"insights={llm_insights.get_model_name()}")
 
-        # Determine intent
-        intent_result = llm.determine_intent(question, schema_info)
+        print(f"🔄 Processing: {question[:60]}...")
 
-        # Route based on intent
+        # ── Intent Detection (hızlı/ucuz model) ─────────────────────────
+        intent_result = llm_intent.determine_intent(question, schema_info)
+
+        # ── SQL path ─────────────────────────────────────────────────────
         if intent_result["intent"] == "sql" and intent_result["confidence"] > 0.6:
+
             if schema_info == "No schema provided.":
                 return {
                     "type": "chat",
@@ -251,23 +267,19 @@ def _process_query_sync(
                     "intent_info": intent_result
                 }
 
-            # Get conversation context
+            # Conversation context
             conversation_context = conversation_manager.get_conversation_context(session_id)
-
             if len(conversation_context) > 1:
                 context_summary = "\n\nRecent conversation:\n"
                 for msg in conversation_context[-5:]:
-                    if msg['role'] == 'user':
-                        context_summary += f"User: {msg['content']}\n"
-                    elif msg['role'] == 'assistant':
-                        context_summary += f"Assistant: {msg['content'][:100]}...\n"
-
+                    role_label = "User" if msg['role'] == 'user' else "Assistant"
+                    context_summary += f"{role_label}: {msg['content'][:100]}\n"
                 enhanced_question = f"{question}\n\nContext: {context_summary}"
             else:
                 enhanced_question = question
 
-            # Generate SQL
-            sql_query, explanation = llm.generate_sql(enhanced_question, schema_info)
+            # SQL generation (güçlü model)
+            sql_query, explanation = llm_sql.generate_sql(enhanced_question, schema_info)
 
             if not sql_query:
                 return {
@@ -278,15 +290,17 @@ def _process_query_sync(
 
             # Execute query
             columns, data = db.execute_query(sql_query)
+            print(f"✅ Query executed: {len(data)} rows")
 
-            print(f"✅ [Thread {id(llm)}] Query executed: {len(data)} rows")
+            # Insights (güçlü model — insights engine config'den okur)
+            insights = []
             try:
-                # ✅ NULL CHECK EKLE
-                engine = get_insights_engine()  # ← Singleton'dan al
+                engine = get_insights_engine()
                 if engine is None:
                     print("⚠️ Insights engine not initialized")
-                    insights = []
                 else:
+                    # Insights engine kendi LLM'ini oluşturuyor,
+                    # model_routing'deki "insights" modelini config'den alır.
                     insights = engine.generate_insights(
                         columns=columns,
                         data=data,
@@ -294,19 +308,12 @@ def _process_query_sync(
                         schema_info=schema_info,
                         sql_query=sql_query
                     )
-
                     if insights:
                         print(f"🧠 Generated {len(insights)} insights")
-                        for insight in insights:
-                            print(f"   {insight['icon']} {insight['message']}")
-                    else:
-                        print("💡 No insights generated")
-
             except Exception as e:
                 print(f"⚠️ Insights generation failed: {e}")
                 import traceback
                 traceback.print_exc()
-                insights = []
 
             return {
                 "type": "sql",
@@ -319,8 +326,8 @@ def _process_query_sync(
                 "tables": selected_tables
             }
 
+        # ── Chat path (hızlı/orta model) ────────────────────────────────
         else:
-            # Chat response
             conversation_context = conversation_manager.get_conversation_context(session_id)
 
             if len(conversation_context) > 1:
@@ -328,12 +335,12 @@ def _process_query_sync(
                 for msg in conversation_context[-5:]:
                     role_label = "User" if msg['role'] == 'user' else "Assistant"
                     context_text += f"{role_label}: {msg['content']}\n"
-
                 enhanced_question = f"{context_text}\n\nCurrent: {question}"
             else:
                 enhanced_question = question
 
-            chat_response = llm.generate_chat_response(enhanced_question, schema_info)
+            # Chat response (chat modeli)
+            chat_response = llm_chat.generate_chat_response(enhanced_question, schema_info)
 
             return {
                 "type": "chat",
@@ -342,7 +349,7 @@ def _process_query_sync(
             }
 
     except Exception as e:
-        print(f"❌ [Thread {id(llm) if 'llm' in locals() else 'unknown'}] Error: {e}")
+        print(f"❌ Query processing error: {e}")
         import traceback
         traceback.print_exc()
         raise
@@ -1220,7 +1227,43 @@ async def startup_event():
         # Fallback to in-memory
         initialize_dashboard_manager(analytics_db=None)
         print("✅ Dashboard Manager initialized (in-memory fallback)")
+    # ==========================================
+    # ✅ ADD THIS: SEMANTIC LAYER INITIALIZATION
+    # ==========================================
+    print("\n🧠 Initializing Semantic Layer...")
+    try:
+        from src.core.semantic_layer_db import get_semantic_layer_db
 
+        current_config = config_manager.get_config()
+        db_config = current_config.get('config_db', {})
+
+        if db_config.get('enabled'):
+            # Pass full config to function
+            semantic_db = get_semantic_layer_db(
+                config=current_config,
+                use_memory=False
+            )
+
+            # Get stats
+            entities = semantic_db.get_entities()
+            relationships = semantic_db.get_relationships()
+            metrics = semantic_db.get_metrics()
+
+            print(f"✅ Semantic Layer initialized (PostgreSQL)")
+            print(f"   └─ Entities: {len(entities)}")
+            print(f"   └─ Relationships: {len(relationships)}")
+            print(f"   └─ Metrics: {len(metrics)}")
+
+            app.state.semantic_db = semantic_db
+        else:
+            print("⚠️  Semantic Layer disabled (config_db.enabled = false)")
+            app.state.semantic_db = None
+
+    except Exception as e:
+        print(f"⚠️  Semantic Layer failed: {e}")
+        import traceback
+        traceback.print_exc()
+        app.state.semantic_db = None
     print("✅ SQLatte startup complete!\n")
 
 
