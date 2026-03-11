@@ -30,6 +30,7 @@ if __name__ == "__main__":
     print(f"Starting server on http://{host}:{port}")
     print("=" * 60)
 
+
     uvicorn.run(
         app,
         host=host,
