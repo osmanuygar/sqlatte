@@ -446,9 +446,20 @@ function renderDashboardGrid(dashboards) {
 // ============================================
 function openDashboard(id) {
     // Navigate parent to dashboard view
-    const url = `/dashboard.html?id=${id}`;
+    // Works both same-origin (index.html) and cross-origin (POC page)
+    const url = window.location.origin + `/dashboard.html?id=${id}`;
     if (window.parent && window.parent !== window) {
-        window.parent.openDashboardView(url);
+        try {
+            // Same-origin: direct call works fine (index.html scenario)
+            if (typeof window.parent.openDashboardView === 'function') {
+                window.parent.openDashboardView(url);
+                return;
+            }
+        } catch(e) {
+            // Cross-origin SecurityError — fall through to postMessage
+        }
+        // Cross-origin fallback: postMessage (POC page listens for this)
+        window.parent.postMessage({ action: 'openDashboardView', url: url }, '*');
     } else {
         window.location.href = url;
     }

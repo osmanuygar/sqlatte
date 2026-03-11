@@ -27,7 +27,8 @@ class AnalyticsDB:
             'port': port,
             'database': database,
             'user': user,
-            'password': password
+            'password': password,
+            'gssencmode': "disable"
         }
         self._init_db()
         print(f"✅ Analytics DB (PostgreSQL) initialized: {database}@{host}")

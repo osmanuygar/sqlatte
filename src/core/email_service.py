@@ -427,7 +427,7 @@ class EmailService:
         """
         if hasattr(self, 'executor'):
             logger.info("📧 Shutting down email service...")
-            self.executor.shutdown(wait=True, timeout=timeout)
+            self.executor.shutdown(wait=True)
             logger.info("✅ Email service shut down cleanly")
 
 

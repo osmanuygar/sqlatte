@@ -36,6 +36,7 @@ class PostgreSQLProvider(DatabaseProvider):
                 database=self.database,
                 user=self.user,
                 password=self.password,
+                gssencmode ='disable',
                 options=f'-c search_path={self.schema}',
                 connect_timeout=10
             )
