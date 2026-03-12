@@ -11,7 +11,8 @@
                 window.location.hostname === '127.0.0.1') {
                 return 'http://localhost:8000';
             }
-            return window.location.protocol + '//' + window.location.hostname + ':8000';
+            const port = window.location.port || '8000';
+            return window.location.protocol + '//' + window.location.hostname + ':' + port;
         })(),
         position: 'bottom-left',
         fullscreen: false,
@@ -129,11 +130,17 @@
     // ============================================
     async function loadServerConfig() {
         try {
-            const response = await fetch(`${AUTH_WIDGET_CONFIG.apiBase}/auth/config`);
+            const url = `${AUTH_WIDGET_CONFIG.apiBase}/auth/config`;
+            console.log('📡 Loading server config from:', url);
+            const response = await fetch(url);
             if (response.ok) {
                 configData = await response.json();
                 console.log('✅ Server config loaded:', configData);
+                console.log('✅ catalog_schema_map:', configData.catalog_schema_map);
+                console.log('✅ allowed_catalogs:', configData.allowed_catalogs);
                 return true;
+            } else {
+                console.error('❌ /auth/config returned:', response.status);
             }
         } catch (error) {
             console.error('❌ Failed to load server config:', error);
@@ -444,33 +451,41 @@
 
     function onCatalogChange(selectedCatalog) {
         const schemaSelect = document.getElementById('sqlatte-schema');
-        if (!schemaSelect) return;
-
-        // catalog_schema_map'ten o catalog'a ait schema'ları al
-        const catalogSchemaMap = configData.catalog_schema_map || {};
-        const fallbackSchemas = configData.allowed_schemas || [];
-
-        // Map'te varsa onu kullan, yoksa fallback olarak tüm schema'lar
-        const availableSchemas = catalogSchemaMap[selectedCatalog] || fallbackSchemas;
+        if (!schemaSelect) {
+            console.error('❌ onCatalogChange: #sqlatte-schema not found');
+            return;
+        }
 
         if (!selectedCatalog) {
-            // Catalog seçilmemişse schema'yı sıfırla
             schemaSelect.innerHTML = '<option value="">← Select a catalog first</option>';
             return;
         }
+
+        if (!configData) {
+            console.error('❌ onCatalogChange: configData is null');
+            schemaSelect.innerHTML = '<option value="">Config not loaded</option>';
+            return;
+        }
+
+        const catalogSchemaMap = configData.catalog_schema_map || {};
+        const fallbackSchemas = configData.allowed_schemas || [];
+
+        console.log('🔍 onCatalogChange:', selectedCatalog);
+        console.log('🔍 catalog_schema_map keys:', Object.keys(catalogSchemaMap));
+
+        const availableSchemas = catalogSchemaMap[selectedCatalog] || fallbackSchemas;
+        console.log('🔍 availableSchemas:', availableSchemas);
 
         if (availableSchemas.length === 0) {
             schemaSelect.innerHTML = '<option value="">No schemas available</option>';
             return;
         }
 
-        // Schema'ları doldur
         schemaSelect.innerHTML = `
             <option value="">Select schema...</option>
             ${availableSchemas.map(sch => `<option value="${sch}">${sch}</option>`).join('')}
         `;
 
-        // Eğer sadece 1 schema varsa otomatik seç
         if (availableSchemas.length === 1) {
             schemaSelect.value = availableSchemas[0];
         }
@@ -514,6 +529,7 @@
                 closeLoginModal();
                 openChatModal();
                 await loadTablesAuth();
+                loadFavorites(); // ✅ Login sonrası favorites'i DB'den yükle
                 showToast('✅ Login successful!', 'success');
             } else {
                 showError(errorDiv, data.message || 'Login failed');
@@ -1334,15 +1350,32 @@
     }
 
     function loadFavorites() {
-        // ✅ User-specific key
-        const stored = localStorage.getItem(getFavoritesKey());
-        if (stored) {
-            try {
-                favorites = JSON.parse(stored);
-            } catch (e) {
-                favorites = [];
+        if (!sessionId) {
+            // Session yoksa localStorage fallback
+            const stored = localStorage.getItem(getFavoritesKey());
+            if (stored) {
+                try { favorites = JSON.parse(stored); } catch (e) { favorites = []; }
             }
+            return;
         }
+
+        fetch(`${AUTH_WIDGET_CONFIG.apiBase}/favorites?limit=50`, {
+            headers: { 'X-Session-ID': sessionId }
+        })
+        .then(r => r.json())
+        .then(data => {
+            favorites = data.favorites || [];
+            // localStorage cache güncelle
+            localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
+            if (isFavoritesPanelOpen) renderFavoritesPanel();
+        })
+        .catch(() => {
+            // API hata verirse localStorage'dan yükle
+            const stored = localStorage.getItem(getFavoritesKey());
+            if (stored) {
+                try { favorites = JSON.parse(stored); } catch (e) { favorites = []; }
+            }
+        });
     }
 
     function toggleHistory() {
@@ -1486,12 +1519,6 @@
         const panel = document.getElementById('sqlatte-auth-favorites-panel');
         if (!panel) return;
 
-        // ✅ User-specific key - Load from localStorage
-        const stored = localStorage.getItem(getFavoritesKey());
-        if (stored) {
-            favorites = JSON.parse(stored);
-        }
-
         if (favorites.length === 0) {
             panel.innerHTML = `
                 <div class="sqlatte-panel-header">
@@ -1534,19 +1561,29 @@
     }
 
     function removeFavorite(id) {
-        favorites = favorites.filter(f => f.id !== id);
-        // ✅ User-specific key
-        localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
-        renderFavoritesPanel();
-        showToast('✅ Removed from favorites', 'success');
-    }
-
-    function rerunQuery(sql) {
-        const input = document.getElementById('sqlatte-auth-input');
-        if (input) {
-            input.value = `Run this SQL: ${sql}`;
-            input.focus();
+        if (!sessionId) {
+            // Session yoksa sadece localStorage
+            favorites = favorites.filter(f => f.id !== id);
+            localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
+            renderFavoritesPanel();
+            showToast('✅ Removed from favorites', 'success');
+            return;
         }
+
+        fetch(`${AUTH_WIDGET_CONFIG.apiBase}/favorites/${id}`, {
+            method: 'DELETE',
+            headers: { 'X-Session-ID': sessionId }
+        })
+        .then(r => r.json())
+        .then(() => {
+            favorites = favorites.filter(f => f.id !== id);
+            localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
+            renderFavoritesPanel();
+            showToast('✅ Removed from favorites', 'success');
+        })
+        .catch(() => {
+            showToast('❌ Failed to remove', 'error');
+        });
     }
 
     function rerunQuestion(question) {
@@ -1711,11 +1748,24 @@ function visualizeData(resultId) {
     // ============================================
     // MODAL CONTROLS
     // ============================================
-    function openLoginModal() {
+    async function openLoginModal() {
         const modal = document.getElementById('sqlatte-auth-login-modal');
-        if (modal) modal.classList.add('sqlatte-auth-modal-open');
+        if (!modal) return;
+
+        // Her açılışta body'yi loading yap
+        const body = document.getElementById('sqlatte-auth-login-body');
+        if (body) {
+            body.innerHTML = '<div class="sqlatte-auth-loading">Loading configuration...</div>';
+        }
+
+        modal.classList.add('sqlatte-auth-modal-open');
+
         const badge = document.querySelector('.sqlatte-badge-btn');
         if (badge) badge.style.display = 'none';
+
+        // Config'i her seferinde taze yükle, sonra formu render et
+        await loadServerConfig();
+        renderLoginForm();
     }
 
     function closeLoginModal() {
@@ -1806,7 +1856,7 @@ function visualizeData(resultId) {
 
         injectStyles();
         loadHistory();
-        loadFavorites();
+        //loadFavorites();
 
         setTimeout(() => widget.classList.add('sqlatte-widget-visible'), 500);
 
@@ -1817,6 +1867,7 @@ function visualizeData(resultId) {
                 if (valid) {
                     console.log('✅ Session restored');
                     loadTablesAuth();
+                    loadFavorites(); // ✅ Session varsa favorites'i DB'den yükle
                 } else {
                     console.log('❌ Session expired');
                     clearSession();
@@ -3106,7 +3157,6 @@ em {
         toggleFavorites: toggleFavorites,
         clearHistory: clearHistory,
         removeFavorite: removeFavorite,
-        rerunQuery: rerunQuery,
         rerunQuestion: rerunQuestion,
 
         // Utilities
@@ -3120,59 +3170,77 @@ em {
         },
         exportToCSV: exportToCSV,
         handleChartClick: handleChartClick,
-        addToFavorites: (queryId) => {
-            console.log('🔍 addToFavorites called with queryId:', queryId);
-
-            // ✅ Reload history from user-specific localStorage key
+        addToFavorites: async (queryId) => {
+            // History'den item bul
             const stored = localStorage.getItem(getHistoryKey());
+            let historyItem = null;
             if (stored) {
                 try {
-                    queryHistory = JSON.parse(stored);
-                    console.log('🔍 Loaded history:', queryHistory.length, 'items');
-                } catch (e) {
-                    console.error('🔍 Failed to load history:', e);
-                    queryHistory = [];
-                }
+                    const hist = JSON.parse(stored);
+                    historyItem = hist.find(item => item.id === queryId);
+                } catch(e) {}
             }
 
-            console.log('🔍 Searching for queryId in history...');
-            console.log('🔍 All history IDs:', queryHistory.map(item => item.id));
-
-            // Find query in history
-            const historyItem = queryHistory.find(item => item.id === queryId);
-
-            console.log('🔍 Found history item:', historyItem);
-
             if (!historyItem) {
-                console.error('🔍 Query not found! QueryId:', queryId);
                 showToast('❌ Query not found in history', 'error');
                 return;
             }
 
-            // Check if already in favorites
+            // Zaten favorilerde mi?
             const exists = favorites.some(fav => fav.id === queryId);
             if (exists) {
                 showToast('⚠️ Already in favorites', 'info');
                 return;
             }
 
-            // Add to favorites
-            const favoriteItem = {
-                id: queryId,
-                question: historyItem.question,
-                sql: historyItem.sql,
-                timestamp: new Date().toISOString()
-            };
+            if (!sessionId) {
+                // Session yoksa sadece localStorage
+                const favoriteItem = {
+                    id: queryId,
+                    question: historyItem.question,
+                    sql: historyItem.sql,
+                    timestamp: new Date().toISOString()
+                };
+                favorites.push(favoriteItem);
+                localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
+                showToast('⭐ Added to favorites', 'success');
+                if (isFavoritesPanelOpen) renderFavoritesPanel();
+                return;
+            }
 
-            favorites.push(favoriteItem);
-            // ✅ User-specific key
-            localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
-            console.log('🔍 Added to favorites:', favoriteItem);
-            showToast('⭐ Added to favorites', 'success');
+            try {
+                const response = await fetch(`${AUTH_WIDGET_CONFIG.apiBase}/favorites`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-ID': sessionId
+                    },
+                    body: JSON.stringify({
+                        question: historyItem.question,
+                        sql: historyItem.sql,
+                        favorite_name: historyItem.question
+                    })
+                });
 
-            // Refresh favorites panel if open
-            if (isFavoritesPanelOpen) {
-                renderFavoritesPanel();
+                if (response.ok) {
+                    const result = await response.json();
+                    // DB'den dönen kaydı kullan (gerçek ID ile)
+                    const savedFav = result.favorite || {
+                        id: queryId,
+                        question: historyItem.question,
+                        sql: historyItem.sql,
+                        timestamp: new Date().toISOString()
+                    };
+                    favorites.push(savedFav);
+                    localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
+                    showToast('⭐ Added to favorites', 'success');
+                    if (isFavoritesPanelOpen) renderFavoritesPanel();
+                } else {
+                    throw new Error('API error');
+                }
+            } catch(e) {
+                console.error('addToFavorites API error:', e);
+                showToast('❌ Failed to save favorite', 'error');
             }
         },
 

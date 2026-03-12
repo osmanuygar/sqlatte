@@ -41,7 +41,8 @@ class SemanticLayerDB:
                 port=db_port,
                 dbname=db_name,
                 user=db_user,
-                password=db_password
+                password=db_password,
+                gssencmode='disable',
             )
             self.db_type = "postgresql"
 

@@ -349,7 +349,9 @@
 <div id="toast"></div>
 
 <script>
-const API_BASE = window.location.origin;
+const _urlParams = new URLSearchParams(window.location.search);
+const _apiParam = _urlParams.get('api');
+const API_BASE = _apiParam || window.location.origin;
 let selectedQueryId = null;
 let allDashboards = [];
 
