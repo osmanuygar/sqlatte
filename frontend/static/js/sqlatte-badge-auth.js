@@ -1323,6 +1323,8 @@
             id: id,
             question: question,
             sql: data.sql,
+            tables: selectedTables || [],
+            row_count: data.row_count || (data.data ? data.data.length : 0),
             timestamp: new Date().toISOString()
         };
 
@@ -1543,11 +1545,13 @@
         `;
 
         favorites.forEach((item) => {
-            const safeQuestion = escapeHtml(item.question || item.name || 'Unnamed favorite');
+            const safeQuestion = escapeHtml(item.question || item.favorite_name || item.name || 'Unnamed favorite');
+            const tables = item.tables && item.tables.length > 0 ? item.tables.join(', ') : null;
 
             html += `
                 <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuestion('${safeQuestion.replace(/'/g, "\\'")}')">
                     <div class="sqlatte-history-question">${safeQuestion}</div>
+                    ${tables ? `<div style="color:#888;font-size:11px;margin-top:4px;">📋 ${escapeHtml(tables)}</div>` : ''}
                     <button onclick="event.stopPropagation(); SQLatteAuthWidget.removeFavorite('${item.id}')"
                             style="position: absolute; right: 10px; top: 10px; background: transparent; border: none; cursor: pointer; font-size: 16px;">
                         🗑️
@@ -3199,6 +3203,7 @@ em {
                     id: queryId,
                     question: historyItem.question,
                     sql: historyItem.sql,
+                    tables: historyItem.tables || [],
                     timestamp: new Date().toISOString()
                 };
                 favorites.push(favoriteItem);
@@ -3218,6 +3223,7 @@ em {
                     body: JSON.stringify({
                         question: historyItem.question,
                         sql: historyItem.sql,
+                        tables: historyItem.tables || [],
                         favorite_name: historyItem.question
                     })
                 });
