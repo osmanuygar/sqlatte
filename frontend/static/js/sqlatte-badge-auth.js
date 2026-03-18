@@ -588,11 +588,11 @@
                         <span id="sqlatte-auth-user-badge" class="sqlatte-user-badge">👤 User</span>
                     </div>
                     <div class="sqlatte-modal-actions">
-                        <button class="sqlatte-modal-btn" onclick="SQLatteAuthWidget.toggleHistory()" title="History">
-                            📜
+                        <button class="sqlatte-modal-btn sqlatte-modal-btn-labeled" onclick="SQLatteAuthWidget.toggleHistory()" title="Query History">
+                            📜 History
                         </button>
-                        <button class="sqlatte-modal-btn" onclick="SQLatteAuthWidget.toggleFavorites()" title="Favorites">
-                            ⭐
+                        <button class="sqlatte-modal-btn sqlatte-modal-btn-labeled" onclick="SQLatteAuthWidget.toggleFavorites()" title="Saved Favorites">
+                            ⭐ Favorites
                         </button>
                         <button class="sqlatte-modal-btn" onclick="SQLatteAuthWidget.clearConversation()" title="Clear Conversation">
                             🗑️
@@ -1549,7 +1549,7 @@
             const tables = item.tables && item.tables.length > 0 ? item.tables.join(', ') : null;
 
             html += `
-                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.rerunQuestion('${safeQuestion.replace(/'/g, "\\'")}')">
+                <div class="sqlatte-history-item" onclick="SQLatteAuthWidget.useQuery(${JSON.stringify(item).replace(/"/g, '&quot;')})">
                     <div class="sqlatte-history-question">${safeQuestion}</div>
                     ${tables ? `<div style="color:#888;font-size:11px;margin-top:4px;">📋 ${escapeHtml(tables)}</div>` : ''}
                     <button onclick="event.stopPropagation(); SQLatteAuthWidget.removeFavorite('${item.id}')"
@@ -1588,6 +1588,31 @@
         .catch(() => {
             showToast('❌ Failed to remove', 'error');
         });
+    }
+
+    function useQuery(query) {
+        const input = document.getElementById('sqlatte-auth-input');
+        if (input) {
+            input.value = query.question;
+            input.focus();
+        }
+
+        // AUTO TABLE SELECTION - This is the key feature!
+        if (query.tables && query.tables.length > 0) {
+            const select = document.getElementById('sqlatte-auth-table-select');
+            if (select) {
+                Array.from(select.options).forEach(opt => {
+                    opt.selected = query.tables.includes(opt.value);
+                });
+                handleTableChange();
+            }
+        }
+
+        // Close panels
+        if (isHistoryPanelOpen) toggleHistory();
+        if (isFavoritesPanelOpen) toggleFavorites();
+
+        showToast('📝 Query loaded - press Enter to run', 'info');
     }
 
     function rerunQuestion(question) {
@@ -2402,6 +2427,22 @@ function visualizeData(resultId) {
     transition: all 0.2s;
 }
 
+.sqlatte-modal-btn-labeled {
+    width: auto;
+    min-width: 95px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(212, 165, 116, 0.15);
+    border: 1px solid rgba(212, 165, 116, 0.3);
+}
+
+.sqlatte-modal-btn-labeled:hover {
+    background: rgba(212, 165, 116, 0.25);
+    border-color: rgba(212, 165, 116, 0.5);
+    transform: translateY(-1px);
+}
+
 .sqlatte-auth-close:hover,
 .sqlatte-modal-btn:hover { background: rgba(255, 255, 255, 0.2); }
 
@@ -3162,6 +3203,7 @@ em {
         clearHistory: clearHistory,
         removeFavorite: removeFavorite,
         rerunQuestion: rerunQuestion,
+        useQuery: useQuery,
 
         // Utilities
         copySQLAction: copySQLAction,

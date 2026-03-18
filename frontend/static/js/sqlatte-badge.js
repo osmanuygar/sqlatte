@@ -572,6 +572,21 @@
     }
 
     async function addToFavorites(queryId, customName = null) {
+        // Find the button that was clicked
+        const buttons = document.querySelectorAll(`.sqlatte-fav-btn[onclick*="${queryId}"]`);
+        const button = buttons[0];
+
+        if (button) {
+            // Save original content
+            const originalContent = button.innerHTML;
+            const originalDisabled = button.disabled;
+
+            // Set loading state
+            button.disabled = true;
+            button.innerHTML = '<span class="sqlatte-loading"></span> Saving...';
+            button.style.opacity = '0.7';
+        }
+
         try {
             const body = { query_id: queryId };
             if (customName) body.favorite_name = customName;
@@ -583,15 +598,48 @@
             });
 
             if (response.ok) {
+                // Success state
+                if (button) {
+                    button.innerHTML = '✅ Saved!';
+                    button.style.opacity = '1';
+                    button.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                    button.style.transform = 'scale(1.05)';
+                }
+
                 showToast('⭐ Added to favorites!', 'success');
                 loadFavorites();
                 loadHistory();
+
+                // Reset button after 2 seconds
+                if (button) {
+                    setTimeout(() => {
+                        button.innerHTML = originalContent;
+                        button.disabled = originalDisabled;
+                        button.style.opacity = '1';
+                        button.style.background = '';
+                        button.style.transform = '';
+                    }, 2000);
+                }
             } else {
                 throw new Error('Failed to add favorite');
             }
         } catch (error) {
             console.error('Error adding favorite:', error);
             showToast('❌ Failed to add favorite', 'error');
+
+            // Error state
+            if (button) {
+                button.innerHTML = '❌ Failed';
+                button.style.opacity = '1';
+                button.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+
+                setTimeout(() => {
+                    button.innerHTML = originalContent;
+                    button.disabled = originalDisabled;
+                    button.style.opacity = '1';
+                    button.style.background = '';
+                }, 2000);
+            }
         }
     }
 
@@ -2732,7 +2780,8 @@
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
+    position: relative;
 }
 
 .sqlatte-export-btn {
@@ -2750,9 +2799,18 @@
     color: white;
 }
 
-.sqlatte-export-btn:hover, .sqlatte-chart-btn:hover, .sqlatte-fav-btn:hover {
+.sqlatte-export-btn:hover:not(:disabled),
+.sqlatte-chart-btn:hover:not(:disabled),
+.sqlatte-fav-btn:hover:not(:disabled) {
     transform: translateY(-1px);
     filter: brightness(1.1);
+}
+
+.sqlatte-export-btn:disabled,
+.sqlatte-chart-btn:disabled,
+.sqlatte-fav-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
 }
 
 .sqlatte-results-table {
