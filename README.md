@@ -5,86 +5,139 @@
 </p>
 
 <p align="center">
-  <strong>AI-Powered Natural Language to SQL Converter with Conversation Memory</strong><br>
-  Transform your questions into SQL queries with the power of AI - Now with conversation memory! 🧠
+  <strong>SQLatte - Enterprise-Grade Natural Language SQL Analytics Platform</strong><br>
+  Production-ready self-service analytics with AI-powered query generation, semantic layer, automated dashboards, and scheduled insights delivery.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
   <img src="https://img.shields.io/badge/python-3.8%2B-blue.svg" alt="Python 3.8+">
   <img src="https://img.shields.io/badge/AI-Anthropic%20Claude-blueviolet" alt="AI: Anthropic Claude">
-  <img src="https://img.shields.io/badge/Memory-Conversation%20Tracking-green" alt="Conversation Memory">
+  <img src="https://img.shields.io/badge/Status-Production-green" alt="Production Ready">
 </p>
 
 <p align="center">
-    <img src="frontend/static/image/sqlatte.png" alt="SQLatte Demo" width="800">
-</p>
+    <img src="frontend/static/image/sqlatte.png" width="800" alt="SQLatte">
+   </p>
+
 ---
 
-##  Features
+## ✨ What is SQLatte?
 
+SQLatte transforms natural language questions into SQL queries using AI, providing enterprise-grade analytics capabilities without requiring SQL knowledge. Built for production environments with security, scalability, and ease of deployment in mind.
 
-### Core Features
-## ✨ Features
+**Key Capabilities:**
 
-### Core Features
-- 🤖 **AI-Powered** - Uses Anthropic Claude, Google Gemini, or Google Vertex AI
-- 🗄️ **Multi-Database Support** - Trino, PostgreSQL, MySQL, and more
-- 💬 **Smart Chat Interface** - Conversational AI that understands context
-- 🔗 **Multi-Table JOINs** - Automatically detects and creates table relationships
-- 🧠 **Conversation Memory** - Remembers chat history per session (in-memory)
-- 🧠 **AI-Powered Insights Engine**
-- 📊 **Auto Dashboards** - Generate visual reports from queries
-- 🎯 **Context-Aware Responses** - Understands follow-up questions
-- ⚙️ **Admin Panel** - Runtime configuration without restart
-- ⭐ **Query History & Favorites** - Save and replay queries
-- 📅 **Scheduled Queries** - Automate reports with email delivery
-- 📊 **Data Visualization** - Auto-generate charts from query results
-- 🔌 **Plugin System** - Extensible architecture for custom functionality
-- 📈 **Analytics Dashboard** (Optional) - Query metrics and insights
-- 🎨 **Embeddable Widgets** - Easy integration into any website
-- ⚡ **Fast & Simple** - Single YAML config file, no complex setup
-- 🐳 **Docker Ready** - Easy deployment with Docker & Docker Compose
+- 🤖 **AI-Powered Query Generation** - Natural language to SQL conversion
+- 🧠 **Semantic Layer** - Business-friendly metadata layer over your data warehouse
+- 📊 **Auto Dashboard Generation** - Visual reports from query results
+- 📅 **Query Scheduler** - Automated report delivery via email
+- 🔐 **Multi-Tenant Auth** - User-specific database connections
+- 📈 **AI Insights Engine** - Automatic data analysis and pattern detection
+- 🗄️ **Multi-Database Support** - Trino, PostgreSQL, MySQL, BigQuery
+- 🎨 **Embeddable Widgets** - Easy integration into existing applications
 
-### Latest Features (2026)
+---
 
-** 🆕 New in v0.5.0 - Semantic Layer (Beta)**
+## 🏗️ Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Frontend Layer                          │
+│  • Chat Interface  • Admin Panel  • Embeddable Widgets     │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────────────────┐
+│                   API Layer (FastAPI)                       │
+│  • Query Routes  • Admin Routes  • Analytics  • Scheduler  │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────────────────┐
+│              Core Processing Layer                          │
+│  • Intent Detection  • SQL Generation  • Query Execution   │
+│  • Insights Engine  • Dashboard Generator                   │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────────────────┐
+│         Database Provider Factory                           │
+│  (Trino │ PostgreSQL │ MySQL │ BigQuery)                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🚀 Features
+
+### Core Analytics Platform
+
+- **🎯 Task-Based LLM Routing** - Different AI models for different tasks (intent detection, SQL generation, insights)
+- **💬 Conversation Memory** - Context-aware follow-up questions
+- **🔗 Multi-Table JOINs** - Automatic relationship detection
+- **📊 Query History & Favorites** - Save and replay queries
+- **🔍 SQL Syntax Highlighting** - Beautiful code display with copy functionality
+- **📈 CSV Export** - Export results to spreadsheet format
+
+### Semantic Layer (🆕 v0.5.0)
+
 Transform your data warehouse with business intelligence metadata:
 
 - **🧠 Business-Friendly Names** - "Customer Master" instead of "cust_tbl_v2"
 - **🔗 Automatic JOINs** - Define relationships once, AI uses them automatically
 - **📈 Calculated Metrics** - Centralized business logic (everyone gets same "revenue")
 - **🔍 Auto-Discovery** - Scan database and get instant entity suggestions
-- **🎨 Visual Admin UI** - Browser-based management with 5 tabs
-- **🤖 Enhanced AI** - Richer context = better SQL generation
+- **🎨 Visual Admin UI** - Browser-based management with entity/relationship/metric builder
+- **🤖 Enhanced AI Context** - Richer metadata = better SQL generation
 
-📊 **Dashboard System** - 
-Automatically generate visual reports from your favorite queries with one click. 
-- Supports line charts, bar charts, pie charts, and tables. 
-- Configure chart types and settings directly from the admin panel.
-- Save dashboards for quick access to key metrics and insights.
+### Dashboard System
 
-🧠 **AI-Powered Insights Engine**
-- Automatic data analysis and pattern detection
-- Context-aware insights considering temporal patterns
-- Hybrid mode combining LLM and statistical analysis
-- Smart handling of incomplete real-time data
+- **📊 Auto Chart Generation** - Line, bar, pie charts from query results
+- **💳 Metric Cards** - KPI displays with automatic formatting
+- **🎨 Chart Configuration** - Customize chart types and settings
+- **💾 Dashboard Persistence** - Save dashboards to PostgreSQL or in-memory
+- **🔄 One-Click Refresh** - Re-run queries and update visualizations
 
-📝 **Runtime Prompt Management**
-- Edit AI prompts directly from admin panel
-- Intent detection, personality, SQL generation, and insights prompts
-- Save and persist custom prompts to database
-- Reset to defaults with one click
-- Changes apply immediately with hot reload
+### AI-Powered Insights Engine
 
-📅 **Scheduled Queries & Email Reports**
-- Automate recurring reports with flexible scheduling
-- Email delivery with CSV, Excel, and HTML formats
-- Execution history and monitoring
-- Rate limiting and error handling
+- **🧠 Context-Aware Analysis** - Considers temporal patterns (daily, weekly, monthly)
+- **📈 Trend Detection** - Growth, decline, anomaly identification
+- **💡 Smart Recommendations** - Actionable insights from your data
+- **⚙️ Flexible Modes** - `llm_only`, `statistical_only`, or `hybrid`
+- **🎯 Query-Specific Context** - Insights tailored to your question
+
+### Query Scheduler
+
+- **📅 Flexible Scheduling** - Hourly, daily, weekly, monthly, or custom cron
+- **📧 Email Delivery** - Automated report distribution with CSV/Excel/HTML attachments
+- **🤖 AI-Generated Insights** - Include analysis in scheduled reports
+- **📊 Execution History** - Track all scheduled query runs
+- **⚡ Rate Limiting** - Prevent spam and manage resources
+
+### Security & Authentication
+
+- **🔐 SQL Injection Protection** - Multi-layer validation with risk scoring
+- **🔑 Session-Based Auth** - Token-based authentication for admin endpoints
+- **👤 Multi-Tenant Support** - Per-user database connections via auth plugin
+- **🛡️ Catalog/Schema Restrictions** - Limit user access to specific databases
+- **🔒 Credential Masking** - Secure password handling in logs and UI
+
+### Admin Panel
+
+- **⚙️ Runtime Configuration** - Edit settings without restart
+- **📝 Prompt Management** - Customize AI behavior via UI
+- **🔧 Config Database** - Persist settings to PostgreSQL
+- **📸 Snapshots** - Backup and restore configurations
+- **📜 Change History** - Track configuration modifications
+
+### Embeddable Widgets
+
+Two widget variants for different use cases:
+
+- **Standard Widget** (`sqlatte-badge.js`) - Public analytics interface
+- **Auth Widget** (`sqlatte-badge-auth.js`) - User-specific database connections
+
 ---
 
-##  Quick Start
+## 📦 Quick Start
 
 ### 1. Installation
 
@@ -99,19 +152,24 @@ pip install -r requirements.txt
 
 ### 2. Configuration
 
-Edit `config/config.yaml` with your credentials:
+Edit `config/config.yaml`:
 
 ```yaml
-# LLM Configuration
+# ============================================
+# LLM CONFIGURATION
+# ============================================
 llm:
-  provider: "anthropic"
+  provider: "anthropic"  # anthropic | gemini | vertexai
   anthropic:
-    api_key: "sk-ant-your-key-here"  # Add your Anthropic API key
+    api_key: "sk-ant-your-key-here"
     model: "claude-sonnet-4-20250514"
+    max_tokens: 4096
 
-# Database Configuration
+# ============================================
+# DATABASE CONFIGURATION
+# ============================================
 database:
-  provider: "trino"
+  provider: "trino"  # trino | postgresql | mysql | bigquery
   trino:
     host: "your-trino-host.com"
     port: 443
@@ -119,354 +177,104 @@ database:
     password: "your-password"
     catalog: "hive"
     schema: "default"
-```
-#### Analytics, scheduler and email  (optional - disabled by default)
-```yaml
+    http_scheme: "https"
+
+# ============================================
+# TASK-BASED LLM ROUTING (Optional)
+# ============================================
+# Use cheaper/faster models for simple tasks
+model_routing:
+  enabled: true
+  tasks:
+    intent_detection:
+      provider: "anthropic"
+      model: "claude-haiku-3-5-20241022"
+      max_tokens: 500
+
+    sql_generation:
+      provider: "anthropic"
+      model: "claude-sonnet-4-20250514"
+      max_tokens: 4096
+
+    insights:
+      provider: "anthropic"
+      model: "claude-sonnet-4-20250514"
+      max_tokens: 2000
+
+    chat:
+      provider: "anthropic"
+      model: "claude-haiku-3-5-20241022"
+      max_tokens: 1000
+
+# ============================================
+# FEATURES (All Optional)
+# ============================================
 analytics:
-  enabled: false  # Query history is in-memory only
+  enabled: false  # Set true for PostgreSQL query history
 
 scheduler:
-  enabled: false  # Set to true to enable scheduled queries
+  enabled: false  # Set true for scheduled queries
   timezone: "UTC"
 
 email:
-  enabled: false  # Set to true for real emails (uses mock by default)
+  enabled: false  # Set true for real email delivery
   smtp:
     host: "smtp.gmail.com"
     port: 587
     user: "your-email@gmail.com"
-    password: "your-app-password"  # Gmail App Password
-```
-####  Insights Engine
-```yaml
-# Insights Engine (NEW!)
+    password: "your-app-password"
+    from_name: "SQLatte Analytics"
+
 insights:
-  enabled: true                # Enable AI insights
-  mode: hybrid                 # llm_only, statistical_only, hybrid
-  max_insights: 3              # Max insights per query
-  include_statistical: true    # Fallback to statistical analysis
-```
-**Leave it at `false`** - SQLatte works perfectly without it!
-
-#### Runtime Prompts (Optional - Customizable via Admin Panel)
-```yaml
+  enabled: true
+  mode: hybrid  # llm_only | statistical_only | hybrid
+  max_insights: 3
 
 # ============================================
-# PROMPTS CONFIGURATION
+# CONFIGURATION DATABASE (Optional)
 # ============================================
-# Customize AI behavior - editable via Admin Panel
-prompts:
-  intent_detection: |
-    Analyze this user question and determine if it requires SQL or chat.
-    Rules:
-    1. Data/analytics questions → "sql"
-    2. Greetings/general → "chat"
-    3. SQL but no tables selected → "chat"
-    
-  barista_personality: |
-    You are SQLatte ☕ - a friendly AI assistant.
-    - Helpful and friendly, like a barista
-    - Knowledgeable about SQL and databases
-    - Use coffee metaphors occasionally
-    
-  sql_generation: |
-    Generate SQL query from natural language.
-    Rules:
-    1. Valid SQL syntax only
-    2. Use JOINs for multiple tables
-    3. Include LIMIT clause (default 100)
-    4. PARTITION OPTIMIZATION: Always filter by 'dt' column when available
-    
-  insights_generation: |
-    Analyze query results and generate actionable insights.
-    Identify: trends, anomalies, recommendations, summaries
-```
-You can edit these prompts via the **Admin Panel → Prompts tab** without touching config files!
+config_db:
+  enabled: false  # Enable for runtime config persistence
+  type: "postgresql"
+  postgresql:
+    host: "localhost"
+    port: 5432
+    database: "sqlatte_config"
+    user: "postgres"
+    password: "password"
 
----
+# ============================================
+# PLUGINS (Optional)
+# ============================================
+plugins:
+  auth:
+    enabled: false  # Enable for multi-tenant auth
+    session_ttl_minutes: 480
+    max_workers: 40
+    db_provider: "trino"
+    db_host: "trino_hostname"
+    db_port: 443
+    allowed_catalogs: []  # Empty = allow all
+    allowed_schemas: []
+    allowed_db_types: ["trino"]
+```
 
 ### 3. Run
 
 ```bash
-# Start the server
-python run.py
+# Development
+python -m src.api.app
 
-# Open in browser
-http://localhost:8000
-
-# Access Admin Panel 
-http://localhost:8000/admin
-
-# Access Auth Plugin Panel 
-http://localhost:8000/demo
-
-# Access Analytics Panel 
-http://localhost:8000/analytics
+# Production (with Gunicorn)
+gunicorn src.api.app:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 ```
 
-**That's it!** 🎉
+### 4. Access
 
-
----
-## ⚙️ Admin Panel
-
-SQLatte includes a comprehensive admin panel for runtime configuration and management.
-
-### Features
-
-**Provider Configuration**
-- Switch LLM providers (Anthropic, Gemini, Vertex AI)
-- Update database connections
-- Test connections before applying
-
-**📝 Runtime Prompt Management** (New!)
-- Edit AI prompts without code changes
-- Four customizable prompts:
-  - **Intent Detection** - Determines SQL vs chat
-  - **Barista Personality** - Chat response style
-  - **SQL Generation** - Natural language to SQL rules
-  - **Insights Generation** - Data analysis patterns
-- Save changes to database
-- Reset to defaults anytime
-- Apply immediately with hot reload
-
-**Email & Scheduler**
-- Configure SMTP settings
-- Manage scheduled queries
-- Set up email reports
-
-**Configuration Management**
-- Export/import configurations
-- Create snapshots for rollback
-- View change history
-- Hot reload without restart
-
-**Analytics Dashboard**
-- Query performance metrics
-- Usage statistics
-- System health monitoring
-
-### Access
-```bash
-# Open admin panel
-http://localhost:8000/admin
-```
-
-Navigate through tabs:
-- 🔌 **Providers** - LLM and database settings
-- 📝 **Prompts** - Edit AI behavior (New!)
-- 📧 **Email & SMTP** - Email configuration
-- 📅 **Scheduler** - Scheduled queries
-- 💡 **Insights** - Insights engine settings
-- 📊 **Export** - Export formats
-- 📜 **History** - Configuration changes
-- 📸 **Snapshots** - Backup and restore
-
----
-## 🔌 Plugin System
-
-SQLatte features a powerful plugin architecture that allows you to extend functionality without modifying core code.
-
-### Available Plugins
-
-#### 🔐 Authentication Plugin
-
-The Authentication Plugin enables multi-tenant deployments with user-specific database connections.
-
-**Features:**
-- User login with database credentials
-- Session-based authentication
-- Per-user database connections
-- Thread-safe connection pooling
-- Session management with automatic cleanup
-
-**Configuration:**
-
-```yaml
-# config/config.yaml
-plugins:
-  auth:
-    enabled: true
-    session_ttl_minutes: 480  # 8 hours
-    max_workers: 40  # Thread pool for concurrent users
-
-    # Database Provider Configuration (Server-side only)
-    db_provider: "trino"
-    db_host: "trino_hostname"
-    db_port: 443
-
-    # Catalog/Schema Restrictions
-    # Empty lists = allow all, filled lists = restrict to specified
-    allowed_catalogs:
-      - "hive"
-      - "impala"
-    
-    allowed_schemas:
-      - "default"
-      - "production"
-    
-    # Database Type Restrictions
-    allowed_db_types:
-      - "trino"
-```
-*Usage:*
-
-```html
-<!-- Load auth widget -->
-<script src="http://localhost:8000/static/js/sqlatte-badge-auth.js"></script>
-
-<script>
-window.addEventListener('load', () => {
-    window.SQLatteAuthWidget.configure({
-        position: 'bottom-left',
-        fullscreen: true,
-        apiBase: 'http://localhost:8000'
-    });
-});
-</script>
-```
-
-### Creating Custom Plugins
-
-SQLatte's plugin system is built on a base plugin class that provides hooks for:
-- Custom route registration
-- Request/response middleware
-- Authentication extension
-- Database provider integration
-
-**Example Plugin Structure:**
-
-```python
-from src.plugins.base_plugin import BasePlugin
-from fastapi import FastAPI
-
-class MyCustomPlugin(BasePlugin):
-    def __init__(self, config):
-        super().__init__(config)
-        # Initialize your plugin
-    
-    def initialize(self, app: FastAPI):
-        """Called on startup"""
-        print("🔌 Initializing My Custom Plugin...")
-    
-    def register_routes(self, app: FastAPI):
-        """Register custom endpoints"""
-        @app.get("/my-plugin/hello")
-        async def hello():
-            return {"message": "Hello from my plugin!"}
-    
-    async def before_request(self, request):
-        """Hook before each request"""
-        # Add custom logic
-        return None
-    
-    async def after_request(self, request, response):
-        """Hook after each request"""
-        # Modify response if needed
-        return response
-    
-    def shutdown(self):
-        """Cleanup on shutdown"""
-        print("🔌 Shutting down My Custom Plugin...")
-```
-
-**Plugin Registration:**
-
-```python
-# src/api/app.py
-from src.plugins.plugin_manager import plugin_manager
-from my_plugin import MyCustomPlugin
-
-# Register plugin
-config = {"enabled": True, ...}
-plugin = MyCustomPlugin(config)
-plugin_manager.register_plugin(plugin)
-```
-
----
-
-
-
-
-## 🎨 Architecture
-
-### Backend Flow with Memory
-
-```
-User Question
-     ↓
-Session Management (Get/Create Session)
-     ↓
-Add to Conversation History
-     ↓
-Get Recent Context (Last 10 messages)
-     ↓
-LLM Intent Detection + Context
-     ↓
-   ┌─────────────┬──────────────┐
-   │             │              │
-  SQL          Chat         Schema
-   │             │              │
-Generate      Generate      Fetch from DB
- Query        Response
-(with context)  (with context)
-   │             │
-Execute       Return
-   │             │
-   └──────┬──────┘
-          ↓
-    Add Response to History
-          ↓
-    Return to User 
-```
-
-System Architecture
-```
-┌─────────────────────────────────────────────────┐
-│                 User Interface                  │
-│  (Web Chat │ Widgets │ Admin Panel │ API)      │
-└────────────────────┬────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────┐
-│              Semantic Layer (0.5.0)             │
-│  • Business Metadata  • Relationships           │
-│  • Metrics           • Auto-discovery           │
-└────────────────────┬────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────┐
-│           LLM Provider Factory                  │
-│  (Claude │ Gemini │ Vertex AI)                 │
-└────────────────────┬────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────┐
-│         Database Provider Factory               │
-│  (Trino │ PostgreSQL │ MySQL │ BigQuery)       │
-└─────────────────────────────────────────────────┘
-```
----
-## 🗄️ Supported Databases
-
-| Database | Status | Notes |
-|----------|--------|-------|
-| ✅ Trino | Stable | Multi-catalog support |
-| ✅ PostgreSQL | Stable | Full feature support |
-| ✅ MySQL | Stable | Full feature support |
-| ✅ BigQuery | Stable | GCP integration |
-| 🔄 ClickHouse | Planned | Coming in v0.6 |
-| 🔄 Snowflake | Planned | Coming in v0.6 |
-
----
-
-## 🤖 Supported LLM Providers
-
-| Provider | Status | Best For |
-|----------|--------|----------|
-| ✅ Anthropic Claude | Recommended | Most accurate SQL |
-| ✅ Google Gemini | Stable | Free tier available |
-| ✅ Google Vertex AI | Stable | Enterprise GCP |
-| 🔄 OpenAI | Planned | Coming soon |
-
----
+- **Main Interface**: http://localhost:8000
+- **Admin Panel**: http://localhost:8000/admin
+- **Widget Demo**: http://localhost:8000/demo
+- **API Docs**: http://localhost:8000/docs
 
 ---
 
@@ -475,17 +283,14 @@ System Architecture
 ### Using Docker Compose (Recommended)
 
 ```bash
-# 1. Edit config/config.yaml and set your credentials
+# 1. Edit config/config.yaml with your credentials
 vi config/config.yaml
 
-# 2. Start with Docker Compose
+# 2. Start services
 docker-compose up -d
 
 # 3. Open browser
-http://localhost:8000
-
-# 4. Access admin panel
-http://localhost:8000/admin
+open http://localhost:8000
 ```
 
 ### Using Dockerfile
@@ -496,223 +301,28 @@ docker build -t sqlatte .
 
 # Run container
 docker run -d -p 8000:8000 \
-  -e ANTHROPIC_API_KEY="your-key" \
-  -e TRINO_HOST="your-host" \
+  -e ANTHROPIC_API_KEY="sk-ant-your-key" \
+  -e TRINO_HOST="your-trino-host" \
+  -e TRINO_USER="username" \
+  -e TRINO_PASSWORD="password" \
   --name sqlatte \
   sqlatte
 ```
----
 
-## 🧠 AI-Powered Insights Engine
-
-SQLatte's Insights Engine automatically analyzes query results and generates meaningful insights.
-
-### Features
-
-**Context-Aware Analysis**
-- Considers temporal patterns (daily, weekly, monthly)
-- Handles incomplete real-time data intelligently
-- Detects trends, anomalies, and patterns
-
-**Flexible Modes**
-- `llm_only`: Pure AI-generated insights
-- `statistical_only`: Rule-based analysis
-- `hybrid`: Best of both worlds (recommended)
-
-**Smart Insights**
-- 📈 Trend detection (growth, decline)
-- ⚠️ Anomaly identification
-- 🎯 Metric summaries and comparisons
-- 💡 Contextual recommendations
-
-### Configuration
-
-```yaml
-insights:
-  enabled: true
-  mode: hybrid                    # llm_only | statistical_only | hybrid
-  max_insights: 3                 # Limit insights per query
-  include_statistical: true       # Fallback option
-```
-
-### Example Output
-
-```
-Quick Review
-⚠️ The homepage (x.x) and login page (x.x) are critical points that receive the most attacks. Strengthen your security measures immediately.
-📊 High volume of requests to /robots.txt and nonsensical URLs indicates that your site is being crawled by automated bots. Tighten bot rules.
-💡 This analysis only covers the last 24 hours. Look at a longer time period to understand if the attacks are continuous.
-```
----
-
-## 🔌 Embedding in Your Website
-
-You can easily add the SQLatte widget to **any existing website**.
-
-### Method 1: Serve from SQLatte Backend (Recommended)
-
-**Easiest way!** SQLatte backend already serves the widget files:
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>My Website with SQLatte</title>
-</head>
-<body>
-    <h1>My Awesome Website</h1>
-    <p>Your content here...</p>
-
-    <!-- Load widget from SQLatte backend -->
-    <script src="http://YOUR-SQLATTE-SERVER:8000/static/js/sqlatte-badge.js"></script>
-    
-    <!-- Configure (optional) -->
-    <script>
-        window.addEventListener('load', () => {
-            window.SQLatteWidget.configure({
-                fullscreen: true,
-                apiBase: 'http://YOUR-SQLATTE-SERVER:8000'
-            });
-        });
-    </script>
-</body>
-</html>
-```
-
-### Method 2: Auth Widget (User-Specific DB Connections)
-
-```html
-<!DOCTYPE html>
-<html>
-<body>
-    <h1>My SaaS Application</h1>
-    
-    <!-- Load auth widget -->
-    <script src="http://YOUR-SQLATTE-SERVER:8000/static/js/sqlatte-badge-auth.js"></script>
-    
-    <!-- Configure -->
-    <script>
-        window.addEventListener('load', () => {
-            window.SQLatteAuthWidget.configure({
-                fullscreen: true,
-                position: 'bottom-left',
-                apiBase: 'http://YOUR-SQLATTE-SERVER:8000'
-            });
-        });
-    </script>
-</body>
-</html>
-```
-
-
-#### CORS Configuration
-
-If your website and SQLatte are on **different domains**, configure CORS in `config/config.yaml`:
-
-```yaml
-cors:
-  allow_origins: 
-    - "https://your-website.com"
-    - "http://192.168.1.50"
-  allow_credentials: true
-  allow_methods: ["*"]
-  allow_headers: ["*"]
-```
-
----
-
-## ⚙️ Widget Configuration
-
-Customize the widget behavior:
-
-```javascript
-window.SQLatteWidget.configure({
-    // Position of the badge button
-    position: 'bottom-right',  // 'bottom-right', 'bottom-left', 'top-right', 'top-left'
-    
-    // Open modal in fullscreen
-    fullscreen: true,          // true = fullscreen, false = floating modal
-    
-    // Modal title
-    title: 'SQLatte Assistant ☕',
-    
-    // Input placeholder text
-    placeholder: 'Ask a question...',
-    
-    // API base URL (SQLatte backend)
-    apiBase: 'http://your-backend:8000',
-    
-    // Delay before showing badge (milliseconds)
-    autoShowDelay: 1000,
-    
-    // Open widget automatically on page load
-    openByDefault: false
-});
-```
-
-### Programmatic Control
-
-```javascript
-// Open the widget
-window.SQLatteWidget.open();
-
-// Close the widget
-window.SQLatteWidget.close();
-
-// Toggle widget
-window.SQLatteWidget.toggle();
-
-// Clear conversation history
-window.SQLatteWidget.clearChat();
-
-// Get current session ID
-const sessionId = window.SQLatteWidget.getSessionId();
-
-// Copy SQL to clipboard (NEW!)
-window.SQLatteWidget.copySQL('sql-element-id');
-```
-
-### Auth Widget API
-
-```javascript
-// Authentication
-window.SQLatteAuthWidget.handleLogin(credentials);
-window.SQLatteAuthWidget.logout();
-
-// Modal Controls
-window.SQLatteAuthWidget.closeLoginModal();
-window.SQLatteAuthWidget.closeChatModal();
-
-// Query Operations
-window.SQLatteAuthWidget.sendMessage(question);
-window.SQLatteAuthWidget.handleTableChange();
-
-// Configuration
-window.SQLatteAuthWidget.configure({
-    position: 'bottom-left',
-    fullscreen: true,
-    apiBase: 'http://your-backend:8000',
-    storageKey: 'sqlatte_auth_session'
-});
-
-// Get Config
-const config = window.SQLatteAuthWidget.getConfig();
-```
 ---
 
 ## 🗄️ Supported Databases
 
-### Currently Supported
-- ✅ **Trino** - Distributed SQL engine
-- ✅ **PostgreSQL** - Advanced relational database
-- ✅ **MySQL** - Popular relational database
-- ✅ **Google BigQuery** - Serverless data warehouse
 
-### Configuration Examples
+| Database      | Status | Configuration Required       |
+| ------------- | ------ | ---------------------------- |
+| ✅ Trino      | Stable | host, port, catalog, schema  |
+| ✅ PostgreSQL | Stable | host, port, database, schema |
+| ✅ MySQL      | Stable | host, port, database         |
+| ✅ BigQuery   | Stable | project_id, credentials      |
 
 <details>
-<summary><b>Trino Configuration</b></summary>
+<summary><b>Trino Configuration Example</b></summary>
 
 ```yaml
 database:
@@ -726,10 +336,11 @@ database:
     schema: "default"
     http_scheme: "https"
 ```
+
 </details>
 
 <details>
-<summary><b>PostgreSQL Configuration</b></summary>
+<summary><b>PostgreSQL Configuration Example</b></summary>
 
 ```yaml
 database:
@@ -737,140 +348,345 @@ database:
   postgresql:
     host: "localhost"
     port: 5432
-    database: "mydatabase"
+    database: "analytics"
     user: "postgres"
     password: "password"
     schema: "public"
 ```
+
 </details>
 
 <details>
-<summary><b>MySQL Configuration</b></summary>
-
-```yaml
-database:
-  provider: "mysql"
-  mysql:
-    host: "localhost"
-    port: 3306
-    database: "mydatabase"
-    user: "root"
-    password: "password"
-```
-</details>
-
----
-
-## 🤖 Supported LLM Providers
-
-### Currently Supported
-- ✅ **Anthropic Claude** - Most advanced (recommended)
-- ✅ **Google Gemini** - Free tier available
-- ✅ **Google Vertex AI** - Enterprise GCP solution
-
-### Configuration Examples
-
-<details>
-<summary><b>Anthropic Claude</b></summary>
-
-```yaml
-llm:
-  provider: "anthropic"
-  anthropic:
-    api_key: "sk-ant-your-key-here"
-    model: "claude-sonnet-4-20250514"
-    max_tokens: 1000
-```
-</details>
-
-<details>
-<summary><b>Google Gemini</b></summary>
-
-```yaml
-llm:
-  provider: "gemini"
-  gemini:
-    api_key: "your-gemini-key"
-    model: "gemini-pro"
-    max_tokens: 1000
-```
-</details>
-
-<details>
-<summary><b>Google Vertex AI</b></summary>
-
-```yaml
-llm:
-  provider: "vertexai"
-  vertexai:
-    project_id: "my-gcp-project"
-    location: "us-central1"
-    model: "gemini-pro"
-    credentials_path: "/path/to/service-account.json"
-```
-</details>
-<details>
-<summary><b>Google BigQuery Configuration</b></summary>
+<summary><b>BigQuery Configuration Example</b></summary>
 
 ```yaml
 database:
   provider: "bigquery"
   bigquery:
     project_id: "my-gcp-project"
-    dataset: "analytics"  # Optional, leave empty for cross-dataset queries
+    dataset: "analytics"
     location: "US"
     credentials_path: "/path/to/service-account.json"
-    # OR use credentials_json for direct JSON content
-    # credentials_json: '{"type": "service_account", ...}'
-    timeout: 300
-    max_results: 10000
+    # OR: credentials_json: '{"type": "service_account", ...}'
 ```
-
-**Authentication Methods:**
-1. **Service Account JSON File** (Recommended for local)
-   ```yaml
-   credentials_path: "/path/to/service-account-key.json"
-   ```
-
-2. **Service Account JSON Content** (Recommended for containers)
-   ```yaml
-   credentials_json: '{"type": "service_account", "project_id": "...", ...}'
-   ```
-
-3. **Application Default Credentials** (For GCP environments)
-   - Leave both `credentials_path` and `credentials_json` empty
-   - Works automatically on Cloud Run, GKE, Compute Engine
 
 </details>
 
 ---
+
+## 🤖 Supported LLM Providers
+
+
+| Provider            | Models              | Best For                        |
+| ------------------- | ------------------- | ------------------------------- |
+| ✅ Anthropic Claude | Opus, Sonnet, Haiku | Most accurate SQL (recommended) |
+| ✅ Google Gemini    | gemini-pro          | Free tier available             |
+| ✅ Google Vertex AI | gemini-pro          | Enterprise GCP                  |
+
+---
+
+## 🔌 Embedding in Your Website
+
+### Standard Widget (Public Analytics)
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>My Website</h1>
+
+    <!-- Load widget from SQLatte backend -->
+    <script src="http://your-sqlatte-server:8000/static/js/sqlatte-badge.js"></script>
+
+    <!-- Configure (optional) -->
+    <script>
+        window.addEventListener('load', () => {
+            window.SQLatteWidget.configure({
+                position: 'bottom-right',
+                fullscreen: true,
+                apiBase: 'http://your-sqlatte-server:8000'
+            });
+        });
+    </script>
+</body>
+</html>
+```
+
+### Auth Widget (User-Specific Connections)
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>My SaaS Application</h1>
+
+    <!-- Load auth widget -->
+    <script src="http://your-sqlatte-server:8000/static/js/sqlatte-badge-auth.js"></script>
+
+    <!-- Configure -->
+    <script>
+        window.addEventListener('load', () => {
+            window.SQLatteAuthWidget.configure({
+                position: 'bottom-left',
+                fullscreen: true,
+                apiBase: 'http://your-sqlatte-server:8000'
+            });
+        });
+    </script>
+</body>
+</html>
+```
+
+### CORS Configuration
+
+If embedding on a different domain:
+
+```yaml
+cors:
+  allow_origins:
+    - "https://your-website.com"
+    - "http://localhost:3000"
+  allow_credentials: true
+  allow_methods: ["*"]
+  allow_headers: ["*"]
+```
+
+---
+
+## 📊 Usage Examples
+
+### Basic Query
+
+```
+User: "Show me top 10 customers by revenue this year"
+
+SQLatte:
+💡 Generated SQL:
+SELECT customer_name, SUM(order_total) as revenue
+FROM orders
+WHERE YEAR(order_date) = YEAR(CURRENT_DATE)
+GROUP BY customer_name
+ORDER BY revenue DESC
+LIMIT 10
+
+📊 Results: [Interactive table with 10 rows]
+
+🧠 Insights:
+- Top customer generated $1.2M (23% of total revenue)
+- Revenue concentration in top 3 customers indicates dependency risk
+- Consider diversification strategy
+```
+
+### Follow-up Question
+
+```
+User: "What about last year?"
+
+SQLatte: [Automatically understands context, modifies WHERE clause]
+```
+
+### Dashboard Creation
+
+```
+User: "Create a dashboard for this query"
+
+SQLatte: [Generates line chart + metric cards + saves to favorites]
+```
+
+---
+
+## 🎯 Advanced Features
+
+### Semantic Layer
+
+Define business metadata once, use everywhere:
+
+```yaml
+# Example: Define a "Customer" entity
+Entity: customer_master
+Display Name: Customer
+Description: Core customer data
+Columns:
+  - cust_id (Primary Key)
+  - full_name (Display Name: Customer Name)
+  - registration_date
+  - ltv (Display Name: Lifetime Value)
+
+# Define relationship
+Relationship: customer_to_orders
+From: customer_master.cust_id
+To: orders.customer_id
+Type: one-to-many
+
+# Define metric
+Metric: total_revenue
+SQL: SUM(orders.amount)
+Description: Total revenue across all orders
+```
+
+Now ask: **"Show me customers with high lifetime value"**
+
+SQLatte automatically:
+
+1. Uses "Customer" display name
+2. Finds the correct table (customer_master)
+3. Interprets "lifetime value" as the ltv column
+4. Generates accurate SQL with proper column references
+
+### Query Scheduler
+
+Schedule recurring reports:
+
+```yaml
+Schedule Name: Weekly Revenue Report
+Frequency: Weekly (Every Monday 9 AM)
+Recipients: analytics-team@company.com
+Format: Excel with AI insights
+```
+
+### Task-Based Model Routing
+
+Optimize costs and performance:
+
+```yaml
+# Cheap/fast model for simple tasks
+intent_detection: claude-haiku (500 tokens)
+
+# Powerful model for complex SQL
+sql_generation: claude-sonnet (4096 tokens)
+
+# Balanced model for insights
+insights: claude-sonnet (2000 tokens)
+```
+
+---
+
+## 🔧 Admin Panel Features
+
+Access at `/admin`:
+
+### 🎨 Tabs
+
+1. **Dashboard** - Overview, stats, quick actions
+2. **Prompts** - Edit AI behavior (intent, personality, SQL generation, insights)
+3. **Tables** - View database schema
+4. **Semantic Layer** - Entity/relationship/metric builder (5 sub-tabs)
+5. **Email & SMTP** - Email configuration
+6. **Scheduler** - Scheduled query management
+7. **Insights** - Insights engine settings
+8. **Export** - Configuration export formats
+9. **History** - Configuration change log
+10. **Snapshots** - Backup and restore
+
+### Key Capabilities
+
+- **Hot Reload** - Changes apply immediately without restart
+- **Database Persistence** - Save configs to PostgreSQL
+- **Reset to Defaults** - One-click restore original settings
+- **Semantic Auto-Discovery** - Scan database and suggest entities
+- **Visual Relationship Builder** - Drag-and-drop table connections
+
+---
+
+## 🔐 Security Features
+
+### SQL Injection Protection
+
+Multi-layer validation:
+
+1. **Keyword Blacklist** - Block dangerous SQL patterns
+2. **Syntax Validation** - Parse and validate SQL structure
+3. **Risk Scoring** - Assign risk level to each query
+4. **Admin Override** - Manual approval for high-risk queries
+
+### Rate Limiting
+
+```yaml
+rate_limiting:
+  enabled: true
+  requests_per_minute: 10
+  requests_per_hour: 100
+```
+
+### Authentication Plugin
+
+Multi-tenant database access:
+
+- User-specific credentials
+- Catalog/schema restrictions
+- Session management with TTL
+- Thread-safe connection pooling
+
+---
+
+## 📈 Performance & Scalability
+
+### Async Processing
+
+- FastAPI with async/await
+- Thread pool for blocking operations
+- Non-blocking query execution
+
+### Connection Pooling
+
+- Reusable database connections
+- Automatic cleanup on timeout
+- Thread-safe multi-user support
+
+### Caching
+
+- Query result caching
+- Dashboard persistence
+- Session-based conversation memory
+
+---
+
+---
+
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome! Please:
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open Pull Request
+
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
 ## 📧 Contact
 
-- **GitHub:** [@osmanuygar](https://github.com/osmanuygar)
-- **Project Link:** [https://github.com/osmanuygar/sqlatte](https://github.com/osmanuygar/sqlatte)
+- **GitHub**: [@osmanuygar](https://github.com/osmanuygar)
+- **Project**: [https://github.com/osmanuygar/sqlatte](https://github.com/osmanuygar/sqlatte)
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+
+- FastAPI - Modern Python web framework
+- Anthropic Claude - AI-powered query generation
+- Chart.js - Data visualization
+- PostgreSQL - Data persistence
+- Trino, BigQuery - Analytics engines
+
+---
+
+## 📚 Documentation
+
+- **Docs**: [Documentation](https://osmanuygar.github.io/sqlatte-docs)
 
 ---
 
 <p align="center">
   <strong>Made with ❤️ and ☕</strong><br>
-  <sub>Transform your data queries with the power of AI, conversation memory, and beautiful syntax highlighting</sub>
+  <sub>Transform your data warehouse into a conversational analytics platform</sub>
 </p>
-
----
