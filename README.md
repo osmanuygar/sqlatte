@@ -16,6 +16,9 @@
   <img src="https://img.shields.io/badge/Memory-Conversation%20Tracking-green" alt="Conversation Memory">
 </p>
 
+<p align="center">
+    <img src="frontend/static/image/sqlatte.png" alt="SQLatte Demo" width="800">
+</p>
 ---
 
 ##  Features
