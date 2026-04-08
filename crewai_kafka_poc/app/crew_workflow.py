@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import os
 from typing import Iterable, List
 
 from .config import Settings
@@ -65,58 +66,65 @@ class CrewAIKafkaWorkflow:
                 error="crewai package not available",
             )
 
+        if not os.getenv("OPENAI_API_KEY"):
+            return self._fallback_report(
+                topics=topics,
+                question=question,
+                error="OPENAI_API_KEY is not configured",
+            )
+
         topic_list_markdown = "\n".join(f"- {topic}" for topic in topics) or "- (no topics)"
 
-        discover_agent = Agent(
-            role="Kafka Platform Analyst",
-            goal="Analyze Kafka topics and infer domain ownership and risk signals.",
-            backstory=(
-                "You are a platform engineer documenting event-driven architecture "
-                "for internal teams."
-            ),
-            allow_delegation=False,
-            verbose=False,
-        )
-
-        report_agent = Agent(
-            role="Automation Report Writer",
-            goal="Produce concise technical reports for engineering teams.",
-            backstory="You convert raw platform data into practical action items.",
-            allow_delegation=False,
-            verbose=False,
-        )
-
-        discover_task = Task(
-            description=(
-                "Given this Kafka topic list:\n{topic_list_markdown}\n\n"
-                "Analyze naming conventions, probable domains, and risk hotspots. "
-                "Highlight unusual or potentially overloaded patterns."
-            ),
-            expected_output=(
-                "A structured bullet list with: domains, suspicious patterns, "
-                "and operational recommendations."
-            ),
-            agent=discover_agent,
-        )
-
-        report_task = Task(
-            description=(
-                "Use the previous analysis to answer this question:\n{question}\n\n"
-                "Create a markdown report with these sections: "
-                "Summary, Domain Mapping, Risks, and Next Steps."
-            ),
-            expected_output="A concise markdown report for developers and platform teams.",
-            agent=report_agent,
-        )
-
-        crew = Crew(
-            agents=[discover_agent, report_agent],
-            tasks=[discover_task, report_task],
-            process=Process.sequential,
-            verbose=False,
-        )
-
         try:
+            discover_agent = Agent(
+                role="Kafka Platform Analyst",
+                goal="Analyze Kafka topics and infer domain ownership and risk signals.",
+                backstory=(
+                    "You are a platform engineer documenting event-driven architecture "
+                    "for internal teams."
+                ),
+                allow_delegation=False,
+                verbose=False,
+            )
+
+            report_agent = Agent(
+                role="Automation Report Writer",
+                goal="Produce concise technical reports for engineering teams.",
+                backstory="You convert raw platform data into practical action items.",
+                allow_delegation=False,
+                verbose=False,
+            )
+
+            discover_task = Task(
+                description=(
+                    "Given this Kafka topic list:\n{topic_list_markdown}\n\n"
+                    "Analyze naming conventions, probable domains, and risk hotspots. "
+                    "Highlight unusual or potentially overloaded patterns."
+                ),
+                expected_output=(
+                    "A structured bullet list with: domains, suspicious patterns, "
+                    "and operational recommendations."
+                ),
+                agent=discover_agent,
+            )
+
+            report_task = Task(
+                description=(
+                    "Use the previous analysis to answer this question:\n{question}\n\n"
+                    "Create a markdown report with these sections: "
+                    "Summary, Domain Mapping, Risks, and Next Steps."
+                ),
+                expected_output="A concise markdown report for developers and platform teams.",
+                agent=report_agent,
+            )
+
+            crew = Crew(
+                agents=[discover_agent, report_agent],
+                tasks=[discover_task, report_task],
+                process=Process.sequential,
+                verbose=False,
+            )
+
             result = crew.kickoff(
                 inputs={
                     "topic_list_markdown": topic_list_markdown,
