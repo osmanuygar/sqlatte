@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     default_workflow_question: str = (
         "Create a short operational summary and identify potential high-risk topics."
     )
-    openai_model_name: str = Field(default="gpt-4o-mini")
+    crewai_llm_model: str = Field(default="anthropic/claude-3-5-sonnet-latest")
 
     @property
     def mock_topics(self) -> List[str]:

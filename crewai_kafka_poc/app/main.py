@@ -4,7 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .crew_workflow import CrewAIKafkaWorkflow
 from .kafka_service import KafkaTopicService
-from .models import TopicListResponse, WorkflowRequest, WorkflowResponse
+from .models import (
+    TopicListResponse,
+    WorkflowBlueprintResponse,
+    WorkflowRequest,
+    WorkflowResponse,
+)
 
 settings = get_settings()
 topic_service = KafkaTopicService(settings=settings)
@@ -30,6 +35,7 @@ def root() -> dict[str, str]:
         "message": "CrewAI Kafka PoC is running.",
         "topics_endpoint": "/api/topics",
         "workflow_endpoint": "/api/workflows/topic-report",
+        "workflow_blueprint_endpoint": "/api/workflows/blueprint",
     }
 
 
@@ -43,16 +49,32 @@ def list_topics() -> TopicListResponse:
     return topic_service.list_topics()
 
 
+@app.get("/api/workflows/blueprint", response_model=WorkflowBlueprintResponse)
+def workflow_blueprint() -> WorkflowBlueprintResponse:
+    blueprint = workflow_service.get_workflow_blueprint()
+    return WorkflowBlueprintResponse(
+        workflow_name="Kafka Topic Automation Crew",
+        process=str(blueprint["process"]),
+        roles=[str(role) for role in blueprint["roles"]],
+        description=(
+            "Sequential CrewAI workflow with Solution Architect -> Coder -> Tester "
+            "roles for Kafka topic automation planning."
+        ),
+    )
+
+
 @app.post("/api/workflows/topic-report", response_model=WorkflowResponse)
 def create_topic_report(payload: WorkflowRequest) -> WorkflowResponse:
     topic_response = topic_service.list_topics()
     question = payload.question or settings.default_workflow_question
-    report = workflow_service.run(topics=topic_response.topics, question=question)
+    workflow_result = workflow_service.run(topics=topic_response.topics, question=question)
 
     return WorkflowResponse(
         source=topic_response.source,
         topics=topic_response.topics,
         topic_count=topic_response.topic_count,
         question=question,
-        report=report,
+        workflow_roles=workflow_service.WORKFLOW_ROLES,
+        execution_mode=workflow_result["execution_mode"],
+        report=workflow_result["report"],
     )

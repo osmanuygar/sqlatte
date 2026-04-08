@@ -26,5 +26,16 @@ class WorkflowResponse(BaseModel):
     topics: List[str]
     topic_count: int
     question: str
+    workflow_roles: List[str]
+    execution_mode: str = Field(
+        description="`crewai` when real CrewAI ran, `fallback` when deterministic report is used."
+    )
     report: str
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class WorkflowBlueprintResponse(BaseModel):
+    workflow_name: str
+    process: str
+    roles: List[str]
+    description: str
