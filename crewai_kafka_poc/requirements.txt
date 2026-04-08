@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+crewai
+kafka-python
+pydantic-settings
+python-dotenv
