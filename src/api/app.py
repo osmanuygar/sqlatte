@@ -445,8 +445,8 @@ async def analytics_dashboard():
                     <style>
                         body {
                             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-                            color: #e0e0e0;
+                            background: linear-gradient(135deg, #3e2c23 0%, #1f140f 100%);
+                            color: #f5f1ea;
                             padding: 40px;
                             text-align: center;
                             min-height: 100vh;
@@ -454,47 +454,70 @@ async def analytics_dashboard():
                             align-items: center;
                             justify-content: center;
                         }
+                        
                         .container {
                             max-width: 800px;
-                            background: #2a2a2a;
+                            background: #2b1d17;
                             padding: 40px;
                             border-radius: 12px;
-                            border: 1px solid #333;
+                            border: 1px solid #4a332a;
+                            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
                         }
+                        
                         h1 {
                             font-size: 32px;
                             margin-bottom: 20px;
-                            background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%);
+                            background: linear-gradient(135deg, #c69c6d 0%, #8b5e3c 100%);
                             -webkit-background-clip: text;
                             -webkit-text-fill-color: transparent;
                         }
-                        p { color: #888; margin: 15px 0; }
+                        
+                        p { 
+                            color: #cbb8a6; 
+                            margin: 15px 0; 
+                        }
+                        
                         pre {
-                            background: #1a1a1a;
+                            background: #1b120d;
                             padding: 20px;
                             border-radius: 8px;
                             text-align: left;
                             overflow-x: auto;
-                            border: 1px solid #333;
-                            color: #D4A574;
+                            border: 1px solid #3d2a21;
+                            color: #e6c7a1;
                         }
+                        
                         a {
-                            color: #D4A574;
+                            color: #d7a86e;
                             text-decoration: none;
                             margin-top: 20px;
                             display: inline-block;
                         }
-                        a:hover { text-decoration: underline; }
+                        
+                        a:hover { 
+                            text-decoration: underline; 
+                            color: #f0c48a;
+                        }
+                        
                         .steps {
                             text-align: left;
                             margin: 30px 0;
                             padding: 20px;
-                            background: #1a1a1a;
+                            background: #1b120d;
                             border-radius: 8px;
+                            border: 1px solid #3d2a21;
                         }
-                        .steps ol { margin: 10px 0; padding-left: 25px; }
-                        .steps li { margin: 10px 0; color: #e0e0e0; }
-                    </style>
+                        
+                        .steps ol { 
+                            margin: 10px 0; 
+                            padding-left: 25px; 
+                        }
+                        
+                        .steps li { 
+                            margin: 10px 0; 
+                            color: #f5f1ea; 
+                        }
+                        </style>
                 </head>
                 <body>
                     <div class="container">

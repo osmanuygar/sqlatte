@@ -48,7 +48,7 @@ async def demo_auth_page():
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #6f4e37 0%, #3e2723 100%);
             color: #e0e0e0;
             min-height: 100vh;
             display: flex;
