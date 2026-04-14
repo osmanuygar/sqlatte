@@ -33,6 +33,8 @@ from src.core.analytics_db_postgres import analytics_db
 from src.api.dashboard_routes import router as dashboard_router
 from src.core.dashboard_manager import initialize_dashboard_manager
 from src.api.semantic_routes import router as semantic_router
+from src.api import ops_agent_routes
+from src.core.provider_factory import initialize_ops_agent
 
 #from src.core.simple_insights import simple_insights
 from src.core.llm_insights_engine import (
@@ -78,6 +80,7 @@ def get_current_providers():
     db = ProviderFactory.create_db_provider(current_config)
     return llm, db
 
+initialize_ops_agent(config)
 # Initialize providers
 llm_provider, db_provider = get_current_providers()
 
@@ -187,6 +190,7 @@ app.include_router(analytics_router)
 app.include_router(scheduled_routes.router)
 app.include_router(dashboard_router)
 app.include_router(semantic_router)
+app.include_router(ops_agent_routes.router)
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
@@ -1065,6 +1069,15 @@ async def dashboard_view_page():
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Dashboard page not found</h1>", status_code=404)
 
+@app.get("/ops-agent", response_class=HTMLResponse)
+async def ops_agent_page():
+    """BigQuery Ops Console"""
+    ops_path = os.path.join(PROJECT_ROOT, 'frontend', 'ops-agents.html')
+    try:
+        with open(ops_path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Ops Agent page not found</h1>", status_code=404)
 
 @app.get("/dashboards.html", response_class=HTMLResponse)
 async def dashboards_list_page():
