@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BigQuery Ops - SQLatte</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <style>
+        /* SQLatte Brown/Latte Theme - Warm Coffee Colors */
+        :root {
+            /* Base colors - warm brown palette */
+            --bg: #1a1410;
+            --surface: #2a1f1a;
+            --card: #362920;
+            --border: #4a3830;
+            --border-hover: #5a4840;
+
+            /* Caramel accents */
+            --caramel: #D4A574;
+            --caramel-hover: #E0B886;
+            --caramel-dark: #A67C52;
+            --caramel-light: #F5DDB8;
+
+            /* Text colors - high contrast on brown */
+            --text: #f5f0e8;
+            --text-bright: #faf7f2;
+            --text-muted: #c9b9a8;
+            --text-dim: #a08978;
+
+            /* Status colors */
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --info: #8b7355;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        /* Navbar - Brown latte style */
+        .navbar {
+            background: linear-gradient(135deg, #2a1f1a 0%, #362920 100%) !important;
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .navbar-brand {
+            color: var(--text-bright) !important;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .navbar-brand strong {
+            color: var(--caramel);
+        }
+
+        .navbar .btn-outline-light {
+            border-color: var(--border);
+            color: var(--text);
+            transition: all 0.2s;
+        }
+
+        .navbar .btn-outline-light:hover {
+            background: var(--caramel);
+            border-color: var(--caramel);
+            color: var(--bg);
+        }
+
+        /* Sidebar - Latte style */
+        .ops-sidebar {
+            background: linear-gradient(180deg, var(--surface) 0%, var(--card) 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            height: calc(100vh - 120px);
+            overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .ops-sidebar .list-group-item {
+            background: transparent;
+            border: none;
+            border-left: 2px solid transparent;
+            color: var(--text-bright);
+            transition: all 0.2s;
+            cursor: pointer;
+            padding: 0.75rem 1rem;
+        }
+
+        .ops-sidebar .list-group-item:hover {
+            background: rgba(212, 165, 116, 0.1);
+            border-left-color: var(--caramel);
+            color: var(--text-bright);
+        }
+
+        .ops-sidebar .list-group-item.active {
+            background: linear-gradient(90deg, rgba(212, 165, 116, 0.15) 0%, transparent 100%);
+            border-left-color: var(--caramel);
+            color: var(--caramel-light);
+            font-weight: 500;
+        }
+
+        .category-header {
+            background: var(--card);
+            color: var(--caramel);
+            padding: 0.75rem 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .operation-item small {
+            display: block;
+            color: var(--text-muted) !important;
+            margin-top: 0.25rem;
+            font-size: 0.85rem;
+        }
+
+        /* Force all small text in operations to be visible */
+        .list-group-item small {
+            color: var(--text-muted) !important;
+        }
+
+        /* Make operation titles bright */
+        .operation-item div[style*="font-size: 0.9rem"],
+        .operation-item > div > div:first-child {
+            color: var(--text-bright) !important;
+        }
+
+        /* Force visibility for operation names */
+        .list-group-item div:first-child {
+            color: var(--text-bright) !important;
+        }
+
+        /* Time estimates on the right */
+        .list-group-item small.text-muted {
+            color: var(--text-dim) !important;
+        }
+
+        /* Status Card */
+        .status-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 1rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .status-card .fw-bold {
+            color: var(--caramel);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.75rem;
+        }
+
+        .status-item {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-item small {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+
+        .status-item div strong,
+        .status-item strong {
+            color: var(--text-bright);
+            font-weight: 600;
+        }
+
+        .status-item div {
+            color: var(--text-bright);
+        }
+
+        .status-item .badge {
+            font-size: 0.7rem;
+            padding: 0.25rem 0.5rem;
+        }
+
+        /* Result Cards */
+        .result-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .result-card-header {
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+            color: var(--text-bright);
+        }
+
+        .result-card-header.bg-info {
+            background: var(--card);
+            border-left: 3px solid var(--caramel);
+            color: var(--caramel);
+        }
+
+        .result-card-header.bg-info.text-white {
+            color: var(--caramel) !important;
+        }
+
+        .result-card-header.bg-warning {
+            background: var(--card);
+            border-left: 3px solid var(--warning);
+            color: var(--text-bright);
+        }
+
+        .result-card .card-body {
+            padding: 1.5rem;
+            color: var(--text-bright);
+        }
+
+        .result-card .card-body p {
+            color: var(--text-bright);
+        }
+
+        .result-card .card-body .lead {
+            color: var(--text-bright);
+            font-weight: 500;
+        }
+
+        /* Welcome Card - Warm coffee gradient */
+        .welcome-card {
+            background: linear-gradient(135deg, #8B6F47 0%, #D4A574 50%, #A67C52 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 32px rgba(212, 165, 116, 0.3);
+        }
+
+        .welcome-card h3 {
+            margin-bottom: 1rem;
+            font-weight: 700;
+        }
+
+        .quick-stat {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .quick-stat:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .quick-stat .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .quick-stat .stat-label {
+            font-size: 0.85rem;
+            opacity: 0.95;
+            font-weight: 500;
+        }
+
+        /* Forms */
+        .param-form {
+            background: var(--card);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+
+        .param-form h6 {
+            color: var(--caramel);
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .form-label {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-control {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-bright);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .form-control:focus {
+            background: var(--card);
+            border-color: var(--caramel);
+            color: var(--text-bright);
+            box-shadow: 0 0 0 3px rgba(212, 165, 116, 0.15);
+            outline: none;
+        }
+
+        .form-control::placeholder {
+            color: var(--text-dim);
+        }
+
+        /* Buttons - Caramel latte style */
+        .btn-primary {
+            background: linear-gradient(135deg, var(--caramel) 0%, var(--caramel-hover) 100%);
+            border: none;
+            color: var(--bg);
+            font-weight: 600;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, var(--caramel-hover) 0%, var(--caramel-light) 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(212, 165, 116, 0.4);
+        }
+
+        .btn-outline-danger {
+            border-color: var(--error);
+            color: var(--error);
+            background: transparent;
+        }
+
+        .btn-outline-danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: var(--error);
+            color: var(--error);
+        }
+
+        /* Tables */
+        .table {
+            color: var(--text-bright);
+            background: var(--surface);
+        }
+
+        .table-responsive {
+            background: var(--surface);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table thead {
+            background: var(--card);
+            border-bottom: 2px solid var(--caramel);
+        }
+
+        .table thead th {
+            color: var(--caramel);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.75rem 1rem;
+            border: none;
+            background: var(--card);
+        }
+
+        .table tbody {
+            background: var(--surface);
+        }
+
+        .table tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: all 0.2s;
+            background: var(--surface);
+        }
+
+        .table tbody tr:hover {
+            background: var(--card);
+        }
+
+        .table tbody td {
+            padding: 0.75rem 1rem;
+            border: none;
+            color: var(--text-bright);
+            background: transparent;
+        }
+
+        .table tbody td .text-muted {
+            color: var(--text-muted) !important;
+        }
+
+        /* Override Bootstrap table striping */
+        .table-striped tbody tr:nth-of-type(odd) {
+            background-color: var(--surface);
+        }
+
+        .table-striped tbody tr:nth-of-type(even) {
+            background-color: rgba(54, 41, 32, 0.5);
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: var(--card) !important;
+        }
+
+        /* Badges */
+        .badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.75rem;
+        }
+
+        .badge.bg-info {
+            background: var(--caramel) !important;
+            color: var(--bg) !important;
+        }
+
+        .badge-category.bg-info {
+            background: var(--caramel) !important;
+            color: var(--bg) !important;
+        }
+
+        .badge.bg-success {
+            background: var(--success) !important;
+        }
+
+        .badge.bg-danger {
+            background: var(--error) !important;
+        }
+
+        .badge.bg-warning {
+            background: var(--warning) !important;
+            color: var(--bg) !important;
+        }
+
+        .badge.bg-secondary {
+            background: var(--text-muted) !important;
+            color: var(--bg) !important;
+        }
+
+        /* Alerts */
+        .alert {
+            border-radius: 12px;
+            border: none;
+            padding: 1rem 1.25rem;
+        }
+
+        .alert-info {
+            background: rgba(139, 115, 85, 0.15);
+            border-left: 3px solid var(--caramel);
+            color: var(--text-bright);
+        }
+
+        .alert-info strong {
+            color: var(--caramel);
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.15);
+            border-left: 3px solid var(--warning);
+            color: var(--text-bright);
+        }
+
+        .alert-warning strong {
+            color: #fbbf24;
+        }
+
+        .alert-danger {
+            background: rgba(239, 68, 68, 0.15);
+            border-left: 3px solid var(--error);
+            color: var(--text-bright);
+        }
+
+        .alert-danger strong {
+            color: #f87171;
+        }
+
+        .alert ul {
+            margin: 0.5rem 0 0 0;
+            padding-left: 1.5rem;
+        }
+
+        .alert li {
+            color: var(--text-bright);
+            margin: 0.25rem 0;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--surface);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--caramel-dark);
+        }
+
+        /* Override any cyan/turquoise/blue backgrounds */
+        [style*="background: cyan"],
+        [style*="background: turquoise"],
+        [style*="background: rgb(0, 255, 255)"],
+        [style*="background-color: cyan"],
+        [style*="background-color: turquoise"] {
+            background: var(--card) !important;
+        }
+
+        /* Override inline cyan text */
+        [style*="color: cyan"],
+        [style*="color: turquoise"] {
+            color: var(--caramel) !important;
+        }
+
+        /* Spinner */
+        .spinner-border {
+            border-color: var(--caramel);
+            border-right-color: transparent;
+        }
+
+        .text-muted {
+            color: var(--text-muted) !important;
+        }
+
+        /* Loading and info messages */
+        .text-center p {
+            color: var(--text-bright) !important;
+        }
+
+        /* Chart container */
+        #result-chart {
+            max-height: 400px;
+        }
+
+        /* Footer in cards */
+        .card-footer {
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            padding: 1rem 1.5rem;
+        }
+
+        .card-footer.bg-light {
+            background: var(--surface) !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <span style="font-size: 1.5rem;">☕</span>
+                <strong>SQLatte</strong> - BigQuery Ops Console
+            </a>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Left Sidebar: Operations -->
+            <div class="col-md-3">
+                <div class="ops-sidebar">
+                    <div class="category-header">
+                        🔧 Operations
+                    </div>
+                    <div id="operations-list" class="list-group list-group-flush">
+                    <div class="text-center p-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2" style="color: #c9b9a8;">Loading operations...</p>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Agent Status -->
+                <div class="status-card">
+                    <div class="fw-bold mb-2">📊 Agent Status</div>
+                    <div id="agent-status">
+                        <div class="text-center">
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-9">
+                <!-- Welcome Card -->
+                <div class="welcome-card" id="welcome-card">
+                    <h3>🎯 BigQuery Operations Console</h3>
+                    <p class="mb-4">
+                        BigQuery ortamınızı optimize edin ve güvenlik auditlerini çalıştırın.
+                        Soldan bir operasyon seçerek başlayın.
+                    </p>
+
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="quick-stat">
+                                <div class="stat-value">💰</div>
+                                <div class="stat-label">Cost Analysis</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="quick-stat">
+                                <div class="stat-value">🔒</div>
+                                <div class="stat-label">Security Audits</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="quick-stat">
+                                <div class="stat-value">⚡</div>
+                                <div class="stat-label">Performance</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="quick-stat">
+                                <div class="stat-value">📋</div>
+                                <div class="stat-label">Governance</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Operation Execution Card -->
+                <div class="result-card" id="operation-card" style="display: none;">
+                    <div class="result-card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge badge-category bg-info" id="op-category"></span>
+                                <strong class="ms-2" id="op-name"></strong>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger" onclick="cancelOperation()">
+                                ❌ Cancel
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Parameters Form -->
+                    <div id="params-container" style="display: none;">
+                        <div class="param-form">
+                            <h6 class="mb-3">Parameters:</h6>
+                            <form id="params-form"></form>
+                        </div>
+                    </div>
+
+                    <!-- Execute Button -->
+                    <div class="card-footer bg-light">
+                        <button class="btn btn-primary" onclick="executeOperation()" id="execute-btn">
+                            ▶️ Run Operation
+                        </button>
+                        <span class="ms-3 text-muted" id="execution-time"></span>
+                    </div>
+                </div>
+
+                <!-- Results Container -->
+                <div id="results-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Ops Agent JS -->
+    <script src="/static/js/sqlatte-ops.js"></script>
+</body>
+</html>

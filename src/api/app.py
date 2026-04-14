@@ -33,6 +33,8 @@ from src.core.analytics_db_postgres import analytics_db
 from src.api.dashboard_routes import router as dashboard_router
 from src.core.dashboard_manager import initialize_dashboard_manager
 from src.api.semantic_routes import router as semantic_router
+from src.api import ops_agent_routes
+from src.core.provider_factory import initialize_ops_agent
 
 #from src.core.simple_insights import simple_insights
 from src.core.llm_insights_engine import (
@@ -78,6 +80,7 @@ def get_current_providers():
     db = ProviderFactory.create_db_provider(current_config)
     return llm, db
 
+initialize_ops_agent(config)
 # Initialize providers
 llm_provider, db_provider = get_current_providers()
 
@@ -187,6 +190,7 @@ app.include_router(analytics_router)
 app.include_router(scheduled_routes.router)
 app.include_router(dashboard_router)
 app.include_router(semantic_router)
+app.include_router(ops_agent_routes.router)
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
@@ -445,8 +449,8 @@ async def analytics_dashboard():
                     <style>
                         body {
                             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-                            color: #e0e0e0;
+                            background: linear-gradient(135deg, #3e2c23 0%, #1f140f 100%);
+                            color: #f5f1ea;
                             padding: 40px;
                             text-align: center;
                             min-height: 100vh;
@@ -454,47 +458,70 @@ async def analytics_dashboard():
                             align-items: center;
                             justify-content: center;
                         }
+                        
                         .container {
                             max-width: 800px;
-                            background: #2a2a2a;
+                            background: #2b1d17;
                             padding: 40px;
                             border-radius: 12px;
-                            border: 1px solid #333;
+                            border: 1px solid #4a332a;
+                            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
                         }
+                        
                         h1 {
                             font-size: 32px;
                             margin-bottom: 20px;
-                            background: linear-gradient(135deg, #D4A574 0%, #A67C52 100%);
+                            background: linear-gradient(135deg, #c69c6d 0%, #8b5e3c 100%);
                             -webkit-background-clip: text;
                             -webkit-text-fill-color: transparent;
                         }
-                        p { color: #888; margin: 15px 0; }
+                        
+                        p { 
+                            color: #cbb8a6; 
+                            margin: 15px 0; 
+                        }
+                        
                         pre {
-                            background: #1a1a1a;
+                            background: #1b120d;
                             padding: 20px;
                             border-radius: 8px;
                             text-align: left;
                             overflow-x: auto;
-                            border: 1px solid #333;
-                            color: #D4A574;
+                            border: 1px solid #3d2a21;
+                            color: #e6c7a1;
                         }
+                        
                         a {
-                            color: #D4A574;
+                            color: #d7a86e;
                             text-decoration: none;
                             margin-top: 20px;
                             display: inline-block;
                         }
-                        a:hover { text-decoration: underline; }
+                        
+                        a:hover { 
+                            text-decoration: underline; 
+                            color: #f0c48a;
+                        }
+                        
                         .steps {
                             text-align: left;
                             margin: 30px 0;
                             padding: 20px;
-                            background: #1a1a1a;
+                            background: #1b120d;
                             border-radius: 8px;
+                            border: 1px solid #3d2a21;
                         }
-                        .steps ol { margin: 10px 0; padding-left: 25px; }
-                        .steps li { margin: 10px 0; color: #e0e0e0; }
-                    </style>
+                        
+                        .steps ol { 
+                            margin: 10px 0; 
+                            padding-left: 25px; 
+                        }
+                        
+                        .steps li { 
+                            margin: 10px 0; 
+                            color: #f5f1ea; 
+                        }
+                        </style>
                 </head>
                 <body>
                     <div class="container">
@@ -1042,6 +1069,15 @@ async def dashboard_view_page():
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Dashboard page not found</h1>", status_code=404)
 
+@app.get("/ops-agent", response_class=HTMLResponse)
+async def ops_agent_page():
+    """BigQuery Ops Console"""
+    ops_path = os.path.join(PROJECT_ROOT, 'frontend', 'ops-agents.html')
+    try:
+        with open(ops_path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Ops Agent page not found</h1>", status_code=404)
 
 @app.get("/dashboards.html", response_class=HTMLResponse)
 async def dashboards_list_page():

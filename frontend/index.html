@@ -302,6 +302,10 @@
                     <span class="nav-icon">📊</span>
                     <span class="nav-label">Dashboards</span>
                 </a>
+                <a class="nav-item" onclick="showSection('bigquery-ops')">
+                    <span class="nav-icon">🔧</span>
+                    <span class="nav-label">BigQuery Ops</span>
+                </a>
                 <a class="nav-item" onclick="showSection('admin')">
                     <span class="nav-icon">⚙️</span>
                     <span class="nav-label">Configuration</span>
@@ -418,6 +422,16 @@
                 </div>
                 <div class="iframe-container" id="dashboards-container">
                     <iframe id="dashboards-iframe" src="/dashboards.html"></iframe>
+                </div>
+            </section>
+            <!-- BIGQUERY OPS SECTION -->
+            <section id="bigquery-ops" class="content-section">
+                <div class="page-header">
+                    <h2>🔧 BigQuery Ops Console</h2>
+                    <p>Cost optimization, security audits, and performance diagnostics</p>
+                </div>
+                <div class="iframe-container">
+                    <iframe id="ops-iframe" src="/ops-agent"></iframe>
                 </div>
             </section>
 
