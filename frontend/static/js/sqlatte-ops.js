@@ -21,6 +21,7 @@ async function init() {
 
     try {
         await loadAgentStatus();
+        await loadProjects();
         await loadOperations();
     } catch (error) {
         console.error('Initialization failed:', error);
@@ -78,6 +79,95 @@ async function loadAgentStatus() {
             </div>
         `;
         console.error('Health check failed:', error);
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// PROJECT MANAGEMENT
+// ═══════════════════════════════════════════════════
+
+async function loadProjects() {
+    try {
+        const response = await fetch(`${API_BASE}/ops-agent/projects`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const projects = data.projects || [];
+
+        if (projects.length <= 1) return; // No selector needed for single project
+
+        // Show the selector wrapper
+        const wrapper = document.getElementById('project-selector-wrapper');
+        if (wrapper) wrapper.style.removeProperty('display');
+
+        renderProjectDropdown(projects);
+
+    } catch (error) {
+        console.warn('Could not load projects:', error.message);
+    }
+}
+
+function renderProjectDropdown(projects) {
+    const menu = document.getElementById('project-dropdown-menu');
+    const activeLabel = document.getElementById('active-project-label');
+    if (!menu || !activeLabel) return;
+
+    const active = projects.find(p => p.active) || projects[0];
+    activeLabel.textContent = `${active.project_id}  (${active.region})`;
+
+    menu.innerHTML = projects.map(p => `
+        <li>
+            <a class="dropdown-item ${p.active ? 'active' : ''}"
+               href="#"
+               onclick="switchProject('${p.project_id}'); return false;"
+               style="
+                   color: ${p.active ? 'var(--bg)' : 'var(--text)'};
+                   background: ${p.active ? 'var(--caramel)' : 'transparent'};
+                   padding: 0.5rem 1rem;
+               ">
+                <strong>${p.project_id}</strong>
+                <small class="d-block" style="opacity: 0.75;">${p.region}</small>
+            </a>
+        </li>
+    `).join('');
+}
+
+async function switchProject(projectId) {
+    const spinner = document.getElementById('switch-spinner');
+    const btn = document.getElementById('project-dropdown-btn');
+    if (spinner) spinner.style.display = 'inline-block';
+    if (btn) btn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/ops-agent/switch-project`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({project_id: projectId})
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Switch failed');
+        }
+
+        const result = await response.json();
+        console.log(`✅ Switched to ${result.active_project} (${result.region})`);
+
+        // Reload status and refresh dropdown
+        await loadAgentStatus();
+        await loadProjects();
+
+        // Clear any open result
+        document.getElementById('results-container').innerHTML = '';
+        document.getElementById('welcome-card').style.display = 'block';
+        document.getElementById('operation-card').style.display = 'none';
+        document.querySelectorAll('.operation-item').forEach(i => i.classList.remove('active'));
+
+    } catch (error) {
+        showError('Project Switch Failed', error.message);
+    } finally {
+        if (spinner) spinner.style.display = 'none';
+        if (btn) btn.disabled = false;
     }
 }
 

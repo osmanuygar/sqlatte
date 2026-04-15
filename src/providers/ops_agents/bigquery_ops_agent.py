@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from google.cloud import bigquery
 from google.auth import default
 from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 
 from .base_ops_agent import (
     BaseOpsAgent,
@@ -213,35 +214,88 @@ class BigQueryOpsAgent(BaseOpsAgent):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
 
-        # BigQuery configuration
-        self.project_id = config.get('project_id')
-        if not self.project_id:
-            raise ValueError("BigQuery Ops Agent requires 'project_id' in config")
+        # Build projects registry from either 'projects' list or legacy single-project keys
+        raw_projects = config.get('projects')
+        if raw_projects:
+            if not isinstance(raw_projects, list) or len(raw_projects) == 0:
+                raise ValueError("ops_agent.config.projects must be a non-empty list")
+            self._projects: Dict[str, Dict[str, str]] = {
+                p['project_id']: {
+                    'region': p.get('region', 'US'),
+                    'credentials_path': p.get('credentials_path', '')
+                }
+                for p in raw_projects
+            }
+            default_project = config.get('default_project') or raw_projects[0]['project_id']
+        else:
+            # Legacy single-project config
+            project_id = config.get('project_id')
+            if not project_id:
+                raise ValueError("BigQuery Ops Agent requires 'project_id' or 'projects' in config")
+            self._projects = {
+                project_id: {
+                    'region': config.get('region', 'US'),
+                    'credentials_path': config.get('credentials_path', '')
+                }
+            }
+            default_project = project_id
 
-        self.region = config.get('region', 'US')
+        # Activate default project
+        self.project_id: str = ''
+        self.region: str = ''
+        self.client: Optional[bigquery.Client] = None
+        self._init_client(default_project)
 
-        # Authentication
-        credentials_path = config.get('credentials_path')
-        if credentials_path and os.path.exists(credentials_path):
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
-
-        try:
-            self.credentials, _ = default(
-                scopes=['https://www.googleapis.com/auth/bigquery']
+    def _init_client(self, project_id: str) -> None:
+        """Initialize (or re-initialize) the BigQuery client for the given project."""
+        if project_id not in self._projects:
+            raise ValueError(
+                f"Unknown project '{project_id}'. "
+                f"Available: {list(self._projects.keys())}"
             )
 
-            # Refresh token if needed
-            if not self.credentials.token:
-                self.credentials.refresh(Request())
+        proj = self._projects[project_id]
+        credentials_path = proj['credentials_path']
 
-            # Initialize BigQuery client
+        try:
+            if credentials_path and os.path.exists(credentials_path):
+                credentials = service_account.Credentials.from_service_account_file(
+                    credentials_path,
+                    scopes=['https://www.googleapis.com/auth/bigquery']
+                )
+            else:
+                credentials, _ = default(
+                    scopes=['https://www.googleapis.com/auth/bigquery']
+                )
+                if not getattr(credentials, 'token', None):
+                    credentials.refresh(Request())
+
+            self.project_id = project_id
+            self.region = proj['region']
             self.client = bigquery.Client(
                 project=self.project_id,
-                credentials=self.credentials
+                credentials=credentials
             )
 
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize BigQuery client: {e}")
+            raise RuntimeError(
+                f"Failed to initialize BigQuery client for project '{project_id}': {e}"
+            )
+
+    def switch_project(self, project_id: str) -> None:
+        """Switch the active project, region, and credentials at runtime."""
+        self._init_client(project_id)
+
+    def list_projects(self) -> List[Dict[str, str]]:
+        """Return all configured projects with their metadata."""
+        return [
+            {
+                'project_id': pid,
+                'region': meta['region'],
+                'active': pid == self.project_id
+            }
+            for pid, meta in self._projects.items()
+        ]
 
     # ─────────────────────────────────────────────────────────────
     # BASE CLASS IMPLEMENTATIONS
@@ -396,7 +450,7 @@ class BigQueryOpsAgent(BaseOpsAgent):
                 error=f"Execution error: {str(e)}"
             )
 
-    def get_connection_info(self) -> Dict[str, str]:
+    def get_connection_info(self) -> Dict[str, Any]:
         """Return agent metadata"""
         operations = self.get_available_operations()
 
@@ -406,7 +460,8 @@ class BigQueryOpsAgent(BaseOpsAgent):
             "project": self.project_id,
             "region": self.region,
             "operations_count": len(operations),
-            "categories": list(self.OPERATIONS.keys())
+            "categories": list(self.OPERATIONS.keys()),
+            "projects": self.list_projects()
         }
 
     async def health_check(self) -> Dict[str, Any]:
