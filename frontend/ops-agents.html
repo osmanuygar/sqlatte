@@ -592,6 +592,35 @@
                 <span style="font-size: 1.5rem;">☕</span>
                 <strong>SQLatte</strong> - BigQuery Ops Console
             </a>
+
+            <!-- Project Selector -->
+            <div class="d-flex align-items-center gap-2" id="project-selector-wrapper" style="display:none !important;">
+                <span style="color: var(--text-muted); font-size: 0.85rem;">Project:</span>
+                <div class="dropdown">
+                    <button
+                        class="btn btn-sm dropdown-toggle"
+                        id="project-dropdown-btn"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                        style="
+                            background: var(--card);
+                            border: 1px solid var(--border);
+                            color: var(--caramel);
+                            font-weight: 600;
+                            min-width: 180px;
+                            text-align: left;
+                        ">
+                        <span id="active-project-label">Loading...</span>
+                    </button>
+                    <ul class="dropdown-menu" id="project-dropdown-menu"
+                        style="background: var(--card); border: 1px solid var(--border); min-width: 220px;">
+                    </ul>
+                </div>
+                <span id="switch-spinner" style="display:none;">
+                    <div class="spinner-border spinner-border-sm" style="color: var(--caramel);"></div>
+                </span>
+            </div>
         </div>
     </nav>
 

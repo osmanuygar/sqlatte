@@ -17,6 +17,11 @@ class OpsExecuteRequest(BaseModel):
     params: Optional[Dict[str, Any]] = None
 
 
+class OpsSwitchProjectRequest(BaseModel):
+    """Request model for switching active project"""
+    project_id: str
+
+
 # ═══════════════════════════════════════════════════
 # OPERATIONS LISTING
 # ═══════════════════════════════════════════════════
@@ -61,6 +66,46 @@ async def list_operations():
         "agent": ops_agent.get_connection_info(),
         "operations": ops_agent.get_available_operations()
     }
+
+
+# ═══════════════════════════════════════════════════
+# PROJECT MANAGEMENT
+# ═══════════════════════════════════════════════════
+
+@router.get("/projects")
+async def list_projects():
+    """List all configured projects and which one is currently active."""
+    from src.core.provider_factory import get_ops_agent
+
+    ops_agent = get_ops_agent()
+    if not ops_agent:
+        raise HTTPException(status_code=400, detail="BigQuery Ops Agent not configured")
+
+    return {"projects": ops_agent.list_projects()}
+
+
+@router.post("/switch-project")
+async def switch_project(request: OpsSwitchProjectRequest):
+    """Switch the active BigQuery project (updates credentials and region too)."""
+    from src.core.provider_factory import get_ops_agent
+
+    ops_agent = get_ops_agent()
+    if not ops_agent:
+        raise HTTPException(status_code=400, detail="BigQuery Ops Agent not configured")
+
+    try:
+        ops_agent.switch_project(request.project_id)
+        info = ops_agent.get_connection_info()
+        return {
+            "success": True,
+            "active_project": request.project_id,
+            "region": info["region"],
+            "message": f"Switched to project '{request.project_id}'"
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ═══════════════════════════════════════════════════
