@@ -91,6 +91,15 @@ class BigQueryOpsAgent(BaseOpsAgent):
                 "params": [],
                 "returns": "table",
                 "estimated_duration_sec": 10
+            },
+            {
+                "name": "get_on_demand_vs_flat_rate_analysis",
+                "description": "Compare current on-demand spend vs flat-rate reservation tiers",
+                "params": [
+                    {"name": "days", "type": "int", "default": 30, "required": False}
+                ],
+                "returns": "metrics",
+                "estimated_duration_sec": 5
             }
         ],
         "security": [
@@ -106,6 +115,15 @@ class BigQueryOpsAgent(BaseOpsAgent):
                 "description": "Analyze access control for specific table",
                 "params": [
                     {"name": "table_id", "type": "str", "required": True}
+                ],
+                "returns": "table",
+                "estimated_duration_sec": 5
+            },
+            {
+                "name": "audit_service_account_usage",
+                "description": "List service accounts that ran queries and how much data they scanned",
+                "params": [
+                    {"name": "days", "type": "int", "default": 30, "required": False}
                 ],
                 "returns": "table",
                 "estimated_duration_sec": 5
@@ -153,6 +171,16 @@ class BigQueryOpsAgent(BaseOpsAgent):
                 ],
                 "returns": "table",
                 "estimated_duration_sec": 5
+            },
+            {
+                "name": "find_full_table_scans",
+                "description": "Queries that scanned >= 90% of a large table (missed partition pruning)",
+                "params": [
+                    {"name": "days", "type": "int", "default": 7, "required": False},
+                    {"name": "min_table_size_gb", "type": "int", "default": 1, "required": False}
+                ],
+                "returns": "table",
+                "estimated_duration_sec": 15
             }
         ],
         "governance": [
@@ -313,12 +341,18 @@ class BigQueryOpsAgent(BaseOpsAgent):
             elif operation_name == "identify_large_unpartitioned_tables":
                 return await self._identify_large_unpartitioned_tables()
 
+            elif operation_name == "get_on_demand_vs_flat_rate_analysis":
+                return await self._get_on_demand_vs_flat_rate_analysis(**validated_params)
+
             # Security operations
             elif operation_name == "find_public_datasets":
                 return await self._find_public_datasets()
 
             elif operation_name == "check_table_permissions":
                 return await self._check_table_permissions(**validated_params)
+
+            elif operation_name == "audit_service_account_usage":
+                return await self._audit_service_account_usage(**validated_params)
 
             # Performance operations
             elif operation_name == "get_slow_queries":
@@ -335,6 +369,9 @@ class BigQueryOpsAgent(BaseOpsAgent):
 
             elif operation_name == "get_query_errors":
                 return await self._get_query_errors(**validated_params)
+
+            elif operation_name == "find_full_table_scans":
+                return await self._find_full_table_scans(**validated_params)
 
             # Governance operations
             elif operation_name == "find_unused_tables":
@@ -1183,4 +1220,343 @@ class BigQueryOpsAgent(BaseOpsAgent):
             data=data,
             summary=summary,
             metadata={"table_name": table_name, "days": days}
+        )
+
+    # ═══════════════════════════════════════════════════
+    # COST OPERATIONS (CONTINUED)
+    # ═══════════════════════════════════════════════════
+
+    async def _get_on_demand_vs_flat_rate_analysis(self, days: int = 30) -> OperationResult:
+        """
+        Compare current on-demand spend vs flat-rate slot reservation tiers.
+
+        On-demand price: $6.25/TB billed (US multi-region).
+        Flat-rate tiers (approximate monthly commitments):
+          - 100 slots  → $2,000/month
+          - 500 slots  → $10,000/month
+          - 2000 slots → $40,000/month
+        """
+        ON_DEMAND_PRICE_PER_TB = 6.25
+
+        FLAT_RATE_TIERS = [
+            {"slots": 100,  "monthly_usd": 2_000},
+            {"slots": 500,  "monthly_usd": 10_000},
+            {"slots": 2_000, "monthly_usd": 40_000},
+        ]
+
+        sql = f"""
+            WITH DailyUsage AS (
+                SELECT
+                    DATE(creation_time) AS usage_date,
+                    SUM(total_bytes_billed) / POW(1024, 4)      AS daily_tb_billed,
+                    SUM(total_slot_ms) / (1000.0 * 3600)        AS daily_slot_hours,
+                    MAX(total_slot_ms / (1000.0 * 60))          AS peak_slot_minutes
+                FROM `{self.project_id}.region-{self.region}.INFORMATION_SCHEMA.JOBS_BY_PROJECT`
+                WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+                    AND state = 'DONE'
+                    AND job_type = 'QUERY'
+                GROUP BY 1
+            )
+            SELECT
+                COUNT(*)                                               AS active_days,
+                ROUND(SUM(daily_tb_billed), 4)                        AS total_tb_billed,
+                ROUND(AVG(daily_tb_billed), 6)                        AS avg_daily_tb,
+                ROUND(SUM(daily_tb_billed) * (30.0 / {days}), 4)     AS projected_monthly_tb,
+                ROUND(AVG(daily_slot_hours), 2)                       AS avg_daily_slot_hours,
+                ROUND(MAX(peak_slot_minutes), 0)                      AS peak_slots_observed
+            FROM DailyUsage
+        """
+
+        data = await self._run_query(sql)
+
+        if not data or not data[0].get('active_days'):
+            return OperationResult(
+                success=False,
+                operation="get_on_demand_vs_flat_rate_analysis",
+                data=[],
+                error="No query activity found in the specified period"
+            )
+
+        row = data[0]
+        monthly_tb = float(row.get('projected_monthly_tb', 0))
+        on_demand_monthly_usd = round(monthly_tb * ON_DEMAND_PRICE_PER_TB, 2)
+        peak_slots = float(row.get('peak_slots_observed', 0))
+
+        # Build comparison rows
+        comparison = []
+        recommended_tier = None
+        for tier in FLAT_RATE_TIERS:
+            savings = round(on_demand_monthly_usd - tier['monthly_usd'], 2)
+            comparison.append({
+                "tier_slots": tier['slots'],
+                "flat_rate_monthly_usd": tier['monthly_usd'],
+                "on_demand_monthly_usd": on_demand_monthly_usd,
+                "savings_usd": savings,
+                "recommendation": "SAVE" if savings > 0 else "OVERPAY"
+            })
+            if savings > 0 and recommended_tier is None:
+                recommended_tier = tier
+
+        summary = (
+            f"Projected on-demand spend: ${on_demand_monthly_usd:,.2f}/month "
+            f"({monthly_tb:.4f} TB × ${ON_DEMAND_PRICE_PER_TB}/TB). "
+            f"Peak slots observed: {peak_slots:.0f}."
+        )
+
+        recommendations = []
+        if recommended_tier:
+            recommendations.append(
+                f"Flat-rate at {recommended_tier['slots']} slots "
+                f"(${recommended_tier['monthly_usd']:,}/mo) would save "
+                f"${on_demand_monthly_usd - recommended_tier['monthly_usd']:,.2f}/month."
+            )
+            recommendations.append(
+                "Flat-rate is cost-effective when usage is consistent — "
+                "review day-over-day variance before committing."
+            )
+        else:
+            recommendations.append(
+                "On-demand pricing is currently cheaper than all flat-rate tiers."
+            )
+            recommendations.append(
+                "Revisit if monthly spend exceeds $2,000 (100-slot break-even)."
+            )
+
+        chart = self._generate_chart_config(
+            data=comparison,
+            x_key='tier_slots',
+            y_key='flat_rate_monthly_usd',
+            chart_type='bar',
+            title='Flat-Rate Tiers vs On-Demand Cost'
+        )
+
+        return OperationResult(
+            success=True,
+            operation="get_on_demand_vs_flat_rate_analysis",
+            data=comparison,
+            summary=summary,
+            recommendations=recommendations,
+            visualization=chart,
+            metadata={
+                "days_analyzed": days,
+                "on_demand_price_per_tb": ON_DEMAND_PRICE_PER_TB,
+                "projected_monthly_tb": monthly_tb,
+                "projected_monthly_on_demand_usd": on_demand_monthly_usd,
+                "peak_slots_observed": peak_slots
+            }
+        )
+
+    # ═══════════════════════════════════════════════════
+    # SECURITY OPERATIONS (CONTINUED)
+    # ═══════════════════════════════════════════════════
+
+    async def _audit_service_account_usage(self, days: int = 30) -> OperationResult:
+        """
+        List service accounts that ran queries, how much data they scanned,
+        and how many slot hours they consumed.
+
+        Service accounts are identified by emails containing
+        'iam.gserviceaccount.com' or 'developer.gserviceaccount.com'.
+        """
+        sql = f"""
+            SELECT
+                user_email                                              AS service_account,
+                COUNT(*)                                                AS query_count,
+                ROUND(SUM(total_bytes_processed) / POW(1024, 4), 4)   AS total_tb_scanned,
+                ROUND(SUM(total_slot_ms) / (1000.0 * 3600), 2)        AS total_slot_hours,
+                ROUND(AVG(total_bytes_processed) / POW(1024, 3), 2)   AS avg_gb_per_query,
+                MAX(creation_time)                                      AS last_seen
+            FROM `{self.project_id}.region-{self.region}.INFORMATION_SCHEMA.JOBS_BY_PROJECT`
+            WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+                AND job_type = 'QUERY'
+                AND state = 'DONE'
+                AND (
+                    user_email LIKE '%iam.gserviceaccount.com'
+                    OR user_email LIKE '%developer.gserviceaccount.com'
+                )
+            GROUP BY user_email
+            ORDER BY total_tb_scanned DESC
+            LIMIT 30
+        """
+
+        data = await self._run_query(sql)
+
+        if not data:
+            return OperationResult(
+                success=True,
+                operation="audit_service_account_usage",
+                data=[],
+                summary=f"No service account query activity found in the last {days} days."
+            )
+
+        total_tb = sum(float(row.get('total_tb_scanned', 0)) for row in data)
+        total_queries = sum(int(row.get('query_count', 0)) for row in data)
+
+        # Flag high-volume SAs (top 20% of TB scanned)
+        threshold_tb = sorted(
+            [float(r.get('total_tb_scanned', 0)) for r in data], reverse=True
+        )[max(0, len(data) // 5)]
+
+        for row in data:
+            row['risk_flag'] = (
+                "HIGH" if float(row.get('total_tb_scanned', 0)) >= threshold_tb and len(data) > 1
+                else "OK"
+            )
+
+        high_risk = [r for r in data if r['risk_flag'] == "HIGH"]
+
+        summary = (
+            f"Found {len(data)} service accounts that ran {total_queries:,} queries "
+            f"scanning {total_tb:.2f} TB total in last {days} days."
+        )
+
+        recommendations = []
+        if high_risk:
+            recommendations.append(
+                f"⚠️ {len(high_risk)} high-volume SA(s) detected — verify they use "
+                "column/row-level security and SELECT only what they need."
+            )
+        recommendations.append(
+            "Ensure each SA follows least-privilege: grant access per dataset, not project-wide."
+        )
+        recommendations.append(
+            "Consider Authorized Views for SAs that only need aggregated results."
+        )
+
+        chart = self._generate_chart_config(
+            data=data[:10],
+            x_key='service_account',
+            y_key='total_tb_scanned',
+            chart_type='bar',
+            title='Top 10 Service Accounts by TB Scanned'
+        )
+
+        return OperationResult(
+            success=True,
+            operation="audit_service_account_usage",
+            data=data,
+            summary=summary,
+            recommendations=recommendations,
+            visualization=chart,
+            metadata={"days_analyzed": days, "sa_count": len(data)}
+        )
+
+    # ═══════════════════════════════════════════════════
+    # PERFORMANCE OPERATIONS (CONTINUED)
+    # ═══════════════════════════════════════════════════
+
+    async def _find_full_table_scans(
+        self, days: int = 7, min_table_size_gb: int = 1
+    ) -> OperationResult:
+        """
+        Find queries that scanned >= 90% of a large table's logical bytes —
+        a strong indicator of missed partition pruning or absent WHERE clauses.
+
+        Joins JOBS_BY_PROJECT.referenced_tables with TABLE_STORAGE to compare
+        bytes processed against actual table size.
+        """
+        min_bytes = int(min_table_size_gb) * (1024 ** 3)
+
+        sql = f"""
+            WITH LargeTables AS (
+                SELECT
+                    table_schema   AS dataset_id,
+                    table_name     AS table_id,
+                    total_logical_bytes
+                FROM `{self.project_id}.region-{self.region}.INFORMATION_SCHEMA.TABLE_STORAGE`
+                WHERE total_logical_bytes >= {min_bytes}
+            ),
+            JobRefs AS (
+                SELECT
+                    j.job_id,
+                    j.user_email,
+                    j.creation_time,
+                    SUBSTR(j.query, 1, 120)         AS query_preview,
+                    j.total_bytes_processed,
+                    ref.dataset_id                  AS ref_dataset,
+                    ref.table_id                    AS ref_table
+                FROM `{self.project_id}.region-{self.region}.INFORMATION_SCHEMA.JOBS_BY_PROJECT` AS j,
+                UNNEST(j.referenced_tables) AS ref
+                WHERE j.creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+                    AND j.job_type = 'QUERY'
+                    AND j.state = 'DONE'
+                    AND j.total_bytes_processed > 0
+            )
+            SELECT
+                jr.job_id,
+                jr.user_email,
+                jr.query_preview,
+                jr.ref_dataset                                          AS dataset,
+                jr.ref_table                                            AS table_name,
+                ROUND(jr.total_bytes_processed / POW(1024, 3), 2)      AS bytes_processed_gb,
+                ROUND(lt.total_logical_bytes / POW(1024, 3), 2)        AS table_size_gb,
+                ROUND(
+                    SAFE_DIVIDE(jr.total_bytes_processed, lt.total_logical_bytes) * 100, 1
+                )                                                       AS scan_pct,
+                jr.creation_time
+            FROM JobRefs AS jr
+            JOIN LargeTables AS lt
+                ON jr.ref_dataset = lt.dataset_id
+               AND jr.ref_table   = lt.table_id
+            WHERE SAFE_DIVIDE(jr.total_bytes_processed, lt.total_logical_bytes) >= 0.9
+            ORDER BY jr.total_bytes_processed DESC
+            LIMIT 25
+        """
+
+        data = await self._run_query(sql)
+
+        if not data:
+            return OperationResult(
+                success=True,
+                operation="find_full_table_scans",
+                data=[],
+                summary=(
+                    f"No full table scans detected on tables >= {min_table_size_gb} GB "
+                    f"in the last {days} days. Partition pruning appears healthy."
+                )
+            )
+
+        total_tb_wasted = sum(float(r.get('bytes_processed_gb', 0)) for r in data) / 1024
+        unique_tables = len(set(
+            f"{r.get('dataset')}.{r.get('table_name')}" for r in data
+        ))
+
+        summary = (
+            f"Found {len(data)} full-table-scan job(s) across {unique_tables} table(s), "
+            f"processing {total_tb_wasted:.2f} TB total in last {days} days."
+        )
+
+        recommendations = [
+            "Add partition filters (WHERE date_col >= ...) to avoid full scans on partitioned tables.",
+            "Consider clustering on frequently filtered columns to reduce bytes read.",
+            "Use INFORMATION_SCHEMA.PARTITIONS to confirm partition pruning is active."
+        ]
+
+        if total_tb_wasted > 1:
+            recommendations.insert(
+                0,
+                f"⚠️ {total_tb_wasted:.2f} TB scanned unnecessarily — "
+                "fixing these queries could significantly reduce on-demand costs."
+            )
+
+        chart = self._generate_chart_config(
+            data=data[:10],
+            x_key='table_name',
+            y_key='bytes_processed_gb',
+            chart_type='bar',
+            title='Top 10 Full Table Scans by GB Processed'
+        )
+
+        return OperationResult(
+            success=True,
+            operation="find_full_table_scans",
+            data=data,
+            summary=summary,
+            recommendations=recommendations,
+            visualization=chart,
+            metadata={
+                "days_analyzed": days,
+                "min_table_size_gb": min_table_size_gb,
+                "unique_tables_affected": unique_tables
+            }
         )
