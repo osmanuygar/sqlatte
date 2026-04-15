@@ -282,31 +282,31 @@
                     <span class="nav-icon">🏠</span>
                     <span class="nav-label">Home</span>
                 </a>
-                <a class="nav-item" onclick="showSection('assistant')">
+                <a class="nav-item" data-section="assistant" onclick="showSection('assistant')">
                     <span class="nav-icon">🤖</span>
                     <span class="nav-label">Assistant</span>
                 </a>
-                <a class="nav-item" onclick="showSection('demo')">
+                <a class="nav-item" data-section="demo" onclick="showSection('demo')">
                     <span class="nav-icon">🎮</span>
                     <span class="nav-label">Demo</span>
                 </a>
-                <a class="nav-item" onclick="showSection('analytics')">
+                <a class="nav-item" data-section="analytics" onclick="showSection('analytics')">
                     <span class="nav-icon">📊</span>
                     <span class="nav-label">Analytics</span>
                 </a>
-                <a class="nav-item" onclick="showSection('schedules')">
+                <a class="nav-item" data-section="schedules" onclick="showSection('schedules')">
                     <span class="nav-icon">📅</span>
                     <span class="nav-label">Schedules</span>
                 </a>
-                <a class="nav-item" onclick="showSection('dashboards')">
+                <a class="nav-item" data-section="dashboards" onclick="showSection('dashboards')">
                     <span class="nav-icon">📊</span>
                     <span class="nav-label">Dashboards</span>
                 </a>
-                <a class="nav-item" onclick="showSection('bigquery-ops')">
+                <a class="nav-item" data-section="bigquery-ops" onclick="showSection('bigquery-ops')">
                     <span class="nav-icon">🔧</span>
                     <span class="nav-label">BigQuery Ops</span>
                 </a>
-                <a class="nav-item" onclick="showSection('admin')">
+                <a class="nav-item" data-section="admin" onclick="showSection('admin')">
                     <span class="nav-icon">⚙️</span>
                     <span class="nav-label">Configuration</span>
                 </a>
@@ -344,26 +344,26 @@
                     <h1>Welcome to SQLatte ☕</h1>
                     <p class="welcome-subtitle">Natural Language to SQL Platform</p>
 
-                    <div class="quick-actions">
-                        <div class="quick-action-card" onclick="showSection('assistant')">
+                    <div class="quick-actions" id="quick-actions-grid">
+                        <div class="quick-action-card" data-section="assistant" onclick="showSection('assistant')">
                             <div class="quick-action-icon">🤖</div>
                             <div class="quick-action-title">Open Assistant</div>
                             <div class="quick-action-desc">Ask questions in natural language</div>
                         </div>
 
-                        <div class="quick-action-card" onclick="showSection('analytics')">
+                        <div class="quick-action-card" data-section="analytics" onclick="showSection('analytics')">
                             <div class="quick-action-icon">📊</div>
                             <div class="quick-action-title">View Analytics</div>
                             <div class="quick-action-desc">Check query performance</div>
                         </div>
 
-                        <div class="quick-action-card" onclick="showSection('schedules')">
+                        <div class="quick-action-card" data-section="schedules" onclick="showSection('schedules')">
                             <div class="quick-action-icon">📅</div>
                             <div class="quick-action-title">Manage Schedules</div>
                             <div class="quick-action-desc">Automated query scheduling</div>
                         </div>
 
-                        <div class="quick-action-card" onclick="showSection('admin')">
+                        <div class="quick-action-card" data-section="admin" onclick="showSection('admin')">
                             <div class="quick-action-icon">⚙️</div>
                             <div class="quick-action-title">Configuration</div>
                             <div class="quick-action-desc">LLM and database settings</div>
@@ -414,7 +414,7 @@
                 </div>
             </section>
 
-            <!-- DASHBOARDS SECTION -->
+            <!-- DASHBOARDS sections  -->
             <section id="dashboards" class="content-section">
                 <div class="page-header">
                     <h2>📊 Dashboards</h2>
@@ -452,6 +452,37 @@
     <script src="/static/js/sqlatte-badge.js"></script>
 
     <script>
+        // ============================================
+        // UI CONFIG — hide disabled sections on load
+        // ============================================
+        async function applyUiConfig() {
+            try {
+                const res = await fetch('/ui-config');
+                if (!res.ok) return;
+                const { sections } = await res.json();
+
+                Object.entries(sections).forEach(([id, enabled]) => {
+                    if (enabled) return;
+
+                    // Hide sidebar nav item
+                    const navItem = document.querySelector(`.nav-item[data-section="${id}"]`);
+                    if (navItem) navItem.style.display = 'none';
+
+                    // Hide home quick-action card
+                    const card = document.querySelector(`.quick-action-card[data-section="${id}"]`);
+                    if (card) card.style.display = 'none';
+
+                    // If somehow this section is active, go home
+                    const section = document.getElementById(id);
+                    if (section && section.classList.contains('active')) {
+                        showSection('home');
+                    }
+                });
+            } catch (e) {
+                console.warn('Could not load UI config:', e);
+            }
+        }
+
         // ============================================
         // NAVIGATION
         // ============================================
@@ -496,7 +527,10 @@
         }
 
         // Configure widget
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
+            // Apply section visibility from config.yaml first
+            await applyUiConfig();
+
             if (window.SQLatteWidget) {
                 window.SQLatteWidget.configure({
                     position: 'bottom-right',
@@ -509,10 +543,8 @@
             // Handle initial hash
             const hash = window.location.hash.substring(1);
             if (hash) {
-                const navItem = document.querySelector(`.nav-item[onclick*="${hash}"]`);
-                if (navItem) {
-                    navItem.click();
-                }
+                const navItem = document.querySelector(`.nav-item[data-section="${hash}"]`);
+                if (navItem) navItem.click();
             }
         });
 
