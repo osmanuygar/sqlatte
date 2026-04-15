@@ -434,6 +434,40 @@ async def get_config():
     }
 
 
+@app.get("/ui-config")
+async def get_ui_config():
+    """
+    Return which sidebar sections are enabled.
+
+    Maps config.yaml ui.sections keys to HTML section IDs:
+      bigquery_ops  →  bigquery-ops
+
+    'home' is always enabled and not included in the map.
+    """
+    # Key: section id used in HTML, Value: enabled bool
+    DEFAULTS = {
+        "assistant":    True,
+        "demo":         True,
+        "analytics":    True,
+        "schedules":    True,
+        "dashboards":   True,
+        "bigquery-ops": True,
+        "admin":        True,
+    }
+
+    raw = config.get("ui", {}).get("sections", {})
+
+    # Normalise underscore keys (bigquery_ops) to hyphen (bigquery-ops)
+    normalised = {k.replace("_", "-"): v for k, v in raw.items()}
+
+    sections = {
+        section_id: normalised.get(section_id, default)
+        for section_id, default in DEFAULTS.items()
+    }
+
+    return {"sections": sections}
+
+
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_dashboard():
     """Analytics Dashboard"""
