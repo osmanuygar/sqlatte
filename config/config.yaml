@@ -307,7 +307,59 @@ export:
 
   # File naming
   filename_template: "{{schedule_name}}_{{date}}_{{time}}.{{format}}"
+# ═══════════════════════════════════════════════════
+# NEW: BigQuery Ops Agent
+# ═══════════════════════════════════════════════════
 
+ops_agent:
+  # Enable/disable ops agent feature
+  enabled: true  # Set to false to disable
+
+  # Provider type
+  provider: "bigquery_ops"
+
+  # Provider-specific configuration
+  config:
+    # BigQuery project to analyze
+    project_id: "project-id"
+
+    # Region for INFORMATION_SCHEMA queries
+    region: "EU"  # or EU, asia-northeast1, etc.
+
+    # Credentials (can be same or different from database provider)
+    credentials_path: "/<Path>/bigquery-ops.json"
+
+    # Optional: Use application default credentials instead
+    # use_default_credentials: true
+
+    # Optional: Restrict which operations are available
+    # Omit this field to allow all operations
+    allowed_operations:
+      # Cost operations
+      - get_expensive_queries
+      - forecast_monthly_costs
+      - get_time_travel_consumers
+      - analyze_storage_compression
+      - identify_large_unpartitioned_tables
+      - get_on_demand_vs_flat_rate_analysis
+
+      # Security operations
+      - find_public_datasets
+      - check_table_permissions
+      - audit_service_account_usage
+
+      # Performance operations
+      - get_slow_queries
+      - analyze_data_skew
+      - check_slot_saturation
+      - get_partition_recommendations
+      - get_query_errors
+      - find_full_table_scans
+
+      # Governance operations
+      - find_unused_tables
+      - get_recent_table_users
+      
 insights:
   enabled: false               # Başlangıçta kapalı
   mode: hybrid                 # llm_only, statistical_only, hybrid
