@@ -359,6 +359,21 @@ ops_agent:
       # Governance operations
       - find_unused_tables
       - get_recent_table_users
+
+# ============================================
+# UI SECTION VISIBILITY
+# ============================================
+# Set false to hide a section from the sidebar and home quick-actions.
+# 'home' is always visible and cannot be disabled.
+ui:
+  sections:
+    assistant: true
+    demo: false
+    analytics: true
+    schedules: true
+    dashboards: true
+    bigquery_ops: false
+    admin: true
       
 insights:
   enabled: false               # Başlangıçta kapalı
