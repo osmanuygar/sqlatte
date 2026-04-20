@@ -582,6 +582,61 @@
         .card-footer.bg-light {
             background: var(--surface) !important;
         }
+
+        /* ── View Tabs ── */
+        .view-tabs { display: flex; gap: 6px; }
+        .view-tab {
+            background: var(--card); border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: 8px; padding: 6px 16px;
+            font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+        }
+        .view-tab:hover { color: var(--caramel); border-color: var(--caramel); }
+        .view-tab.active {
+            background: var(--caramel); color: var(--bg);
+            border-color: var(--caramel); font-weight: 700;
+        }
+
+        /* ── Alarm Cards ── */
+        .alarm-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;
+            transition: border-color 0.2s;
+        }
+        .alarm-card.triggered { border-color: var(--error); }
+        .alarm-card.ok        { border-color: var(--success); }
+        .alarm-card.disabled  { opacity: 0.6; }
+        .alarm-badge {
+            font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px;
+        }
+        .alarm-badge.enabled  { background: rgba(16,185,129,.15); color: var(--success); border: 1px solid var(--success); }
+        .alarm-badge.disabled { background: rgba(160,137,120,.1); color: var(--text-dim); border: 1px solid var(--border); }
+        .alarm-badge.triggered { background: rgba(239,68,68,.12); color: var(--error); border: 1px solid var(--error); }
+        .alarm-badge.ok        { background: rgba(16,185,129,.12); color: var(--success); border: 1px solid var(--success); }
+
+        /* ── Alarm Form Panel ── */
+        .alarm-form-panel {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 20px; margin-bottom: 16px;
+        }
+        .alarm-form-panel h5 { color: var(--caramel); margin-bottom: 16px; }
+        .alarm-form-panel label {
+            font-size: 12px; color: var(--text-muted); text-transform: uppercase;
+            letter-spacing: .5px; margin-bottom: 5px; display: block;
+        }
+        .alarm-form-panel input, .alarm-form-panel select {
+            width: 100%; background: var(--card); border: 1px solid var(--border);
+            color: var(--text-bright); border-radius: 7px; padding: 7px 10px;
+            font-size: 13px;
+        }
+        .alarm-form-panel input:focus, .alarm-form-panel select:focus {
+            outline: none; border-color: var(--caramel);
+        }
+
+        /* ── History rows ── */
+        .history-row {
+            padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+        }
+        .history-row:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
@@ -593,8 +648,15 @@
                 <strong>SQLatte</strong> - BigQuery Ops Console
             </a>
 
+            <!-- View Tabs -->
+            <div class="view-tabs">
+                <button class="view-tab active" id="tab-ops"       onclick="switchView('ops')">🔧 Operations</button>
+                <button class="view-tab"         id="tab-alarms"    onclick="switchView('alarms')">🔔 Alarms</button>
+                <button class="view-tab"         id="tab-scheduler" onclick="switchView('scheduler')">📅 Scheduler</button>
+            </div>
+
             <!-- Project Selector -->
-            <div class="d-flex align-items-center gap-2" id="project-selector-wrapper" style="display:none !important;">
+            <div class="d-flex align-items-center gap-2" id="project-selector-wrapper">
                 <span style="color: var(--text-muted); font-size: 0.85rem;">Project:</span>
                 <div class="dropdown">
                     <button
@@ -624,7 +686,7 @@
         </div>
     </nav>
 
-    <div class="container-fluid mt-4">
+    <div class="container-fluid mt-4" id="ops-view">
         <div class="row">
             <!-- Left Sidebar: Operations -->
             <div class="col-md-3">
@@ -728,10 +790,542 @@
         </div>
     </div>
 
+    <!-- ══════════════════════════════════════════════════ -->
+    <!-- ALARMS VIEW                                      -->
+    <!-- ══════════════════════════════════════════════════ -->
+    <div id="alarms-view" style="display:none;" class="container-fluid mt-4">
+        <div class="row">
+            <!-- Left: Alarm List -->
+            <div class="col-md-5">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <h5 style="color:var(--caramel);margin:0;">🔔 Alarm Rules</h5>
+                    <button class="btn btn-sm" onclick="showCreateForm()"
+                        style="background:var(--caramel);color:var(--bg);font-weight:600;border:none;border-radius:8px;padding:6px 14px;">
+                        + New Alarm
+                    </button>
+                </div>
+                <div id="alarm-list">
+                    <div class="text-center p-4" style="color:var(--text-muted);">
+                        <div class="spinner-border spinner-border-sm me-2"></div>Loading alarms...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Form + History -->
+            <div class="col-md-7">
+                <!-- Create/Edit Form -->
+                <div class="alarm-form-panel" id="alarm-form-panel" style="display:none;">
+                    <h5 id="form-title">+ New Alarm</h5>
+                    <input type="hidden" id="alarm-edit-id" value="">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label>Alarm Name</label>
+                            <input type="text" id="alarm-name" placeholder="e.g. Daily High TB Alert">
+                        </div>
+                        <div class="col-12">
+                            <label>BigQuery Project</label>
+                            <select id="alarm-project">
+                                <option value="">— Default (active project) —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label>Condition Field</label>
+                            <select id="alarm-field">
+                                <option value="total_tb_processed">Total TB Processed (sum of top queries)</option>
+                                <option value="max_tb_processed">Max TB Processed (single query peak)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Operator</label>
+                            <select id="alarm-operator">
+                                <option value="gt">Greater than (&gt;)</option>
+                                <option value="gte">Greater or equal (&ge;)</option>
+                                <option value="lt">Less than (&lt;)</option>
+                                <option value="lte">Less or equal (&le;)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Threshold (TB)</label>
+                            <input type="number" id="alarm-threshold" value="0.5" step="0.1" min="0">
+                        </div>
+                        <div class="col-md-4">
+                            <label>Look-back Days</label>
+                            <input type="number" id="alarm-days" value="1" min="1" max="30">
+                        </div>
+                        <div class="col-md-8">
+                            <label>Schedule (cron)</label>
+                            <input type="text" id="alarm-schedule" value="0 8 * * *" placeholder="0 8 * * *">
+                            <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
+                                <code style="color:var(--caramel);">0 8 * * *</code> = daily 08:00 &nbsp;|&nbsp;
+                                <code style="color:var(--caramel);">0 8 * * 1</code> = weekly Mon
+                            </div>
+                        </div>
+
+                        <!-- Notifications -->
+                        <div class="col-12">
+                            <label>Notifications</label>
+                            <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+                                <!-- Email -->
+                                <div style="display:flex;align-items:center;justify-content:space-between;">
+                                    <div style="flex:1;">
+                                        <div style="font-size:13px;color:var(--text-bright);font-weight:600;">📧 Email</div>
+                                        <div id="email-recipients-wrapper">
+                                            <input type="text" id="alarm-recipients"
+                                                placeholder="alice@company.com, bob@company.com"
+                                                style="margin-top:6px;font-size:12px;">
+                                        </div>
+                                    </div>
+                                    <div class="form-check form-switch ms-3">
+                                        <input class="form-check-input" type="checkbox" id="notif-email" checked
+                                            onchange="document.getElementById('email-recipients-wrapper').style.display=this.checked?'':'none'">
+                                    </div>
+                                </div>
+                                <!-- Jira -->
+                                <div style="display:flex;align-items:flex-start;justify-content:space-between;" id="jira-row">
+                                    <div style="flex:1;">
+                                        <div style="font-size:13px;color:var(--text-bright);font-weight:600;">🎫 Jira Ticket
+                                            <span id="jira-config-status" style="font-size:11px;font-weight:400;margin-left:8px;"></span>
+                                        </div>
+                                        <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">
+                                            Creates a ticket when threshold is exceeded.
+                                            Configure in <code style="color:var(--caramel);">config.yaml → jira</code>.
+                                        </div>
+                                    </div>
+                                    <div class="form-check form-switch ms-3">
+                                        <input class="form-check-input" type="checkbox" id="notif-jira">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="alarm-enabled" checked>
+                                <label class="form-check-label" for="alarm-enabled" style="color:var(--text-muted);">Enabled</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-3">
+                        <button class="btn btn-sm" onclick="saveAlarm()"
+                            style="background:var(--caramel);color:var(--bg);font-weight:600;border:none;border-radius:8px;padding:7px 20px;">
+                            💾 Save
+                        </button>
+                        <button class="btn btn-sm" onclick="hideAlarmForm()"
+                            style="background:var(--card);color:var(--text-muted);border:1px solid var(--border);border-radius:8px;padding:7px 16px;">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+
+                <!-- History Panel -->
+                <div class="alarm-form-panel" id="alarm-history-panel">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                        <h5 style="color:var(--caramel);margin:0;">📋 Recent Alarm History</h5>
+                        <button class="btn btn-sm" onclick="loadHistory()"
+                            style="background:var(--card);color:var(--text-muted);border:1px solid var(--border);border-radius:8px;padding:4px 12px;font-size:12px;">
+                            ↻ Refresh
+                        </button>
+                    </div>
+                    <div id="alarm-history-list" style="max-height:480px;overflow-y:auto;">
+                        <div style="color:var(--text-dim);text-align:center;padding:20px;">No history yet.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════ -->
+    <!-- SCHEDULER VIEW                                   -->
+    <!-- ══════════════════════════════════════════════════ -->
+    <div id="scheduler-view" style="display:none;" class="container-fluid mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 style="color:var(--caramel);margin:0;">📅 Scheduled Alarms</h5>
+            <button class="btn btn-sm" onclick="loadSchedulerAlarms()"
+                style="background:var(--card);color:var(--text-muted);border:1px solid var(--border);border-radius:8px;padding:5px 14px;font-size:13px;">
+                ↻ Refresh
+            </button>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--text-muted);">
+            ℹ️ Alarms run automatically on their cron schedule. Use <strong style="color:var(--caramel);">▶ Run Now</strong> to trigger manually.
+        </div>
+        <div id="scheduler-list">
+            <div class="text-center p-4" style="color:var(--text-muted);">
+                <div class="spinner-border spinner-border-sm me-2"></div>Loading...
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- Ops Agent JS -->
     <script src="/static/js/sqlatte-ops.js"></script>
+
+    <!-- ══════════════════════════════════════════════════ -->
+    <!-- ALARMS + SCHEDULER JS                            -->
+    <!-- ══════════════════════════════════════════════════ -->
+    <script>
+    let _projects = [];
+
+    // ── view switching ─────────────────────────────────
+    function switchView(view) {
+        document.getElementById('ops-view').style.display       = view === 'ops'       ? '' : 'none';
+        document.getElementById('alarms-view').style.display    = view === 'alarms'    ? '' : 'none';
+        document.getElementById('scheduler-view').style.display = view === 'scheduler' ? '' : 'none';
+        document.getElementById('tab-ops').classList.toggle('active',       view === 'ops');
+        document.getElementById('tab-alarms').classList.toggle('active',    view === 'alarms');
+        document.getElementById('tab-scheduler').classList.toggle('active', view === 'scheduler');
+        if (view === 'alarms')    { loadAlarmProjects(); loadJiraConfig(); loadAlarms(); loadHistory(); }
+        if (view === 'scheduler') { loadSchedulerAlarms(); }
+    }
+
+    // ── API helpers ────────────────────────────────────
+    async function apiGet(url) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+    }
+    async function apiPost(url, body) {
+        const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+    }
+    async function apiPut(url, body) {
+        const r = await fetch(url, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+    }
+    async function apiDelete(url) {
+        const r = await fetch(url, { method:'DELETE' });
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+    }
+
+    // ── load projects for alarm form ───────────────────
+    async function loadAlarmProjects() {
+        try {
+            const data = await apiGet('/ops-agent/projects');
+            _projects = data.projects || [];
+            const sel = document.getElementById('alarm-project');
+            if (!sel) return;
+            const cur = sel.value;
+            sel.innerHTML = '<option value="">— Default (active project) —</option>' +
+                _projects.map(p => `<option value="${p.project_id}">${p.project_id}${p.active?' ✓':''}</option>`).join('');
+            if (cur) sel.value = cur;
+        } catch(e) { console.warn('Could not load projects:', e.message); }
+    }
+
+    // ── jira config status ────────────────────────────
+    let _jiraConfigured = false;
+    let _jiraBaseUrl    = '';
+    async function loadJiraConfig() {
+        try {
+            const data = await apiGet('/ops-agent/alarms/jira-config');
+            _jiraConfigured = data.enabled && data.configured;
+            _jiraBaseUrl    = (data.url || '').replace(/\/$/, '') + '/browse';
+            const el = document.getElementById('jira-config-status');
+            if (el) {
+                el.textContent = _jiraConfigured ? '✅ configured' : '⚠️ not configured';
+                el.style.color = _jiraConfigured ? 'var(--success)' : 'var(--text-dim)';
+            }
+            const toggle = document.getElementById('notif-jira');
+            if (toggle) {
+                toggle.disabled = !_jiraConfigured;
+                toggle.title = _jiraConfigured ? '' : 'Configure jira section in config.yaml first';
+            }
+        } catch(e) { /* silent */ }
+    }
+
+    // ── alarm list ─────────────────────────────────────
+    async function loadAlarms() {
+        const el = document.getElementById('alarm-list');
+        try {
+            const data = await apiGet('/ops-agent/alarms');
+            if (!data.alarms || !data.alarms.length) {
+                el.innerHTML = `<div style="color:var(--text-dim);text-align:center;padding:30px;">
+                    No alarms yet.<br><small>Click "+ New Alarm" to create one.</small></div>`;
+                return;
+            }
+            el.innerHTML = data.alarms.map(a => renderAlarmCard(a)).join('');
+        } catch(e) {
+            el.innerHTML = `<div style="color:var(--error);padding:16px;">Failed to load alarms: ${e.message}</div>`;
+        }
+    }
+
+    function renderAlarmCard(a) {
+        const opLabel = {gt:'>',gte:'≥',lt:'<',lte:'≤'}[a.condition?.operator] || '';
+        const proj = a.project_id || '<em style="color:var(--text-dim)">default</em>';
+        const lastTime = a.last_triggered ? new Date(a.last_triggered).toLocaleString() : '—';
+        const enabledBadge = a.enabled
+            ? '<span class="alarm-badge enabled">Enabled</span>'
+            : '<span class="alarm-badge disabled">Disabled</span>';
+        const statusBadge = a.last_status === 'triggered'
+            ? '<span class="alarm-badge triggered ms-1">⚠️ Triggered</span>'
+            : a.last_status === 'ok'
+            ? '<span class="alarm-badge ok ms-1">✅ OK</span>'
+            : '<span class="alarm-badge disabled ms-1">Never run</span>';
+        const statusClass = a.enabled ? (a.last_status === 'triggered' ? 'triggered' : a.last_status === 'ok' ? 'ok' : '') : 'disabled';
+        return `
+        <div class="alarm-card ${statusClass}">
+            <div class="d-flex justify-content-between align-items-start">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;color:var(--text-bright);font-size:15px;">${a.name}</div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+                        ${a.operation} · last ${a.params?.days||1} day(s)
+                        · <strong style="color:var(--caramel);">${opLabel} ${a.condition?.threshold} TB</strong>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-top:3px;">
+                        🗂 ${proj} &nbsp;|&nbsp; ⏰ ${a.schedule} &nbsp;|&nbsp;
+                        ${[a.notifications?.email?'📧':'', a.notifications?.jira?'🎫':''].filter(Boolean).join(' ')||'—'}
+                    </div>
+                    <div style="margin-top:6px;">${enabledBadge}${statusBadge}</div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Last trigger: ${lastTime}</div>
+                </div>
+                <div class="d-flex flex-column gap-1 ms-2" style="min-width:90px;align-items:flex-end;">
+                    <button onclick="testAlarm('${a.id}')"
+                        style="background:rgba(212,165,116,.15);color:var(--caramel);border:1px solid var(--caramel);border-radius:6px;font-size:12px;padding:3px 10px;white-space:nowrap;cursor:pointer;">
+                        ▶ Test
+                    </button>
+                    <button onclick="editAlarm(${JSON.stringify(a).replace(/"/g,'&quot;')})"
+                        style="background:var(--card);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;font-size:12px;padding:3px 10px;cursor:pointer;">
+                        ✏️ Edit
+                    </button>
+                    <button onclick="deleteAlarm('${a.id}','${a.name.replace(/'/g,"\\'")}')"
+                        style="background:rgba(239,68,68,.1);color:var(--error);border:1px solid var(--error);border-radius:6px;font-size:12px;padding:3px 10px;cursor:pointer;">
+                        🗑 Delete
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // ── form helpers ───────────────────────────────────
+    function showCreateForm() {
+        document.getElementById('form-title').textContent = '+ New Alarm';
+        document.getElementById('alarm-edit-id').value   = '';
+        document.getElementById('alarm-name').value      = '';
+        document.getElementById('alarm-field').value     = 'total_tb_processed';
+        document.getElementById('alarm-operator').value  = 'gt';
+        document.getElementById('alarm-threshold').value = '0.5';
+        document.getElementById('alarm-days').value      = '1';
+        document.getElementById('alarm-schedule').value  = '0 8 * * *';
+        document.getElementById('alarm-recipients').value= '';
+        document.getElementById('alarm-enabled').checked = true;
+        document.getElementById('notif-email').checked   = true;
+        document.getElementById('email-recipients-wrapper').style.display = '';
+        const active = _projects.find(p => p.active);
+        document.getElementById('alarm-project').value = active ? active.project_id : '';
+        document.getElementById('alarm-form-panel').style.display = '';
+        document.getElementById('alarm-form-panel').scrollIntoView({behavior:'smooth'});
+    }
+
+    function editAlarm(a) {
+        document.getElementById('form-title').textContent    = '✏️ Edit Alarm';
+        document.getElementById('alarm-edit-id').value       = a.id;
+        document.getElementById('alarm-name').value          = a.name;
+        document.getElementById('alarm-project').value       = a.project_id || '';
+        document.getElementById('alarm-field').value         = a.condition.field;
+        document.getElementById('alarm-operator').value      = a.condition.operator;
+        document.getElementById('alarm-threshold').value     = a.condition.threshold;
+        document.getElementById('alarm-days').value          = (a.params && a.params.days) || 1;
+        document.getElementById('alarm-schedule').value      = a.schedule;
+        document.getElementById('alarm-recipients').value    = (a.recipients||[]).join(', ');
+        document.getElementById('alarm-enabled').checked     = a.enabled;
+        const emailOn = a.notifications ? a.notifications.email !== false : true;
+        const jiraOn  = a.notifications ? !!a.notifications.jira : false;
+        document.getElementById('notif-email').checked = emailOn;
+        document.getElementById('notif-jira').checked  = jiraOn && _jiraConfigured;
+        document.getElementById('email-recipients-wrapper').style.display = emailOn ? '' : 'none';
+        document.getElementById('alarm-form-panel').style.display = '';
+        document.getElementById('alarm-form-panel').scrollIntoView({behavior:'smooth'});
+    }
+
+    function hideAlarmForm() {
+        document.getElementById('alarm-form-panel').style.display = 'none';
+    }
+
+    // ── save alarm ─────────────────────────────────────
+    async function saveAlarm() {
+        const editId  = document.getElementById('alarm-edit-id').value;
+        const emailOn = document.getElementById('notif-email').checked;
+        const jiraOn  = document.getElementById('notif-jira').checked;
+        const payload = {
+            name:      document.getElementById('alarm-name').value.trim(),
+            operation: 'get_expensive_queries',
+            params:    { days: parseInt(document.getElementById('alarm-days').value) || 1 },
+            condition: {
+                field:     document.getElementById('alarm-field').value,
+                operator:  document.getElementById('alarm-operator').value,
+                threshold: parseFloat(document.getElementById('alarm-threshold').value) || 0.5,
+            },
+            notifications: { email: emailOn, jira: jiraOn },
+            schedule:   document.getElementById('alarm-schedule').value.trim(),
+            recipients: emailOn
+                ? document.getElementById('alarm-recipients').value.split(',').map(s=>s.trim()).filter(Boolean)
+                : [],
+            project_id: document.getElementById('alarm-project').value.trim() || null,
+            enabled:    document.getElementById('alarm-enabled').checked,
+        };
+        if (!payload.name)                            { alert('Alarm name is required.');            return; }
+        if (emailOn && !payload.recipients.length)    { alert('Add at least one email recipient.'); return; }
+        if (jiraOn && !_jiraConfigured)               { alert('Jira is not configured in config.yaml. Disable Jira or configure it first.'); return; }
+        try {
+            if (editId) await apiPut(`/ops-agent/alarms/${editId}`, payload);
+            else        await apiPost('/ops-agent/alarms', payload);
+            hideAlarmForm();
+            loadAlarms();
+            showAlarmToast(editId ? 'Alarm updated!' : 'Alarm created!', 'success');
+        } catch(e) { showAlarmToast('Save failed: ' + e.message, 'error'); }
+    }
+
+    // ── delete ─────────────────────────────────────────
+    async function deleteAlarm(id, name) {
+        if (!confirm(`Delete alarm "${name}"?`)) return;
+        try {
+            await apiDelete(`/ops-agent/alarms/${id}`);
+            loadAlarms();
+            showAlarmToast('Alarm deleted.', 'success');
+        } catch(e) { showAlarmToast('Delete failed: ' + e.message, 'error'); }
+    }
+
+    // ── test alarm ─────────────────────────────────────
+    async function testAlarm(id) {
+        showAlarmToast('Running alarm check…', 'info');
+        try {
+            const data = await apiPost(`/ops-agent/alarms/${id}/test`, {});
+            const r    = data.result;
+            const parts = r.triggered
+                ? [`⚠️ TRIGGERED — ${r.value} TB > ${r.threshold} TB`,
+                   r.email_sent  ? '📧 email sent' : '',
+                   r.jira_ticket ? `🎫 ${r.jira_ticket}` : '']
+                : [`✅ OK — ${r.value} TB ≤ ${r.threshold} TB`];
+            const msg = parts.filter(Boolean).join(' · ');
+            showAlarmToast(msg, r.triggered ? 'warning' : 'success', 7000);
+            loadAlarms(); loadHistory();
+        } catch(e) { showAlarmToast('Test failed: ' + e.message, 'error'); }
+    }
+
+    // ── history ────────────────────────────────────────
+    async function loadHistory() {
+        const el = document.getElementById('alarm-history-list');
+        try {
+            const data = await apiGet('/ops-agent/alarms/history/all?limit=50');
+            if (!data.history || !data.history.length) {
+                el.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">No history yet.</div>';
+                return;
+            }
+            el.innerHTML = [...data.history].reverse().map(h => {
+                const icon  = h.status === 'triggered' ? '⚠️' : h.status === 'ok' ? '✅' : '❌';
+                const color = h.status === 'triggered' ? 'var(--error)' : h.status === 'ok' ? 'var(--success)' : 'var(--text-muted)';
+                const t     = new Date(h.triggered_at).toLocaleString();
+                const badges = [];
+                if (h.email_sent)  badges.push('📧');
+                if (h.jira_ticket) badges.push(`<a href="${_jiraBaseUrl}/${h.jira_ticket}" target="_blank"
+                    style="color:var(--caramel);text-decoration:none;">🎫 ${h.jira_ticket}</a>`);
+                const extra = badges.length ? ` <span style="font-size:11px;margin-left:6px;">${badges.join(' ')}</span>` : '';
+                return `<div class="history-row">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                        <div>
+                            <span style="font-weight:600;color:${color};">${icon} ${h.alarm_name}</span>${extra}
+                            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${h.message}</div>
+                        </div>
+                        <div style="font-size:11px;color:var(--text-dim);white-space:nowrap;margin-left:12px;">${t}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        } catch(e) { el.innerHTML = `<div style="color:var(--error);padding:12px;">Failed: ${e.message}</div>`; }
+    }
+
+    // ── scheduler tab ──────────────────────────────────
+    async function loadSchedulerAlarms() {
+        const el = document.getElementById('scheduler-list');
+        try {
+            const data = await apiGet('/ops-agent/alarms');
+            if (!data.alarms || !data.alarms.length) {
+                el.innerHTML = `<div style="color:var(--text-dim);text-align:center;padding:40px;">
+                    No scheduled alarms yet.<br>
+                    <small>Go to <strong style="color:var(--caramel);">🔔 Alarms</strong> to create one.</small></div>`;
+                return;
+            }
+            el.innerHTML = data.alarms.map(a => renderSchedulerRow(a)).join('');
+        } catch(e) { el.innerHTML = `<div style="color:var(--error);padding:16px;">Failed: ${e.message}</div>`; }
+    }
+
+    function renderSchedulerRow(a) {
+        const opLabel  = {gt:'>',gte:'≥',lt:'<',lte:'≤'}[a.condition?.operator] || '';
+        const project  = a.project_id || '<em style="color:var(--text-dim)">default</em>';
+        const nextRun  = a.next_run  ? new Date(a.next_run).toLocaleString()  : '—';
+        const lastRun  = a.last_triggered ? new Date(a.last_triggered).toLocaleString() : 'Never';
+        const status   = a.last_status === 'triggered' ? '<span style="color:var(--error);">⚠️ Triggered</span>'
+                       : a.last_status === 'ok'        ? '<span style="color:var(--success);">✅ OK</span>'
+                       :                                 '<span style="color:var(--text-dim);">—</span>';
+        const schedBadge = a.scheduled
+            ? '<span style="background:rgba(212,165,116,.12);color:var(--caramel);border:1px solid var(--caramel-dark);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">⏱ Active</span>'
+            : '<span style="background:rgba(239,68,68,.1);color:var(--error);border:1px solid var(--error);border-radius:4px;padding:2px 8px;font-size:11px;">⚠️ Not scheduled</span>';
+        const enabledBadge = a.enabled
+            ? '<span style="background:rgba(16,185,129,.15);color:var(--success);border:1px solid var(--success);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Enabled</span>'
+            : '<span style="background:rgba(160,137,120,.1);color:var(--text-dim);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;">Disabled</span>';
+        return `
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+                <div style="flex:1;min-width:220px;">
+                    <div style="font-weight:700;font-size:15px;color:var(--text-bright);margin-bottom:6px;">${a.name}</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${enabledBadge} ${schedBadge}</div>
+                    <div style="font-size:12px;color:var(--text-muted);display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:4px;">
+                        <span style="color:var(--text-dim);">Schedule</span>
+                        <span><code style="background:var(--card);padding:1px 6px;border-radius:4px;font-size:11px;">${a.schedule}</code></span>
+                        <span style="color:var(--text-dim);">Project</span>  <span>${project}</span>
+                        <span style="color:var(--text-dim);">Threshold</span><span style="color:var(--caramel);">${opLabel} ${a.condition?.threshold} TB</span>
+                        <span style="color:var(--text-dim);">Next Run</span> <span>${nextRun}</span>
+                        <span style="color:var(--text-dim);">Last Run</span> <span>${lastRun} &nbsp;${status}</span>
+                    </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;min-width:110px;align-items:flex-end;">
+                    <button onclick="runSchedulerAlarm('${a.id}','${a.name.replace(/'/g,"\\'")}',this)"
+                        style="background:rgba(212,165,116,.15);color:var(--caramel);border:1px solid var(--caramel);border-radius:7px;font-size:12px;padding:5px 14px;cursor:pointer;width:100%;">
+                        ▶ Run Now
+                    </button>
+                    <button onclick="switchView('alarms')"
+                        style="background:var(--card);color:var(--text-muted);border:1px solid var(--border);border-radius:7px;font-size:12px;padding:5px 14px;cursor:pointer;width:100%;">
+                        ✏️ Edit
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    async function runSchedulerAlarm(id, name, btn) {
+        const orig = btn.textContent;
+        btn.textContent = '⏳ Running…'; btn.disabled = true;
+        showAlarmToast(`Running "${name}"…`, 'info');
+        try {
+            const data = await apiPost(`/ops-agent/alarms/${id}/test`, {});
+            const r    = data.result;
+            const msg  = r.triggered
+                ? `⚠️ TRIGGERED — ${r.value} TB > ${r.threshold} TB${r.email_sent ? ' · 📧 sent' : ''}`
+                : `✅ OK — ${r.value} TB ≤ ${r.threshold} TB`;
+            showAlarmToast(msg, r.triggered ? 'warning' : 'success', 7000);
+            loadSchedulerAlarms();
+        } catch(e) { showAlarmToast('Run failed: ' + e.message, 'error'); }
+        finally    { btn.textContent = orig; btn.disabled = false; }
+    }
+
+    // ── toast ──────────────────────────────────────────
+    function showAlarmToast(msg, type='info', duration=4000) {
+        let c = document.getElementById('alarm-toast-container');
+        if (!c) {
+            c = document.createElement('div');
+            c.id = 'alarm-toast-container';
+            c.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;';
+            document.body.appendChild(c);
+        }
+        const colors = { success:'#10b981', error:'#ef4444', warning:'#f59e0b', info:'var(--caramel)' };
+        const t = document.createElement('div');
+        t.style.cssText = `background:var(--card);border:1px solid ${colors[type]||colors.info};border-left:4px solid ${colors[type]||colors.info};color:var(--text-bright);padding:12px 16px;border-radius:10px;font-size:13px;max-width:380px;box-shadow:0 4px 12px rgba(0,0,0,.3);`;
+        t.textContent = msg;
+        c.appendChild(t);
+        setTimeout(() => t.remove(), duration);
+    }
+    </script>
 </body>
 </html>

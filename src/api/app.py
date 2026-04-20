@@ -35,6 +35,8 @@ from src.core.dashboard_manager import initialize_dashboard_manager
 from src.api.semantic_routes import router as semantic_router
 from src.api import ops_agent_routes
 from src.core.provider_factory import initialize_ops_agent
+from src.api import alarm_routes
+from src.core.alarm_service import initialize_alarm_service, get_alarm_service
 
 #from src.core.simple_insights import simple_insights
 from src.core.llm_insights_engine import (
@@ -191,6 +193,7 @@ app.include_router(scheduled_routes.router)
 app.include_router(dashboard_router)
 app.include_router(semantic_router)
 app.include_router(ops_agent_routes.router)
+app.include_router(alarm_routes.router)
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
@@ -1274,8 +1277,42 @@ async def startup_event():
             scheduled_routes.schedules_db = schedules_db
             scheduled_routes.scheduler_manager = scheduler_manager
             scheduled_routes.query_history_manager = query_history
+            alarm_routes.scheduler_manager = scheduler_manager
 
             print("✅ Scheduled Queries initialized successfully!\n")
+
+            # ── Ops Alarms ──────────────────────────────────────────
+            alarms_config = config.get('alarms', {})
+            if alarms_config.get('enabled', False):
+                print("🔔 Initializing Ops Alarms...")
+                try:
+                    from src.core.provider_factory import get_ops_agent
+                    alarm_svc = initialize_alarm_service(
+                        config=alarms_config,
+                        email_service=email_service,
+                        ops_agent=get_ops_agent(),
+                        jira_config=config.get('jira', {}),
+                    )
+                    for alarm in alarm_svc.alarms.values():
+                        if alarm.enabled:
+                            try:
+                                from apscheduler.triggers.cron import CronTrigger
+                                tz = scheduler_config.get('timezone', 'UTC')
+                                scheduler_manager.scheduler.add_job(
+                                    func=alarm_svc.evaluate_alarm,
+                                    trigger=CronTrigger.from_crontab(alarm.schedule, timezone=tz),
+                                    args=[alarm],
+                                    id=f"alarm_{alarm.id}",
+                                    replace_existing=True,
+                                    name=f"alarm:{alarm.name}",
+                                )
+                                print(f"   ⏰ Scheduled: '{alarm.name}' ({alarm.schedule})")
+                            except Exception as ae:
+                                print(f"   ⚠️  Could not schedule '{alarm.name}': {ae}")
+                    print(f"   ✅ Alarms ready ({len(alarm_svc.alarms)} defined)\n")
+                except Exception as e:
+                    print(f"   ⚠️  Alarms init failed: {e}")
+            # ────────────────────────────────────────────────────────
 
         except Exception as e:
             print(f"❌ Failed to initialize Scheduled Queries: {e}")

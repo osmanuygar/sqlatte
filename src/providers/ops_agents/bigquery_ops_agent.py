@@ -526,20 +526,21 @@ class BigQueryOpsAgent(BaseOpsAgent):
         Ported from operational_tools.py → get_expensive_queries_by_slot_hours()
         """
         sql = f"""
-            SELECT 
+            SELECT
                 job_id,
                 user_email,
-                SUBSTR(query, 1, 100) as query_preview,
+                query AS query_text,
+                SUBSTR(query, 1, 100) AS query_preview,
                 total_slot_ms / (1000 * 60 * 60) AS slot_hours,
                 total_bytes_processed / POW(1024, 4) AS tb_processed,
-                TIMESTAMP_DIFF(end_time, creation_time, SECOND) as duration_sec,
+                TIMESTAMP_DIFF(end_time, creation_time, SECOND) AS duration_sec,
                 creation_time
             FROM `{self.project_id}.region-{self.region}.INFORMATION_SCHEMA.JOBS_BY_PROJECT`
             WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
                 AND job_type = 'QUERY'
                 AND state = 'DONE'
                 AND total_slot_ms > 0
-            ORDER BY total_slot_ms DESC 
+            ORDER BY total_slot_ms DESC
             LIMIT 10
         """
 

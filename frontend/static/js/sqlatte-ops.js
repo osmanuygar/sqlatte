@@ -93,13 +93,7 @@ async function loadProjects() {
 
         const data = await response.json();
         const projects = data.projects || [];
-
-        if (projects.length <= 1) return; // No selector needed for single project
-
-        // Show the selector wrapper
-        const wrapper = document.getElementById('project-selector-wrapper');
-        if (wrapper) wrapper.style.removeProperty('display');
-
+        if (projects.length === 0) return;
         renderProjectDropdown(projects);
 
     } catch (error) {
