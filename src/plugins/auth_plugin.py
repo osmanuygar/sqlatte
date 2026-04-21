@@ -416,7 +416,9 @@ class AuthPlugin(BasePlugin):
                     session.db_config,
                     question,
                     table_schema,
-                    conv_id  # 👈 CONVERSATION ID GEÇIR
+                    conv_id,
+                    session_id,
+                    session.username,
                 )
                 execution_time = (time.time() - start_time) * 1000
 
@@ -634,25 +636,42 @@ class AuthPlugin(BasePlugin):
             db_config: Dict[str, Any],
             question: str,
             table_schema: str,
-            conversation_id: str = None  # 👈 YENİ PARAMETRE
+            conversation_id: str = None,
+            session_id: str = None,
+            user_id: str = None,
     ) -> Dict[str, Any]:
         """
-        Execute query with CONVERSATION CONTEXT support
+        Execute query with CONVERSATION CONTEXT support and model routing.
         """
         try:
             from src.core.config_manager_enhanced import config_manager
-            from src.core.conversation_manager import conversation_manager  # 👈 YENİ
+            from src.core.conversation_manager import conversation_manager
+            from src.core.audit_log_db import audit_log_db
 
             wrapped_db_config = {'database': db_config}
             db_provider = ProviderFactory.create_db_provider(wrapped_db_config)
 
             llm_config = config_manager.get_config()
-            llm_provider = ProviderFactory.create_llm_provider(llm_config)
+            # Use task-specific model routing, same as the default widget
+            llm_intent = ProviderFactory.create_llm_provider_for_task(llm_config, "intent_detection")
+            llm_sql    = ProviderFactory.create_llm_provider_for_task(llm_config, "sql")
+            llm_chat   = ProviderFactory.create_llm_provider_for_task(llm_config, "chat")
 
+            print(f"🤖 [Auth] intent={llm_intent.get_model_name()} | sql={llm_sql.get_model_name()} | chat={llm_chat.get_model_name()}")
             print(f"🤖 Processing query: {question[:50]}...")
 
             schema_info = table_schema if table_schema else "No schema provided."
-            intent_result = llm_provider.determine_intent(question, schema_info)
+            intent_result = llm_intent.determine_intent(question, schema_info)
+            if audit_log_db and session_id:
+                _u = getattr(llm_intent, "last_token_usage", {})
+                audit_log_db.log(
+                    session_id=session_id, operation_type="intent_detection",
+                    model_name=llm_intent.get_model_name(), question=question,
+                    prompt_preview=question[:500],
+                    input_tokens=_u.get("input_tokens", 0),
+                    output_tokens=_u.get("output_tokens", 0),
+                    user_id=user_id, widget_type="auth",
+                )
 
             print(f"🎯 Intent: {intent_result['intent']} (confidence: {intent_result['confidence']})")
 
@@ -662,25 +681,31 @@ class AuthPlugin(BasePlugin):
                         "error": "☕ Please select one or more tables first to query your data."
                     }
 
-                # 👇 YENİ: Get conversation context
                 enhanced_question = question
                 if conversation_id:
                     conv_context = conversation_manager.get_conversation_context(conversation_id)
-                    if len(conv_context) > 1:  # Has history
+                    if len(conv_context) > 1:
                         context_summary = "\n\nRecent conversation:\n"
-                        for msg in conv_context[-5:]:  # Last 5 messages
+                        for msg in conv_context[-5:]:
                             if msg['role'] == 'user':
                                 context_summary += f"User: {msg['content']}\n"
                             elif msg['role'] == 'assistant':
-                                # Truncate long responses
-                                content = str(msg['content'])[:100]
-                                context_summary += f"Assistant: {content}...\n"
-
+                                context_summary += f"Assistant: {str(msg['content'])[:100]}...\n"
                         enhanced_question = f"{question}\n\nContext from previous messages: {context_summary}"
                         print(f"💬 Using conversation context ({len(conv_context)} messages)")
 
-                # Generate SQL with context
-                sql_query, explanation = llm_provider.generate_sql(enhanced_question, schema_info)
+                # Generate SQL with task-routed model
+                sql_query, explanation = llm_sql.generate_sql(enhanced_question, schema_info)
+                if audit_log_db and session_id:
+                    _u = getattr(llm_sql, "last_token_usage", {})
+                    audit_log_db.log(
+                        session_id=session_id, operation_type="sql_generation",
+                        model_name=llm_sql.get_model_name(), question=question,
+                        prompt_preview=enhanced_question[:500],
+                        input_tokens=_u.get("input_tokens", 0),
+                        output_tokens=_u.get("output_tokens", 0),
+                        user_id=user_id, widget_type="auth",
+                    )
 
                 print(f"📝 Generated SQL: {sql_query[:100]}...")
 
@@ -689,9 +714,7 @@ class AuthPlugin(BasePlugin):
                         "error": "Failed to generate SQL query. Please try rephrasing your question."
                     }
 
-                # Execute query
                 columns, data = db_provider.execute_query(sql_query)
-
                 print(f"✅ Query executed: {len(data)} rows returned")
 
                 return {
@@ -703,7 +726,6 @@ class AuthPlugin(BasePlugin):
                 }
 
             else:
-                # 👇 YENİ: Chat response with context
                 enhanced_question = question
                 if conversation_id:
                     conv_context = conversation_manager.get_conversation_context(conversation_id)
@@ -712,11 +734,21 @@ class AuthPlugin(BasePlugin):
                         for msg in conv_context[-5:]:
                             role_label = "User" if msg['role'] == 'user' else "Assistant"
                             context_text += f"{role_label}: {msg['content']}\n"
-
                         enhanced_question = f"{context_text}\n\nCurrent question: {question}"
                         print(f"💬 Chat with context ({len(conv_context)} messages)")
 
-                chat_response = llm_provider.generate_chat_response(enhanced_question, schema_info)
+                # Generate chat response with task-routed model
+                chat_response = llm_chat.generate_chat_response(enhanced_question, schema_info)
+                if audit_log_db and session_id:
+                    _u = getattr(llm_chat, "last_token_usage", {})
+                    audit_log_db.log(
+                        session_id=session_id, operation_type="chat_response",
+                        model_name=llm_chat.get_model_name(), question=question,
+                        prompt_preview=enhanced_question[:500],
+                        input_tokens=_u.get("input_tokens", 0),
+                        output_tokens=_u.get("output_tokens", 0),
+                        user_id=user_id, widget_type="auth",
+                    )
 
                 return {
                     "response_type": "chat",

@@ -34,6 +34,7 @@ class VertexAIProvider(LLMProvider):
 
         # Initialize model
         self.model = GenerativeModel(self.model_name)
+        self.last_token_usage = {"input_tokens": 0, "output_tokens": 0}
 
     def _init_vertex_ai(self):
         """Initialize Vertex AI with authentication"""
@@ -101,6 +102,11 @@ class VertexAIProvider(LLMProvider):
         prompt = prompt_template.format(schema_info=schema_display, question=question)
 
         response = self.model.generate_content(prompt)
+        _u = getattr(response, "usage_metadata", None)
+        self.last_token_usage = {
+            "input_tokens": getattr(_u, "prompt_token_count", 0) if _u else 0,
+            "output_tokens": getattr(_u, "candidates_token_count", 0) if _u else 0,
+        }
         response_text = response.text
 
         # Parse response
@@ -162,7 +168,11 @@ class VertexAIProvider(LLMProvider):
         full_prompt = f"{system_prompt}\n\n{user_message}"
 
         response = self.model.generate_content(full_prompt)
-
+        _u = getattr(response, "usage_metadata", None)
+        self.last_token_usage = {
+            "input_tokens": getattr(_u, "prompt_token_count", 0) if _u else 0,
+            "output_tokens": getattr(_u, "candidates_token_count", 0) if _u else 0,
+        }
         return response.text
 
     def generate_sql(self, question: str, schema_info: str) -> Tuple[str, str]:
@@ -217,6 +227,11 @@ class VertexAIProvider(LLMProvider):
         prompt = prompt_template.format(schema_info=schema_info, question=question)
 
         response = self.model.generate_content(prompt)
+        _u = getattr(response, "usage_metadata", None)
+        self.last_token_usage = {
+            "input_tokens": getattr(_u, "prompt_token_count", 0) if _u else 0,
+            "output_tokens": getattr(_u, "candidates_token_count", 0) if _u else 0,
+        }
         response_text = response.text
 
         # Extract SQL

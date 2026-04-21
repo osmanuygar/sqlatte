@@ -727,6 +727,10 @@
                 <span>🧠</span>
                 Semantic Layer
             </div>
+            <div class="tab" onclick="switchTab('audit'); loadAuditLogs();">
+                <span>🔍</span>
+                Audit Logs
+            </div>
         </div>
 
         <!-- TAB: Providers (LLM & Database) -->
@@ -1977,6 +1981,108 @@
                         </ul>
                     </div>
                 </details>
+            </div>
+        </div>
+
+        <!-- TAB: Audit Logs -->
+        <div id="tab-audit" class="tab-content">
+            <div class="config-card" style="margin-bottom:16px;">
+                <h2><span>🔍</span> LLM Audit Logs</h2>
+                <p style="color:#a0a0a0;font-size:13px;margin-bottom:16px;">
+                    Token usage and prompt info for every LLM call — both default and auth widget.
+                </p>
+
+                <!-- Summary cards -->
+                <div id="audit-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+                <!-- Filters -->
+                <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px;">
+                    <div>
+                        <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Period</label>
+                        <select id="audit-hours" style="background:#1a1a1a;border:1px solid #333;color:#e0e0e0;border-radius:6px;padding:6px 10px;font-size:13px;">
+                            <option value="6">Last 6h</option>
+                            <option value="24" selected>Last 24h</option>
+                            <option value="72">Last 3d</option>
+                            <option value="168">Last 7d</option>
+                            <option value="720">Last 30d</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Widget</label>
+                        <select id="audit-widget" style="background:#1a1a1a;border:1px solid #333;color:#e0e0e0;border-radius:6px;padding:6px 10px;font-size:13px;">
+                            <option value="">All</option>
+                            <option value="default">Default</option>
+                            <option value="auth">Auth Widget</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Operation</label>
+                        <select id="audit-operation" style="background:#1a1a1a;border:1px solid #333;color:#e0e0e0;border-radius:6px;padding:6px 10px;font-size:13px;">
+                            <option value="">All</option>
+                            <option value="intent_detection">Intent Detection</option>
+                            <option value="sql_generation">SQL Generation</option>
+                            <option value="chat_response">Chat Response</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Session ID</label>
+                        <input type="text" id="audit-session" placeholder="Filter by session…"
+                            style="background:#1a1a1a;border:1px solid #333;color:#e0e0e0;border-radius:6px;padding:6px 10px;font-size:13px;width:190px;">
+                    </div>
+                    <button class="btn btn-secondary" onclick="loadAuditLogs(true)" style="align-self:flex-end;">
+                        <span>🔄</span> Refresh
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportAuditCSV()" style="align-self:flex-end;" title="Download filtered logs as CSV">
+                        <span>⬇️</span> Export CSV
+                    </button>
+                    <span id="audit-loading" style="display:none;color:#a0a0a0;font-size:13px;align-self:flex-end;">Loading…</span>
+                </div>
+
+                <!-- Breakdown row -->
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">
+                    <div>
+                        <div style="font-size:12px;color:#D4A574;font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">By Model</div>
+                        <table id="audit-model-table" style="width:100%;font-size:12px;border-collapse:collapse;"></table>
+                    </div>
+                    <div>
+                        <div style="font-size:12px;color:#D4A574;font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">By Operation</div>
+                        <table id="audit-op-table" style="width:100%;font-size:12px;border-collapse:collapse;"></table>
+                    </div>
+                    <div>
+                        <div style="font-size:12px;color:#D4A574;font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">By Widget</div>
+                        <table id="audit-widget-table" style="width:100%;font-size:12px;border-collapse:collapse;"></table>
+                    </div>
+                </div>
+
+                <!-- Logs table -->
+                <div style="overflow-x:auto;border:1px solid #2a2a2a;border-radius:8px;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead>
+                            <tr style="background:#111;">
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Time</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Widget</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Operation</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Model</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">Question</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">User</th>
+                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">In</th>
+                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Out</th>
+                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Total</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Session</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-tbody">
+                            <tr><td colspan="10" style="text-align:center;padding:24px;color:#505050;">Click Refresh to load logs</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:12px;color:#a0a0a0;">
+                    <button class="btn btn-secondary" id="audit-prev-btn" onclick="auditPrevPage()" disabled style="padding:6px 14px;font-size:12px;">← Prev</button>
+                    <span id="audit-page-info">Page 1</span>
+                    <button class="btn btn-secondary" id="audit-next-btn" onclick="auditNextPage()" style="padding:6px 14px;font-size:12px;">Next →</button>
+                </div>
             </div>
         </div>
     </div>
@@ -3388,6 +3494,117 @@
         })();
 
         console.log('🧠 Semantic Layer initialized. Test: semanticLayerApp.loadEntities()');
+
+        // ── AUDIT LOGS ────────────────────────────────────────────────────────
+        let auditOffset = 0, auditLastCount = 0;
+        const AUDIT_PAGE = 100;
+
+        function _afmt(n) {
+            if (n == null) return '—';
+            if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+            if (n >= 1e3) return (n/1e3).toFixed(1)+'k';
+            return Number(n).toLocaleString();
+        }
+        function _aTime(iso) { return iso ? new Date(iso).toLocaleString(undefined,{dateStyle:'short',timeStyle:'medium'}) : '—'; }
+        function _aEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        function _aOpBadge(op) {
+            const m = { intent_detection:['rgba(139,115,85,.25)','#d4b896','Intent'], sql_generation:['rgba(16,185,129,.2)','#34d399','SQL Gen'], chat_response:['rgba(99,102,241,.2)','#a5b4fc','Chat'] };
+            const [bg,c,l] = m[op] || ['rgba(80,80,80,.3)','#a0a0a0',op];
+            return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;background:${bg};color:${c}">${l}</span>`;
+        }
+        function _aWidgetBadge(w) {
+            return w === 'auth'
+                ? `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;background:rgba(251,191,36,.15);color:#fbbf24">Auth</span>`
+                : `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;background:rgba(99,102,241,.15);color:#818cf8">Default</span>`;
+        }
+        function _aBreakdown(tableId, rows, nameKey, valKey) {
+            const t = document.getElementById(tableId);
+            if (!rows||!rows.length){t.innerHTML='<tr><td style="color:#505050;padding:4px 0">No data</td></tr>';return;}
+            const max = Math.max(...rows.map(r=>Number(r[valKey])||0));
+            t.innerHTML = rows.map(r=>{
+                const pct = max>0?Math.round(Number(r[valKey])/max*100):0;
+                const name = String(r[nameKey]||'—');
+                const short = name.length>26?name.slice(0,24)+'…':name;
+                return `<tr><td style="padding:4px 0;color:#c0c0c0;"><span title="${_aEsc(name)}">${_aEsc(short)}</span><div style="height:3px;background:#D4A574;border-radius:2px;width:${pct}%;margin-top:2px;"></div></td><td style="padding:4px 8px;text-align:right;color:#f5ddb8;font-weight:600;">${_afmt(Number(r[valKey]))}</td></tr>`;
+            }).join('');
+        }
+
+        async function loadAuditLogs(reset=false) {
+            if (reset) auditOffset = 0;
+            const hours = document.getElementById('audit-hours').value;
+            const widget = document.getElementById('audit-widget').value;
+            const op     = document.getElementById('audit-operation').value;
+            const sess   = document.getElementById('audit-session').value.trim();
+            document.getElementById('audit-loading').style.display='inline';
+            try {
+                const [sumRes, logRes] = await Promise.all([
+                    fetch(`/api/audit/summary?hours=${hours}`),
+                    fetch(`/api/audit/logs?hours=${hours}&limit=${AUDIT_PAGE}&offset=${auditOffset}${widget?'&widget_type='+encodeURIComponent(widget):''}${op?'&operation_type='+encodeURIComponent(op):''}${sess?'&session_id='+encodeURIComponent(sess):''}`)
+                ]);
+                const sum = await sumRes.json();
+                const logs = await logRes.json();
+                _auditRenderSummary(sum);
+                _auditRenderLogs(logs.logs||[]);
+                auditLastCount = logs.count||0;
+                _auditPagination();
+            } catch(e){ console.error('Audit error:',e); }
+            finally { document.getElementById('audit-loading').style.display='none'; }
+        }
+
+        function _auditRenderSummary(d) {
+            if (d.error) return;
+            document.getElementById('audit-summary-cards').innerHTML = [
+                {label:'Total Calls',  value:_afmt(d.total_calls)},
+                {label:'Input Tokens', value:_afmt(d.total_input_tokens)},
+                {label:'Output Tokens',value:_afmt(d.total_output_tokens)},
+                {label:'Total Tokens', value:_afmt(d.total_tokens)},
+                {label:'Avg / Call',   value:_afmt(Math.round(d.avg_tokens_per_call))},
+            ].map(c=>`<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px 14px;"><div style="font-size:11px;color:#707070;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">${c.label}</div><div style="font-size:1.4rem;font-weight:700;color:#f0e8d8;">${c.value}</div></div>`).join('');
+            _aBreakdown('audit-model-table',  d.by_model||[],     'model_name',     'total_tokens');
+            _aBreakdown('audit-op-table',     d.by_operation||[], 'operation_type', 'total_tokens');
+            _aBreakdown('audit-widget-table', d.by_widget||[],    'widget_type',    'total_tokens');
+        }
+
+        function _auditRenderLogs(logs) {
+            const tbody = document.getElementById('audit-tbody');
+            if (!logs.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px;color:#505050;">No log entries found</td></tr>'; return; }
+            tbody.innerHTML = logs.map(l=>`
+                <tr style="border-bottom:1px solid #1e1e1e;" onmouseover="this.style.background='#161616'" onmouseout="this.style.background=''">
+                    <td style="padding:7px 12px;white-space:nowrap;color:#707070;">${_aTime(l.created_at)}</td>
+                    <td style="padding:7px 12px;">${_aWidgetBadge(l.widget_type)}</td>
+                    <td style="padding:7px 12px;">${_aOpBadge(l.operation_type)}</td>
+                    <td style="padding:7px 12px;color:#a0a0a0;white-space:nowrap;font-size:11px;">${_aEsc(l.model_name||'—')}</td>
+                    <td style="padding:7px 12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c0c0c0;" title="${_aEsc(l.question)}">${_aEsc(l.question||'—')}</td>
+                    <td style="padding:7px 12px;color:#a0a0a0;font-size:11px;white-space:nowrap;">${_aEsc(l.user_id||'—')}</td>
+                    <td style="padding:7px 12px;text-align:right;color:#c0c0c0;">${_afmt(l.input_tokens)}</td>
+                    <td style="padding:7px 12px;text-align:right;color:#c0c0c0;">${_afmt(l.output_tokens)}</td>
+                    <td style="padding:7px 12px;text-align:right;color:#f5ddb8;font-weight:600;">${_afmt(l.total_tokens)}</td>
+                    <td style="padding:7px 12px;font-family:monospace;font-size:11px;color:#505050;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_aEsc(l.session_id)}">${_aEsc(l.session_id)}</td>
+                </tr>`).join('');
+        }
+
+        function _auditPagination() {
+            const page = Math.floor(auditOffset/AUDIT_PAGE)+1;
+            document.getElementById('audit-page-info').textContent = `Page ${page} · ${auditLastCount} entries`;
+            document.getElementById('audit-prev-btn').disabled = auditOffset===0;
+            document.getElementById('audit-next-btn').disabled = auditLastCount<AUDIT_PAGE;
+        }
+        function auditPrevPage(){ if(auditOffset>=AUDIT_PAGE){auditOffset-=AUDIT_PAGE; loadAuditLogs();} }
+        function auditNextPage(){ if(auditLastCount===AUDIT_PAGE){auditOffset+=AUDIT_PAGE; loadAuditLogs();} }
+
+        function exportAuditCSV() {
+            const hours  = document.getElementById('audit-hours').value;
+            const widget = document.getElementById('audit-widget').value;
+            const op     = document.getElementById('audit-operation').value;
+            const sess   = document.getElementById('audit-session').value.trim();
+            let url = `/api/audit/export/csv?hours=${hours}`;
+            if (widget) url += `&widget_type=${encodeURIComponent(widget)}`;
+            if (op)     url += `&operation_type=${encodeURIComponent(op)}`;
+            if (sess)   url += `&session_id=${encodeURIComponent(sess)}`;
+            window.location.href = url;
+        }
+
+        document.getElementById('audit-hours').addEventListener('change', ()=>loadAuditLogs(true));
     </script>
 </body>
 </html>
