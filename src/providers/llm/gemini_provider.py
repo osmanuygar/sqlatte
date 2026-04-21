@@ -22,6 +22,7 @@ class GeminiProvider(LLMProvider):
         # Configure Gemini
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel(self.model_name)
+        self.last_token_usage = {"input_tokens": 0, "output_tokens": 0}
 
     def determine_intent(self, question: str, schema_info: str) -> Dict[str, any]:
         """
@@ -55,6 +56,11 @@ class GeminiProvider(LLMProvider):
         prompt = prompt_template.format(schema_info=schema_display, question=question)
 
         response = self.model.generate_content(prompt)
+        _u = getattr(response, "usage_metadata", None)
+        self.last_token_usage = {
+            "input_tokens": getattr(_u, "prompt_token_count", 0) if _u else 0,
+            "output_tokens": getattr(_u, "candidates_token_count", 0) if _u else 0,
+        }
         response_text = response.text
 
         # Parse response
@@ -117,7 +123,11 @@ class GeminiProvider(LLMProvider):
         )
 
         response = model_with_system.generate_content(user_message)
-
+        _u = getattr(response, "usage_metadata", None)
+        self.last_token_usage = {
+            "input_tokens": getattr(_u, "prompt_token_count", 0) if _u else 0,
+            "output_tokens": getattr(_u, "candidates_token_count", 0) if _u else 0,
+        }
         return response.text
 
     def generate_sql(self, question: str, schema_info: str) -> Tuple[str, str]:
@@ -161,6 +171,11 @@ class GeminiProvider(LLMProvider):
         prompt = prompt_template.format(schema_info=schema_info, question=question)
 
         response = self.model.generate_content(prompt)
+        _u = getattr(response, "usage_metadata", None)
+        self.last_token_usage = {
+            "input_tokens": getattr(_u, "prompt_token_count", 0) if _u else 0,
+            "output_tokens": getattr(_u, "candidates_token_count", 0) if _u else 0,
+        }
         response_text = response.text
 
         # Extract SQL

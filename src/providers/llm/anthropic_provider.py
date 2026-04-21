@@ -20,6 +20,7 @@ class AnthropicProvider(LLMProvider):
             raise ValueError("Anthropic API key is required")
         
         self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.last_token_usage = {"input_tokens": 0, "output_tokens": 0}
     
     def determine_intent(self, question: str, schema_info: str) -> Dict[str, any]:
         """
@@ -59,9 +60,12 @@ class AnthropicProvider(LLMProvider):
             max_tokens=200,
             messages=[{"role": "user", "content": prompt}]
         )
-        
+        self.last_token_usage = {
+            "input_tokens": getattr(message.usage, "input_tokens", 0),
+            "output_tokens": getattr(message.usage, "output_tokens", 0),
+        }
         response_text = message.content[0].text
-        
+
         # Parse response
         intent = "chat"  # default
         confidence = 0.5
@@ -119,7 +123,10 @@ class AnthropicProvider(LLMProvider):
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}]
         )
-        
+        self.last_token_usage = {
+            "input_tokens": getattr(message.usage, "input_tokens", 0),
+            "output_tokens": getattr(message.usage, "output_tokens", 0),
+        }
         return message.content[0].text
     
     def generate_sql(self, question: str, schema_info: str) -> Tuple[str, str]:
@@ -168,7 +175,10 @@ class AnthropicProvider(LLMProvider):
             max_tokens=self.max_tokens,
             messages=[{"role": "user", "content": prompt}]
         )
-        
+        self.last_token_usage = {
+            "input_tokens": getattr(message.usage, "input_tokens", 0),
+            "output_tokens": getattr(message.usage, "output_tokens", 0),
+        }
         response_text = message.content[0].text
 
         # Extract SQL

@@ -30,6 +30,8 @@ from src.api.admin_routes_enhanced import router as admin_router
 from src.api.demo_routes import router as demo_router
 from src.api.analytics_routes import router as analytics_router
 from src.core.analytics_db_postgres import analytics_db
+from src.core.audit_log_db import audit_log_db
+from src.api.audit_routes import router as audit_router
 from src.api.dashboard_routes import router as dashboard_router
 from src.core.dashboard_manager import initialize_dashboard_manager
 from src.api.semantic_routes import router as semantic_router
@@ -194,6 +196,7 @@ app.include_router(dashboard_router)
 app.include_router(semantic_router)
 app.include_router(ops_agent_routes.router)
 app.include_router(alarm_routes.router)
+app.include_router(audit_router)
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
@@ -263,6 +266,15 @@ def _process_query_sync(
 
         # ── Intent Detection (hızlı/ucuz model) ─────────────────────────
         intent_result = llm_intent.determine_intent(question, schema_info)
+        if audit_log_db:
+            _u = getattr(llm_intent, "last_token_usage", {})
+            audit_log_db.log(
+                session_id=session_id, operation_type="intent_detection",
+                model_name=llm_intent.get_model_name(), question=question,
+                prompt_preview=question[:500],
+                input_tokens=_u.get("input_tokens", 0),
+                output_tokens=_u.get("output_tokens", 0),
+            )
 
         # ── SQL path ─────────────────────────────────────────────────────
         if intent_result["intent"] == "sql" and intent_result["confidence"] > 0.6:
@@ -287,6 +299,15 @@ def _process_query_sync(
 
             # SQL generation (güçlü model)
             sql_query, explanation = llm_sql.generate_sql(enhanced_question, schema_info)
+            if audit_log_db:
+                _u = getattr(llm_sql, "last_token_usage", {})
+                audit_log_db.log(
+                    session_id=session_id, operation_type="sql_generation",
+                    model_name=llm_sql.get_model_name(), question=question,
+                    prompt_preview=enhanced_question[:500],
+                    input_tokens=_u.get("input_tokens", 0),
+                    output_tokens=_u.get("output_tokens", 0),
+                )
 
             if not sql_query:
                 return {
@@ -348,6 +369,15 @@ def _process_query_sync(
 
             # Chat response (chat modeli)
             chat_response = llm_chat.generate_chat_response(enhanced_question, schema_info)
+            if audit_log_db:
+                _u = getattr(llm_chat, "last_token_usage", {})
+                audit_log_db.log(
+                    session_id=session_id, operation_type="chat_response",
+                    model_name=llm_chat.get_model_name(), question=question,
+                    prompt_preview=enhanced_question[:500],
+                    input_tokens=_u.get("input_tokens", 0),
+                    output_tokens=_u.get("output_tokens", 0),
+                )
 
             return {
                 "type": "chat",
