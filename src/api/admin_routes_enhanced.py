@@ -512,6 +512,43 @@ async def update_insights_config(request: InsightsConfigRequest, http_request: R
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class OpsAgentConfigRequest(BaseModel):
+    """Request model for Ops Agent config updates"""
+    config: Dict[str, Any]
+    persist: bool = False
+
+
+@router.put("/config/ops-agent")
+async def update_ops_agent_config(request: OpsAgentConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
+    """Update Ops Agent configuration (enabled, ai_insights toggle, ai_insights_max)"""
+    try:
+        user = http_request.headers.get('X-User', 'api')
+
+        # Merge only the editable keys — preserve provider, projects, allowed_operations etc.
+        current = config_manager.get_config()
+        existing = current.get('ops_agent', {})
+        existing.update({
+            'enabled': request.config.get('enabled', existing.get('enabled', True)),
+            'ai_insights': request.config.get('ai_insights', existing.get('ai_insights', False)),
+            'ai_insights_max': request.config.get('ai_insights_max', existing.get('ai_insights_max', 5)),
+        })
+
+        config_manager.update_config(
+            updates={'ops_agent': existing},
+            persist=request.persist,
+            user=user,
+            reason="Ops Agent config updated"
+        )
+
+        return {
+            "success": True,
+            "message": "Ops Agent configuration updated",
+            "config": existing
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class ExportConfigRequest(BaseModel):
     """Request model for Export config updates"""
     config: Dict[str, Any]

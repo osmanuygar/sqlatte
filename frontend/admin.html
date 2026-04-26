@@ -711,6 +711,10 @@
                 <span>💡</span>
                 Insights
             </div>
+            <div class="tab" onclick="switchTab('ops-agent')">
+                <span>🔧</span>
+                Ops Agent
+            </div>
             <div class="tab" onclick="switchTab('export')">
                 <span>📊</span>
                 Export
@@ -1266,6 +1270,56 @@
 
                 <div style="margin-top: 20px; padding: 16px; background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 8px; font-size: 13px;">
                     <strong>💡 About Insights:</strong> The AI Insights Engine automatically analyzes query results to detect patterns, anomalies, and trends. It provides context-aware insights that help you understand your data better.
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Ops Agent -->
+        <div id="tab-ops-agent" class="tab-content">
+            <div class="config-card">
+                <h2>
+                    <span>🔧</span>
+                    BigQuery Ops Agent
+                </h2>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Enable Ops Agent</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="ops-agent-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <hr style="border-color: #333; margin: 20px 0;">
+
+                <h3 style="color: #c9b9a8; font-size: 14px; margin-bottom: 12px;">🤖 AI Insights</h3>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Enable AI Insights for Operations</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="ops-ai-insights-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label>Max AI Insights per Operation</label>
+                    <input type="number" id="ops-ai-insights-max" placeholder="5" min="1" max="10">
+                    <small>Maximum number of AI insights shown after each operation result</small>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="ops-agent-persist" checked>
+                    <label for="ops-agent-persist">💾 Save to Database</label>
+                </div>
+
+                <button class="btn btn-success" onclick="updateOpsAgent()" style="width: 100%; margin-top: 16px;">
+                    <span>✓</span>
+                    Apply Ops Agent Settings
+                </button>
+
+                <div style="margin-top: 20px; padding: 16px; background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 8px; font-size: 13px;">
+                    <strong>💡 About AI Insights:</strong> When enabled, the AI Insights Engine analyses each operation's results and surfaces cost, performance, security, or governance findings automatically. The insight prompt can be customised under the <strong>Prompts</strong> tab (<code>ops_insights_generation</code>). Set the prompt to <code>null</code> there to disable insights regardless of this toggle.
                 </div>
             </div>
         </div>
@@ -2411,6 +2465,14 @@
             document.getElementById('insights-statistical').checked = toBool(insightsConfig.include_statistical !== false);
 
             // ─────────────────────────────────────────────
+            // OPS AGENT CONFIG
+            // ─────────────────────────────────────────────
+            const opsAgentConfig = config.ops_agent || {};
+            document.getElementById('ops-agent-enabled').checked = toBool(opsAgentConfig.enabled !== false);
+            document.getElementById('ops-ai-insights-enabled').checked = toBool(opsAgentConfig.ai_insights);
+            document.getElementById('ops-ai-insights-max').value = toInt(opsAgentConfig.ai_insights_max, 5);
+
+            // ─────────────────────────────────────────────
             // EXPORT CONFIG
             // ─────────────────────────────────────────────
             const exportConfig = config.export || {};
@@ -2873,6 +2935,38 @@
                 if (result.success) {
                     showToast(`✅ Insights configuration updated${persist ? ' and saved' : ''}`, 'success');
                     loadConfig();
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // ============================================
+        // OPS AGENT ACTIONS
+        // ============================================
+        async function updateOpsAgent() {
+            const config = {
+                enabled: document.getElementById('ops-agent-enabled').checked,
+                ai_insights: document.getElementById('ops-ai-insights-enabled').checked,
+                ai_insights_max: parseInt(document.getElementById('ops-ai-insights-max').value) || 5
+            };
+
+            const persist = document.getElementById('ops-agent-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/ops-agent`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config, persist })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`✅ Ops Agent configuration updated${persist ? ' and saved' : ''}`, 'success');
+                    loadConfig();
+                } else {
+                    showToast(`❌ ${result.detail || 'Update failed'}`, 'error');
                 }
             } catch (error) {
                 showToast(`❌ Error: ${error.message}`, 'error');

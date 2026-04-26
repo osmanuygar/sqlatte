@@ -51,7 +51,9 @@ class LLMInsightsEngine:
         data: List[List[Any]],
         user_question: Optional[str] = None,
         schema_info: Optional[str] = None,
-        sql_query: Optional[str] = None
+        sql_query: Optional[str] = None,
+        prompt_override: Optional[str] = None,
+        max_insights: Optional[int] = None
     ) -> List[Dict]:
         """
         Generate insights (LLM-powered or statistical)
@@ -84,7 +86,7 @@ class LLMInsightsEngine:
         # Mode selection
         if self.mode == 'llm_only' and self.llm_provider:
             insights = self._generate_llm_insights(
-                columns, data, user_question, schema_info, sql_query
+                columns, data, user_question, schema_info, sql_query, prompt_override
             )
 
         elif self.mode == 'statistical_only':
@@ -96,7 +98,7 @@ class LLMInsightsEngine:
             # Try LLM first, fallback to statistical
             if self.llm_provider:
                 insights = self._generate_llm_insights(
-                    columns, data, user_question, schema_info, sql_query
+                    columns, data, user_question, schema_info, sql_query, prompt_override
                 )
 
                 # If LLM failed or returned nothing, add statistical
@@ -110,8 +112,9 @@ class LLMInsightsEngine:
                     columns, data, user_question
                 )
 
-        # Limit insights
-        return insights[:self.max_insights]
+        # Limit insights — caller can override the engine default
+        limit = max_insights if max_insights is not None else self.max_insights
+        return insights[:limit]
 
     def _generate_llm_insights(
         self,
@@ -119,7 +122,8 @@ class LLMInsightsEngine:
         data: List[List[Any]],
         user_question: Optional[str],
         schema_info: Optional[str],
-        sql_query: Optional[str]
+        sql_query: Optional[str],
+        prompt_override: Optional[str] = None
     ) -> List[Dict]:
         """
         Generate LLM-powered insights with schema + data context
@@ -128,8 +132,16 @@ class LLMInsightsEngine:
             # Prepare context
             context = self._build_context(columns, data, user_question, schema_info, sql_query)
 
-            # Build prompt
-            prompt = self._build_llm_prompt(context)
+            # Build prompt — use override if provided (e.g. ops_insights_generation from config)
+            if prompt_override:
+                prompt = prompt_override.format(
+                    user_question=context['question'],
+                    data_preview=self._format_data_sample(context['columns'], context['data_sample']),
+                    row_count=context['row_count'],
+                    columns=', '.join(context['columns']),
+                )
+            else:
+                prompt = self._build_llm_prompt(context)
 
             # Call LLM
             print("🧠 Calling LLM for insights...")
