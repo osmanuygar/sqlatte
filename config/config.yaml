@@ -314,23 +314,23 @@ export:
 ops_agent:
   # Enable/disable ops agent feature
   enabled: true  # Set to false to disable
-
+  # AI insights after each operation (requires ops_insights_generation prompt to be set)
+  ai_insights: false       # set to false to disable
+  ai_insights_max: 5      # max number of insights to show
   # Provider type
   provider: "bigquery_ops"
 
-  # Provider-specific configuration
+    # Provider-specific configuration
   config:
-    # BigQuery project to analyze
-    project_id: "project-id"
-
-    # Region for INFORMATION_SCHEMA queries
-    region: "EU"  # or EU, asia-northeast1, etc.
-
-    # Credentials (can be same or different from database provider)
-    credentials_path: "/<Path>/bigquery-ops.json"
-
-    # Optional: Use application default credentials instead
-    # use_default_credentials: true
+    # Multi-project support: each entry gets its own credentials and region.
+    # The first entry is the default active project on startup.
+    projects:
+      - project_id: "project-id-0"
+        region: "US"
+        credentials_path: "/path/to/bigquery-ops.json"
+      - project_id: "project-id-1"
+        region: "EU"
+        credentials_path: "/path/to/bigquery-ops2.json"
 
     # Optional: Restrict which operations are available
     # Omit this field to allow all operations
@@ -359,6 +359,25 @@ ops_agent:
       # Governance operations
       - find_unused_tables
       - get_recent_table_users
+
+# ============================================
+# OPS ALARMS
+# ============================================
+alarms:
+  enabled: true
+  storage_path: "config/alarms.json"
+  default_recipients:
+    - "osmanuygar@gmail.com"
+
+jira:
+  enabled: true                           # Set to true to enable Jira integration
+  url: "https://jira.url"   # Jira Cloud base URL
+  email: "osmanuygar@gmail.com"         # Atlassian account email
+  api_token: "api-token"                           # Jira API token (Atlassian account → Security → API tokens)
+  project_key: "DATA"                      # Jira project key to create tickets in
+  issue_type: "Bug"                       # Issue type: Bug | Task | Story
+  priority: "High"                        # Priority: Highest | High | Medium | Low
+
 
 # ============================================
 # UI SECTION VISIBILITY
@@ -482,3 +501,36 @@ prompts:
     TYPE: trend/anomaly/recommendation/summary
     SEVERITY: low/medium/high
     MESSAGE: <concise, actionable insight>
+
+  # Ops Insights Generation: Analyze BigQuery operational results and surface actionable findings
+  # To disable AI insights in the ops widget, set this to null:
+  #   ops_insights_generation: null
+  ops_insights_generation: |
+    You are a BigQuery cost and performance expert. Analyze the operational data below and generate concise, actionable insights.
+
+    Operation: {user_question}
+    Total rows: {row_count}
+    Columns: {columns}
+
+    Data sample:
+    {data_preview}
+
+    Generate 4-5 key insights that highlight:
+    - Cost savings opportunities or risks
+    - Performance anomalies or bottlenecks
+    - Security or governance concerns
+    - Concrete next steps the team can take
+
+    Respond ONLY with a JSON array, no other text:
+    ```json
+    [
+      {{
+        "type": "trend|anomaly|recommendation|summary",
+        "icon": "📈|📉|⚠️|💰|🔒|🚀|💡|📊",
+        "severity": "info|success|warning",
+        "message": "<actionable insight, max 120 chars>"
+      }}
+    ]
+    ```
+
+    JSON:
