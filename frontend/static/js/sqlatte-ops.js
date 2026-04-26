@@ -508,6 +508,30 @@ function renderResults(result) {
         `;
     }
 
+    // AI Insights
+    if (result.ai_insights && result.ai_insights.length > 0) {
+        const severityBorder = { warning: '#f59e0b', success: '#10b981', info: '#6b7280' };
+        const cards = result.ai_insights.map(ins => {
+            const border = severityBorder[ins.severity] || severityBorder.info;
+            return `
+                <div style="border-left: 3px solid ${border}; padding: 8px 12px; margin-bottom: 8px; background: rgba(255,255,255,0.04); border-radius: 4px;">
+                    <span style="margin-right: 6px;">${ins.icon || '💡'}</span>
+                    <span style="font-size: 0.88rem;">${escapeHtml(ins.message)}</span>
+                </div>
+            `;
+        }).join('');
+        html += `
+            <div class="result-card">
+                <div class="result-card-header" style="border-left: 3px solid var(--caramel);">
+                    <span style="color: var(--caramel);">🤖 AI Insights</span>
+                </div>
+                <div class="card-body">
+                    ${cards}
+                </div>
+            </div>
+        `;
+    }
+
     document.getElementById('results-container').innerHTML = html;
 
     // Render chart if present

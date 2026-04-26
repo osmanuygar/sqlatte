@@ -34,6 +34,8 @@ SQLatte transforms natural language questions into SQL queries using AI, providi
 - 📅 **Query Scheduler** - Automated report delivery via email
 - 🔐 **Multi-Tenant Auth** - User-specific database connections
 - 📈 **AI Insights Engine** - Automatic data analysis and pattern detection
+- 🔧 **BigQuery Ops Console** - Cost optimization, security audits, and performance diagnostics
+- 📋 **Audit Logs** - Full LLM call tracing with token usage and CSV export
 - 🗄️ **Multi-Database Support** - Trino, PostgreSQL, MySQL, BigQuery
 - 🎨 **Embeddable Widgets** - Easy integration into existing applications
 
@@ -103,6 +105,39 @@ Transform your data warehouse with business intelligence metadata:
 - **💡 Smart Recommendations** - Actionable insights from your data
 - **⚙️ Flexible Modes** - `llm_only`, `statistical_only`, or `hybrid`
 - **🎯 Query-Specific Context** - Insights tailored to your question
+
+### BigQuery Ops Console
+
+Operational automation for BigQuery environments, accessible at `/ops-agent`:
+
+- **💰 Cost Analysis** - Identify expensive queries, forecast monthly spend, analyze storage compression, detect unpartitioned tables, and compare on-demand vs flat-rate billing
+- **🔒 Security Audits** - Find public datasets, review table permissions, and audit service account usage
+- **⚡ Performance Diagnostics** - Surface slow queries, data skew, slot saturation, full table scans, and partition recommendations
+- **🏛️ Governance** - Track unused tables and recent table access
+- **🤖 AI Insights** - Optional AI-generated findings per operation, prompt-configurable via `ops_insights_generation` in `config.yaml`
+- **🔀 Multi-Project Support** - Switch between GCP projects at runtime
+
+```yaml
+ops_agent:
+  enabled: true
+  ai_insights: true       # enable AI findings per operation
+  ai_insights_max: 5
+  config:
+    projects:
+      - project_id: "my-project"
+        region: "europe-west1"
+        credentials_path: "/path/to/service-account.json"
+```
+
+### Audit Logs
+
+Every LLM call is recorded for observability and cost tracking:
+
+- **📋 Full Tracing** - Logs intent detection, SQL generation, chat, and insights calls with input/output token counts
+- **🔍 Filtering** - Filter by session, intent type, date range, or user
+- **📊 Summary Stats** - Aggregated token usage and call counts
+- **📥 CSV Export** - Download audit data for billing or compliance analysis
+- **🔍 Admin UI** - Dedicated Audit Logs tab in the admin panel at `/admin`
 
 ### Query Scheduler
 
@@ -574,9 +609,11 @@ Access at `/admin`:
 5. **Email & SMTP** - Email configuration
 6. **Scheduler** - Scheduled query management
 7. **Insights** - Insights engine settings
-8. **Export** - Configuration export formats
-9. **History** - Configuration change log
-10. **Snapshots** - Backup and restore
+8. **Ops Agent** - BigQuery Ops Console toggles and AI insights settings
+9. **Export** - Configuration export formats
+10. **History** - Configuration change log
+11. **Snapshots** - Backup and restore
+12. **Audit Logs** - LLM call history with token usage
 
 ### Key Capabilities
 

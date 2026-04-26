@@ -157,7 +157,35 @@ async def execute_operation(request: OpsExecuteRequest):
             params=request.params
         )
 
-        return result.to_dict()
+        result_dict = result.to_dict()
+
+        # Optionally enrich with AI insights
+        from src.core.config_manager_enhanced import config_manager
+        current_config = config_manager.get_config()
+        ops_cfg = current_config.get("ops_agent", {})
+        ai_insights_enabled = ops_cfg.get("ai_insights", False)
+        prompt_override = current_config.get("prompts", {}).get("ops_insights_generation")
+
+        if ai_insights_enabled and prompt_override and result_dict.get("success") and result_dict.get("data"):
+            try:
+                from src.core.llm_insights_engine import get_insights_engine
+                engine = get_insights_engine()
+                if engine and engine.enabled:
+                    rows = result_dict["data"]
+                    columns = list(rows[0].keys()) if rows else []
+                    data = [[row.get(col) for col in columns] for row in rows]
+                    max_insights = ops_cfg.get("ai_insights_max")
+                    result_dict["ai_insights"] = engine.generate_insights(
+                        columns=columns,
+                        data=data,
+                        user_question=request.operation,
+                        prompt_override=prompt_override,
+                        max_insights=max_insights,
+                    )
+            except Exception as insight_err:
+                print(f"⚠️ Ops AI insights failed (non-fatal): {insight_err}")
+
+        return result_dict
 
     except Exception as e:
         raise HTTPException(

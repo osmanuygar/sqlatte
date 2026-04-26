@@ -5,6 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SQLatte ☕ - Dashboard</title>
     <style>
+        /* ===================================== */
+        /* THEME VARIABLES */
+        /* ===================================== */
+        :root {
+            --bg-body:          linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            --bg-sidebar:       #1a1a1a;
+            --bg-iframe:        #0f0f0f;
+            --bg-card:          rgba(212, 165, 116, 0.10);
+            --bg-card-hover:    rgba(212, 165, 116, 0.20);
+            --bg-nav-hover:     rgba(212, 165, 116, 0.10);
+            --bg-nav-active:    rgba(212, 165, 116, 0.15);
+            --border-color:     #333;
+            --text-primary:     #e0e0e0;
+            --text-secondary:   #a0a0a0;
+            --text-nav:         #a0a0a0;
+            --shadow-card:      rgba(0, 0, 0, 0.30);
+            --accent:           #D4A574;
+            --accent-dark:      #A67C52;
+            --theme-icon:       "🌙";
+        }
+
+        [data-theme="light"] {
+            --bg-body:          linear-gradient(135deg, #f5f0eb 0%, #ede4d8 100%);
+            --bg-sidebar:       #faf7f4;
+            --bg-iframe:        #ffffff;
+            --bg-card:          rgba(212, 165, 116, 0.08);
+            --bg-card-hover:    rgba(212, 165, 116, 0.18);
+            --bg-nav-hover:     rgba(166, 124, 82, 0.08);
+            --bg-nav-active:    rgba(166, 124, 82, 0.12);
+            --border-color:     #ddd0c4;
+            --text-primary:     #2d2220;
+            --text-secondary:   #6b5c4e;
+            --text-nav:         #7a6758;
+            --shadow-card:      rgba(0, 0, 0, 0.10);
+            --theme-icon:       "☀️";
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,9 +50,10 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-            color: #e0e0e0;
+            background: var(--bg-body);
+            color: var(--text-primary);
             min-height: 100vh;
+            transition: background 0.3s, color 0.3s;
         }
 
         /* ===================================== */
@@ -31,16 +69,17 @@
         /* ===================================== */
         .sidebar {
             width: 250px;
-            background: #1a1a1a;
-            border-right: 1px solid #333;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
             padding: 20px 0;
+            transition: background 0.3s, border-color 0.3s;
         }
 
         .sidebar-logo {
             padding: 0 20px 20px 20px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid var(--border-color);
             margin-bottom: 20px;
         }
 
@@ -65,7 +104,7 @@
             align-items: center;
             gap: 12px;
             padding: 12px 20px;
-            color: #a0a0a0;
+            color: var(--text-nav);
             text-decoration: none;
             cursor: pointer;
             transition: all 0.2s;
@@ -73,14 +112,14 @@
         }
 
         .nav-item:hover {
-            background: rgba(212, 165, 116, 0.1);
-            color: #D4A574;
+            background: var(--bg-nav-hover);
+            color: var(--accent);
         }
 
         .nav-item.active {
-            background: rgba(212, 165, 116, 0.15);
-            color: #D4A574;
-            border-left-color: #D4A574;
+            background: var(--bg-nav-active);
+            color: var(--accent);
+            border-left-color: var(--accent);
         }
 
         .nav-icon {
@@ -92,6 +131,39 @@
         .nav-label {
             font-size: 14px;
             font-weight: 500;
+        }
+
+        /* ===================================== */
+        /* THEME TOGGLE BUTTON */
+        /* ===================================== */
+        .theme-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 20px;
+            margin: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            width: calc(100% - 24px);
+            text-align: left;
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-nav-hover);
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .theme-toggle-icon {
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
         }
 
         /* ===================================== */
@@ -118,12 +190,12 @@
 
         .page-header h2 {
             font-size: 32px;
-            color: #D4A574;
+            color: var(--accent);
             margin-bottom: 8px;
         }
 
         .page-header p {
-            color: #a0a0a0;
+            color: var(--text-secondary);
             font-size: 14px;
         }
 
@@ -133,10 +205,11 @@
         .iframe-container {
             width: 100%;
             height: calc(100vh - 150px);
-            background: #0f0f0f;
+            background: var(--bg-iframe);
             border-radius: 12px;
             overflow: hidden;
-            border: 1px solid #333;
+            border: 1px solid var(--border-color);
+            transition: background 0.3s, border-color 0.3s;
         }
 
         .iframe-container iframe {
@@ -158,7 +231,7 @@
             align-items: center;
             justify-content: center;
             height: 400px;
-            color: #a0a0a0;
+            color: var(--text-secondary);
         }
 
         .loading::before {
@@ -200,7 +273,7 @@
 
         .welcome-subtitle {
             font-size: 20px;
-            color: #a0a0a0;
+            color: var(--text-secondary);
             margin-bottom: 40px;
         }
 
@@ -212,7 +285,7 @@
         }
 
         .quick-action-card {
-            background: rgba(212, 165, 116, 0.1);
+            background: var(--bg-card);
             padding: 30px;
             border-radius: 12px;
             border: 1px solid rgba(212, 165, 116, 0.2);
@@ -221,9 +294,9 @@
         }
 
         .quick-action-card:hover {
-            background: rgba(212, 165, 116, 0.2);
+            background: var(--bg-card-hover);
             transform: translateY(-4px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 8px 20px var(--shadow-card);
         }
 
         .quick-action-icon {
@@ -234,13 +307,13 @@
         .quick-action-title {
             font-size: 18px;
             font-weight: 600;
-            color: #D4A574;
+            color: var(--accent);
             margin-bottom: 8px;
         }
 
         .quick-action-desc {
             font-size: 14px;
-            color: #a0a0a0;
+            color: var(--text-secondary);
         }
 
         /* ===================================== */
@@ -252,7 +325,8 @@
             }
 
             .nav-label,
-            .sidebar-logo h1 {
+            .sidebar-logo h1,
+            .theme-toggle-label {
                 display: none;
             }
 
@@ -262,6 +336,11 @@
 
             .nav-item {
                 justify-content: center;
+            }
+
+            .theme-toggle {
+                justify-content: center;
+                padding: 12px;
             }
         }
     </style>
@@ -311,6 +390,11 @@
                     <span class="nav-label">Configuration</span>
                 </a>
             </nav>
+
+            <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle-btn" title="Toggle light / dark mode">
+                <span class="theme-toggle-icon" id="theme-icon">🌙</span>
+                <span class="theme-toggle-label" id="theme-label">Light Mode</span>
+            </button>
         </aside>
 
         <!-- Main Content Area -->
@@ -452,6 +536,28 @@
     <script src="/static/js/sqlatte-badge.js"></script>
 
     <script>
+        // ============================================
+        // THEME (dark / light)
+        // ============================================
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            const isDark = theme === 'dark';
+            document.getElementById('theme-icon').textContent  = isDark ? '🌙' : '☀️';
+            document.getElementById('theme-label').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+            localStorage.setItem('sqlatte-theme', theme);
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') || 'dark';
+            applyTheme(current === 'dark' ? 'light' : 'dark');
+        }
+
+        // Apply saved theme immediately (before paint)
+        (function () {
+            const saved = localStorage.getItem('sqlatte-theme') || 'dark';
+            applyTheme(saved);
+        })();
+
         // ============================================
         // UI CONFIG — hide disabled sections on load
         // ============================================
