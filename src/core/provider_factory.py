@@ -7,7 +7,7 @@ from src.core.db_provider import DatabaseProvider
 from src.providers.ops_agents.base_ops_agent import BaseOpsAgent
  
 # Task type
-LLMTask = Literal["intent_detection", "chat", "sql", "insights"]
+LLMTask = Literal["intent_detection", "chat", "sql", "insights", "ops_insights"]
  
 # Global ops agent instance
 _ops_agent: Optional[BaseOpsAgent] = None

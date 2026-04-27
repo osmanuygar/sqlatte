@@ -919,7 +919,8 @@ async def get_prompts():
                 "intent_detection": prompts.get('intent_detection', ''),
                 "barista_personality": prompts.get('barista_personality', ''),
                 "sql_generation": prompts.get('sql_generation', ''),
-                "insights_generation": prompts.get('insights_generation', '')
+                "insights_generation": prompts.get('insights_generation', ''),
+                "ops_insights_generation": prompts.get('ops_insights_generation', '')
             },
             "editable": True
         }
@@ -957,7 +958,7 @@ async def update_prompt(request: Request):
             }
 
         # Validate prompt_type
-        valid_types = ['intent_detection', 'barista_personality', 'sql_generation', 'insights_generation']
+        valid_types = ['intent_detection', 'barista_personality', 'sql_generation', 'insights_generation', 'ops_insights_generation']
         if prompt_type not in valid_types:
             return {
                 "success": False,

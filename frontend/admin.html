@@ -805,7 +805,7 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Model</label>
+                            <label>Default Model</label>
                             <input type="text" id="vertexai-model" placeholder="gemini-2.5-flash">
                             <small>Examples: gemini-2.5-flash, gemini-1.5-pro, gemini-2.0-flash-exp</small>
                         </div>
@@ -813,6 +813,33 @@
                             <label>Credentials Path</label>
                             <input type="text" id="vertexai-credentials-path" placeholder="/path/to/service-account.json">
                             <small>Path to GCP service account JSON file</small>
+                        </div>
+
+                        <!-- Model Routing -->
+                        <div style="margin-top: 12px; padding: 12px; background: #1e1e1e; border-radius: 6px; border: 1px solid #333;">
+                            <p style="color: #a0a0a0; font-size: 12px; margin-bottom: 10px;">
+                                <strong style="color: #e0e0e0;">🎯 Model Routing</strong> — override the model per task (leave blank to use default)
+                            </p>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label style="font-size: 12px;">Intent Detection</label>
+                                <input type="text" id="routing-intent-detection" placeholder="e.g. gemini-2.5-flash" style="font-size: 12px;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label style="font-size: 12px;">Chat</label>
+                                <input type="text" id="routing-chat" placeholder="e.g. gemini-2.5-flash" style="font-size: 12px;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label style="font-size: 12px;">SQL Generation</label>
+                                <input type="text" id="routing-sql" placeholder="e.g. gemini-2.5-pro" style="font-size: 12px;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label style="font-size: 12px;">Insights</label>
+                                <input type="text" id="routing-insights" placeholder="e.g. gemini-2.5-flash" style="font-size: 12px;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 12px;">Ops Insights</label>
+                                <input type="text" id="routing-ops-insights" placeholder="e.g. gemini-2.5-flash" style="font-size: 12px;">
+                            </div>
                         </div>
                     </div>
 
@@ -1065,6 +1092,33 @@
                             Save & Persist
                         </button>
                         <button class="btn btn-warning" onclick="resetPrompt('insights_generation')" style="flex: 1;">
+                            <span>↺</span>
+                            Reset to Default
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Ops Insights Generation Prompt -->
+                <div class="config-card">
+                    <h2>
+                        <span>🔍</span>
+                        Ops Insights Generation Prompt
+                    </h2>
+                    <div class="form-group">
+                        <label>Used by: BigQuery Ops Agent AI Insights</label>
+                        <textarea
+                            id="prompt-ops-insights"
+                            rows="15"
+                            style="font-family: 'Courier New', monospace; font-size: 12px; resize: vertical;"
+                        >Loading...</textarea>
+                        <small>Analyzes BigQuery operational results and surfaces cost, performance, security, and governance findings.</small>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 12px;">
+                        <button class="btn btn-success" onclick="savePrompt('ops_insights_generation')" style="flex: 1;">
+                            <span>💾</span>
+                            Save & Persist
+                        </button>
+                        <button class="btn btn-warning" onclick="resetPrompt('ops_insights_generation')" style="flex: 1;">
                             <span>↺</span>
                             Reset to Default
                         </button>
@@ -2193,6 +2247,7 @@
                     document.getElementById('prompt-personality').value = prompts.barista_personality || 'Not available';
                     document.getElementById('prompt-sql').value = prompts.sql_generation || 'Not available';
                     document.getElementById('prompt-insights').value = prompts.insights_generation || 'Not available';
+                    document.getElementById('prompt-ops-insights').value = prompts.ops_insights_generation || 'Not available';
 
                     console.log('✅ Prompts loaded successfully');
                 } else {
@@ -2229,7 +2284,8 @@
                 'intent_detection': 'prompt-intent',
                 'barista_personality': 'prompt-personality',
                 'sql_generation': 'prompt-sql',
-                'insights_generation': 'prompt-insights'
+                'insights_generation': 'prompt-insights',
+                'ops_insights_generation': 'prompt-ops-insights'
             };
 
             const textareaId = idMap[promptType];
@@ -2389,6 +2445,13 @@
                 document.getElementById('vertexai-model').value = vertexConfig.model || 'gemini-2.5-flash';
                 // 🔒 Credentials path — masked if already set
                 setMaskedField('vertexai-credentials-path', vertexConfig.credentials_path);
+                // Model routing
+                const routing = vertexConfig.model_routing || {};
+                document.getElementById('routing-intent-detection').value = routing.intent_detection || '';
+                document.getElementById('routing-chat').value = routing.chat || '';
+                document.getElementById('routing-sql').value = routing.sql || '';
+                document.getElementById('routing-insights').value = routing.insights || '';
+                document.getElementById('routing-ops-insights').value = routing.ops_insights || '';
             }
 
             // ─────────────────────────────────────────────
@@ -2608,11 +2671,22 @@
                 };
             } else if (provider === 'vertexai') {
                 const credentialsPath = document.getElementById('vertexai-credentials-path').value;
+                const routingEntries = {
+                    intent_detection: document.getElementById('routing-intent-detection').value.trim(),
+                    chat: document.getElementById('routing-chat').value.trim(),
+                    sql: document.getElementById('routing-sql').value.trim(),
+                    insights: document.getElementById('routing-insights').value.trim(),
+                    ops_insights: document.getElementById('routing-ops-insights').value.trim(),
+                };
+                const model_routing = Object.fromEntries(
+                    Object.entries(routingEntries).filter(([, v]) => v !== '')
+                );
                 return {
                     project_id: document.getElementById('vertexai-project-id').value,
                     location: document.getElementById('vertexai-location').value,
                     model: document.getElementById('vertexai-model').value,
-                    ...(credentialsPath && { credentials_path: credentialsPath })
+                    ...(credentialsPath && { credentials_path: credentialsPath }),
+                    ...(Object.keys(model_routing).length > 0 && { model_routing })
                 };
             }
         }
