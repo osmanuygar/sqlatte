@@ -117,6 +117,7 @@ llm:
     #      chat: "gemini-2.5-flash"
     #      sql: "gemini-2.5-pro"
     #      insights: "gemini-2.5-flash"
+    #      ops_insights: "gemini-2.5-flash"
 
     # Token limit
     max_tokens: 1000
