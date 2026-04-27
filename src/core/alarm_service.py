@@ -58,6 +58,7 @@ class AlarmHistoryEntry:
     message: str
     email_sent: bool = False
     jira_ticket: Optional[str] = None   # Jira issue key e.g. "OPS-123"
+    insights: List[Dict] = field(default_factory=list)
 
 
 class AlarmService:
@@ -212,16 +213,43 @@ class AlarmService:
                 f"{value:.3f} TB {op_sym} {alarm.condition.threshold} TB threshold"
             )
 
+            # Generate AI insights if enabled
+            ai_insights = []
+            try:
+                from src.core.config_manager_enhanced import config_manager
+                current_config = config_manager.get_config()
+                ops_cfg = current_config.get("ops_agent", {})
+                if ops_cfg.get("ai_insights", False) and result.data:
+                    prompt_override = current_config.get("prompts", {}).get("ops_insights_generation")
+                    if prompt_override:
+                        from src.core.llm_insights_engine import get_insights_engine
+                        engine = get_insights_engine()
+                        if engine and engine.enabled:
+                            rows = result.data
+                            columns = list(rows[0].keys()) if rows else []
+                            data_matrix = [[row.get(col) for col in columns] for row in rows]
+                            max_insights = ops_cfg.get("ai_insights_max")
+                            ai_insights = engine.generate_insights(
+                                columns=columns,
+                                data=data_matrix,
+                                user_question=alarm.operation,
+                                prompt_override=prompt_override,
+                                max_insights=max_insights,
+                            )
+                            logger.info(f"🧠 Generated {len(ai_insights)} AI insights for alarm '{alarm.name}'")
+            except Exception as insight_err:
+                logger.warning(f"AI insights failed for alarm '{alarm.name}' (non-fatal): {insight_err}")
+
             email_sent = False
             jira_ticket = None
 
             if triggered:
                 if alarm.notifications.email and alarm.recipients:
-                    await self._send_alarm_email(alarm, value, result.data)
+                    await self._send_alarm_email(alarm, value, result.data, ai_insights)
                     email_sent = True
 
                 if alarm.notifications.jira and self.jira_config.get('enabled'):
-                    jira_ticket = await self._create_jira_ticket(alarm, value, result.data)
+                    jira_ticket = await self._create_jira_ticket(alarm, value, result.data, ai_insights)
 
             entry = AlarmHistoryEntry(
                 id=str(uuid.uuid4())[:8],
@@ -234,6 +262,7 @@ class AlarmService:
                 message=message,
                 email_sent=email_sent,
                 jira_ticket=jira_ticket,
+                insights=ai_insights,
             )
             self.history.append(entry)
             if triggered:
@@ -250,6 +279,7 @@ class AlarmService:
                 "email_sent": email_sent,
                 "jira_ticket": jira_ticket,
                 "project_id": self.ops_agent.project_id,
+                "insights": ai_insights,
             }
 
         except Exception as e:
@@ -276,7 +306,7 @@ class AlarmService:
     # EMAIL
     # ──────────────────────────────────────────────────
 
-    async def _send_alarm_email(self, alarm: AlarmRule, total_tb: float, data: List[Dict]):
+    async def _send_alarm_email(self, alarm: AlarmRule, total_tb: float, data: List[Dict], insights: List[Dict] = None):
         if not self.email_service or not self.email_service.enabled:
             logger.warning("Email service unavailable – skipping alarm notification")
             return
@@ -284,7 +314,7 @@ class AlarmService:
             f"⚠️ BigQuery Cost Alert: {total_tb:.3f} TB processed "
             f"(threshold: {alarm.condition.threshold} TB) – {alarm.name}"
         )
-        body = self._build_alarm_email(alarm, total_tb, data)
+        body = self._build_alarm_email(alarm, total_tb, data, insights or [])
         await self.email_service.send_email(
             recipients=alarm.recipients,
             subject=subject,
@@ -293,7 +323,7 @@ class AlarmService:
         )
         logger.info(f"📧 Alarm email sent for '{alarm.name}' → {alarm.recipients}")
 
-    def _build_alarm_email(self, alarm: AlarmRule, total_tb: float, data: List[Dict]) -> str:
+    def _build_alarm_email(self, alarm: AlarmRule, total_tb: float, data: List[Dict], insights: List[Dict] = None) -> str:
         timestamp = datetime.now().strftime('%B %d, %Y at %H:%M UTC')
         project_label = alarm.project_id or "default project"
         threshold = alarm.condition.threshold
@@ -362,6 +392,7 @@ class AlarmService:
           <tbody>{rows_html}</tbody>
         </table>
       </div>
+      {self._build_insights_html(insights or [])}
     </div>
     <div style="padding:20px 30px;background:#fafafa;border-top:1px solid #eee;text-align:center;">
       <p style="margin:0;font-size:12px;color:#888;">Generated at {timestamp}</p>
@@ -371,11 +402,33 @@ class AlarmService:
 </body>
 </html>"""
 
+    def _build_insights_html(self, insights: List[Dict]) -> str:
+        if not insights:
+            return ""
+        severity_colors = {"warning": "#e17055", "success": "#00b894", "info": "#0984e3"}
+        rows = ""
+        for insight in insights:
+            icon = insight.get("icon", "💡")
+            msg = insight.get("message", "")
+            severity = insight.get("severity", "info")
+            color = severity_colors.get(severity, "#555")
+            rows += (
+                f'<li style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;color:{color};">'
+                f'{icon}&nbsp; {msg}</li>'
+            )
+        return f"""
+      <div style="margin-top:24px;">
+        <h3 style="color:#222;font-size:15px;font-weight:600;margin:0 0 10px;">🧠 AI Insights</h3>
+        <ul style="list-style:none;margin:0;padding:0;background:#f9f9f9;border-radius:8px;border:1px solid #eee;padding:12px 16px;">
+          {rows}
+        </ul>
+      </div>"""
+
     # ──────────────────────────────────────────────────
     # JIRA
     # ──────────────────────────────────────────────────
 
-    async def _create_jira_ticket(self, alarm: AlarmRule, total_tb: float, data: List[Dict]) -> Optional[str]:
+    async def _create_jira_ticket(self, alarm: AlarmRule, total_tb: float, data: List[Dict], insights: List[Dict] = None) -> Optional[str]:
         """Create a Jira issue via REST API v2 (Server/Data Center, Bearer token)."""
         cfg = self.jira_config
         if not cfg.get('enabled'):
@@ -414,6 +467,15 @@ class AlarmService:
         queries_str = "\n\n".join(query_sections) if query_sections else "N/A"
 
         summary = f"[BigQuery Cost Alert] {alarm.name} – {total_tb:.3f} TB processed ({project_label})"
+
+        insights_str = ""
+        if insights:
+            insight_lines = "\n".join(
+                f"* {i.get('icon', '💡')} [{i.get('severity', 'info').upper()}] {i.get('message', '')}"
+                for i in insights
+            )
+            insights_str = f"\n\nh3. 🧠 AI Insights\n\n{insight_lines}\n"
+
         description = (
             f"Alarm *{alarm.name}* triggered on project *{project_label}*.\n\n"
             f"*Total TB Processed* (last {alarm.params.get('days', 1)} day(s)): *{total_tb:.3f} TB*\n"
@@ -421,7 +483,8 @@ class AlarmService:
             f"*Queries above threshold*: {len(over_rows)}\n\n"
             f"----\n\n"
             f"h3. Queries Exceeding {threshold} TB\n\n"
-            f"{queries_str}\n\n"
+            f"{queries_str}"
+            f"{insights_str}\n"
             f"----\n"
             f"_Triggered at: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}_"
         )
