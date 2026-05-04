@@ -846,7 +846,7 @@
                         </div>
                         <div class="col-md-3">
                             <label>Threshold (TB)</label>
-                            <input type="number" id="alarm-threshold" value="0.5" step="0.1" min="0">
+                            <input type="text" inputmode="decimal" id="alarm-threshold" value="0.5" placeholder="e.g. 0.5">
                         </div>
                         <div class="col-md-4">
                             <label>Look-back Days</label>
@@ -1156,7 +1156,7 @@
             condition: {
                 field:     document.getElementById('alarm-field').value,
                 operator:  document.getElementById('alarm-operator').value,
-                threshold: parseFloat(document.getElementById('alarm-threshold').value) || 0.5,
+                threshold: parseFloat((document.getElementById('alarm-threshold').value || '').replace(',', '.')) || 0.5,
             },
             notifications: { email: emailOn, jira: jiraOn },
             schedule:   document.getElementById('alarm-schedule').value.trim(),
@@ -1194,6 +1194,11 @@
         try {
             const data = await apiPost(`/ops-agent/alarms/${id}/test`, {});
             const r    = data.result;
+            if (r.status === 'error') {
+                showAlarmToast(`❌ ${r.message}`, 'error', 7000);
+                loadAlarms(); loadHistory();
+                return;
+            }
             const parts = r.triggered
                 ? [`⚠️ TRIGGERED — ${r.value} TB > ${r.threshold} TB`,
                    r.email_sent  ? '📧 email sent' : '',
@@ -1301,6 +1306,11 @@
         try {
             const data = await apiPost(`/ops-agent/alarms/${id}/test`, {});
             const r    = data.result;
+            if (r.status === 'error') {
+                showAlarmToast(`❌ ${r.message}`, 'error', 7000);
+                loadSchedulerAlarms();
+                return;
+            }
             const msg  = r.triggered
                 ? `⚠️ TRIGGERED — ${r.value} TB > ${r.threshold} TB${r.email_sent ? ' · 📧 sent' : ''}`
                 : `✅ OK — ${r.value} TB ≤ ${r.threshold} TB`;
