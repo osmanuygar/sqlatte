@@ -203,7 +203,7 @@ class AlarmService:
                 params=alarm.params
             )
             if not result.success:
-                return {"status": "error", "message": f"Operation failed: {result.summary}"}
+                return {"status": "error", "message": f"Operation failed: {result.error or result.summary or 'unknown error'}"}
 
             triggered, value = self._evaluate_condition(alarm.condition, result.data)
             status = "triggered" if triggered else "ok"
