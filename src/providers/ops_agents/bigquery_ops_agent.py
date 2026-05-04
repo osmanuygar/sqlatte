@@ -547,8 +547,8 @@ class BigQueryOpsAgent(BaseOpsAgent):
         data = await self._run_query(sql)
 
         # Calculate summary stats
-        total_slot_hours = sum(row.get('slot_hours', 0) for row in data)
-        total_tb = sum(row.get('tb_processed', 0) for row in data)
+        total_slot_hours = sum(row.get('slot_hours') or 0 for row in data)
+        total_tb = sum(row.get('tb_processed') or 0 for row in data)
 
         summary = (
             f"Top 10 queries consumed {total_slot_hours:.2f} slot hours "
