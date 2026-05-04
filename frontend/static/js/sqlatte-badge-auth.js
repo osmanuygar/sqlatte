@@ -34,6 +34,7 @@
     let showConversationHistory = false;
     let isHistoryPanelOpen = false;
     let isFavoritesPanelOpen = false;
+    let isStatsPanelOpen = false;
     let queryHistory = [];
     let favorites = [];
 
@@ -594,6 +595,9 @@
                         <button class="sqlatte-modal-btn sqlatte-modal-btn-labeled" onclick="SQLatteAuthWidget.toggleFavorites()" title="Saved Favorites">
                             ⭐ Favorites
                         </button>
+                        <button id="sqlatte-auth-stats-btn" class="sqlatte-modal-btn sqlatte-modal-btn-labeled" onclick="SQLatteAuthWidget.toggleStats()" title="Token Usage Stats">
+                            📊 Usage
+                        </button>
                         <button class="sqlatte-modal-btn" onclick="SQLatteAuthWidget.clearConversation()" title="Clear Conversation">
                             🗑️
                         </button>
@@ -632,6 +636,10 @@
                     </div>
 
                     <div id="sqlatte-auth-favorites-panel" class="sqlatte-slide-panel" style="display: none;">
+                        <div class="sqlatte-panel-empty">Loading...</div>
+                    </div>
+
+                    <div id="sqlatte-auth-stats-panel" class="sqlatte-slide-panel" style="display: none;">
                         <div class="sqlatte-panel-empty">Loading...</div>
                     </div>
                     <div id="sqlatte-auth-chat-area" class="sqlatte-chat-area">
@@ -835,7 +843,17 @@
             if (lastMsg) lastMsg.remove();
 
             // Handle responses
-            if (data.response_type === 'chat' || data.intent_info?.intent === 'chat') {
+            if (data.response_type === 'warning') {
+                const sqlBlock = data.sql
+                    ? `<pre class="sqlatte-warning-sql">${escapeHtml(data.sql)}</pre>`
+                    : '';
+                addMessage('assistant', `
+                    <div class="sqlatte-security-warning">
+                        <strong>🔒 Security Warning: Only SELECT queries are allowed</strong><br>
+                        <span>${escapeHtml(data.reason || data.message || '')}</span>
+                        ${sqlBlock}
+                    </div>`);
+            } else if (data.response_type === 'chat' || data.intent_info?.intent === 'chat') {
                 const chatMessage = data.message || 'I can help you!';
                 const formattedMessage = markdownToHtml(chatMessage);
                 addMessage('assistant', formattedMessage);
@@ -1590,6 +1608,152 @@
         });
     }
 
+    function toggleStats() {
+        isStatsPanelOpen = !isStatsPanelOpen;
+        const panel = document.getElementById('sqlatte-auth-stats-panel');
+
+        if (isStatsPanelOpen) {
+            if (isHistoryPanelOpen) toggleHistory();
+            if (isFavoritesPanelOpen) toggleFavorites();
+
+            panel.style.display = 'flex';
+            setTimeout(() => { panel.style.transform = 'translateX(0)'; }, 10);
+            renderStatsPanel();
+        } else {
+            panel.style.transform = 'translateX(-100%)';
+            setTimeout(() => { panel.style.display = 'none'; }, 300);
+        }
+    }
+
+    async function renderStatsPanel() {
+        const panel = document.getElementById('sqlatte-auth-stats-panel');
+        if (!panel) return;
+
+        panel.innerHTML = `
+            <div class="sqlatte-panel-header">
+                <h3>📊 Token Usage</h3>
+                <button onclick="SQLatteAuthWidget.toggleStats()">✕</button>
+            </div>
+            <div class="sqlatte-panel-empty" style="padding: 24px;">
+                <div style="opacity:0.5;">Loading stats...</div>
+            </div>
+        `;
+
+        try {
+            const res = await fetch(`${AUTH_WIDGET_CONFIG.apiBase}/auth/user-stats`, {
+                headers: { 'X-Session-ID': sessionId }
+            });
+            if (!res.ok) throw new Error('Failed');
+            const data = await res.json();
+
+            if (!data.available) {
+                panel.innerHTML = `
+                    <div class="sqlatte-panel-header">
+                        <h3>📊 Token Usage</h3>
+                        <button onclick="SQLatteAuthWidget.toggleStats()">✕</button>
+                    </div>
+                    <div class="sqlatte-panel-empty" style="padding: 24px; text-align:center;">
+                        <div style="font-size:32px;margin-bottom:12px;">📊</div>
+                        <p style="color:#888;margin:0;">Analytics not enabled</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+            const opLabels = { intent_detection: '🎯 Intent', sql_generation: '🛠 SQL Gen', chat_response: '💬 Chat' };
+
+            let opsHtml = '';
+            if (data.by_operation && data.by_operation.length > 0) {
+                data.by_operation.forEach(op => {
+                    const label = opLabels[op.operation_type] || op.operation_type;
+                    opsHtml += `
+                        <div class="sqlatte-stats-op-row">
+                            <span class="sqlatte-stats-op-label">${label}</span>
+                            <span class="sqlatte-stats-op-val">${fmt(op.total_tokens)} tokens</span>
+                            <span class="sqlatte-stats-op-calls">${op.calls} calls</span>
+                        </div>
+                    `;
+                });
+            } else {
+                opsHtml = '<div style="color:#888;font-size:12px;text-align:center;padding:8px;">No data yet</div>';
+            }
+
+            panel.innerHTML = `
+                <div class="sqlatte-panel-header">
+                    <h3>📊 Token Usage</h3>
+                    <button onclick="SQLatteAuthWidget.toggleStats()">✕</button>
+                </div>
+                <div class="sqlatte-stats-user-banner">
+                    <span class="sqlatte-stats-user-icon">👤</span>
+                    <span class="sqlatte-stats-username">${data.username}</span>
+                </div>
+                <div class="sqlatte-panel-list" style="padding: 12px; gap: 12px; overflow-y: auto;">
+
+                    <div class="sqlatte-stats-section">
+                        <div class="sqlatte-stats-section-title">Today (24h)</div>
+                        <div class="sqlatte-stats-grid">
+                            <div class="sqlatte-stats-card">
+                                <div class="sqlatte-stats-card-val">${data.today.queries || 0}</div>
+                                <div class="sqlatte-stats-card-label">Queries</div>
+                            </div>
+                            <div class="sqlatte-stats-card">
+                                <div class="sqlatte-stats-card-val">${fmt(data.today.total_tokens || 0)}</div>
+                                <div class="sqlatte-stats-card-label">Tokens</div>
+                            </div>
+                            <div class="sqlatte-stats-card">
+                                <div class="sqlatte-stats-card-val">${fmt(data.today.input_tokens || 0)}</div>
+                                <div class="sqlatte-stats-card-label">Input</div>
+                            </div>
+                            <div class="sqlatte-stats-card">
+                                <div class="sqlatte-stats-card-val">${fmt(data.today.output_tokens || 0)}</div>
+                                <div class="sqlatte-stats-card-label">Output</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sqlatte-stats-section">
+                        <div class="sqlatte-stats-section-title">This Week (7d)</div>
+                        <div class="sqlatte-stats-grid">
+                            <div class="sqlatte-stats-card">
+                                <div class="sqlatte-stats-card-val">${data.week.queries || 0}</div>
+                                <div class="sqlatte-stats-card-label">Queries</div>
+                            </div>
+                            <div class="sqlatte-stats-card">
+                                <div class="sqlatte-stats-card-val">${fmt(data.week.total_tokens || 0)}</div>
+                                <div class="sqlatte-stats-card-label">Tokens</div>
+                            </div>
+                            <div class="sqlatte-stats-card">
+                                <div class="sqlatte-stats-card-val">${fmt(data.week.input_tokens || 0)}</div>
+                                <div class="sqlatte-stats-card-label">Input</div>
+                            </div>
+                            <div class="sqlatte-stats-card">
+                                <div class="sqlatte-stats-card-val">${fmt(data.week.output_tokens || 0)}</div>
+                                <div class="sqlatte-stats-card-label">Output</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sqlatte-stats-section">
+                        <div class="sqlatte-stats-section-title">This Week by Operation</div>
+                        <div class="sqlatte-stats-ops">${opsHtml}</div>
+                    </div>
+
+                </div>
+            `;
+        } catch (e) {
+            panel.innerHTML = `
+                <div class="sqlatte-panel-header">
+                    <h3>📊 Token Usage</h3>
+                    <button onclick="SQLatteAuthWidget.toggleStats()">✕</button>
+                </div>
+                <div class="sqlatte-panel-empty" style="padding: 24px; text-align:center;">
+                    <p style="color:#e74c3c;">Failed to load stats</p>
+                </div>
+            `;
+        }
+    }
+
     function useQuery(query) {
         const input = document.getElementById('sqlatte-auth-input');
         if (input) {
@@ -2272,6 +2436,91 @@ function visualizeData(resultId) {
     color: #666;
 }
 
+/* Stats Panel */
+.sqlatte-stats-user-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #2a2a2a;
+}
+.sqlatte-stats-user-icon {
+    font-size: 16px;
+}
+.sqlatte-stats-username {
+    font-size: 13px;
+    font-weight: 600;
+    color: #D4A574;
+    letter-spacing: 0.3px;
+}
+.sqlatte-stats-section {
+    margin-bottom: 16px;
+}
+.sqlatte-stats-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #D4A574;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #2a2a2a;
+}
+.sqlatte-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.sqlatte-stats-card {
+    background: #252525;
+    border-radius: 6px;
+    padding: 10px 8px;
+    text-align: center;
+    border-left: 3px solid #D4A574;
+}
+.sqlatte-stats-card-val {
+    font-size: 18px;
+    font-weight: 700;
+    color: #D4A574;
+    line-height: 1.2;
+}
+.sqlatte-stats-card-label {
+    font-size: 10px;
+    color: #888;
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.sqlatte-stats-ops {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.sqlatte-stats-op-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #252525;
+    border-radius: 6px;
+    font-size: 12px;
+}
+.sqlatte-stats-op-label {
+    flex: 1;
+    color: #e0e0e0;
+}
+.sqlatte-stats-op-val {
+    color: #D4A574;
+    font-weight: 600;
+}
+.sqlatte-stats-op-calls {
+    color: #666;
+    font-size: 10px;
+    min-width: 45px;
+    text-align: right;
+}
+
 /* Modal Body */
 .sqlatte-modal-body {
     flex: 1;
@@ -2524,6 +2773,29 @@ function visualizeData(resultId) {
     border-left: 3px solid #f87171;
     border-radius: 4px;
     margin-top: 12px;
+}
+
+.sqlatte-security-warning {
+    color: #f59e0b;
+    font-size: 12px;
+    margin: 8px 0;
+    padding: 12px 14px;
+    background: rgba(245, 158, 11, 0.1);
+    border-left: 3px solid #f59e0b;
+    border-radius: 4px;
+    line-height: 1.6;
+}
+
+.sqlatte-warning-sql {
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #fbbf24;
 }
 /* History Panel */
 .history-panel {
@@ -3200,6 +3472,7 @@ em {
         filterTables: filterTables,
         toggleHistory: toggleHistory,
         toggleFavorites: toggleFavorites,
+        toggleStats: toggleStats,
         clearHistory: clearHistory,
         removeFavorite: removeFavorite,
         rerunQuestion: rerunQuestion,

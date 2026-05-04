@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Analyzer — SQLatte</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg:            #1a1410;
+            --surface:       #2a1f1a;
+            --card:          #362920;
+            --border:        #4a3830;
+            --caramel:       #D4A574;
+            --caramel-light: #F5DDB8;
+            --text:          #f5f0e8;
+            --text-bright:   #faf7f2;
+            --text-muted:    #c9b9a8;
+            --text-dim:      #a08978;
+            --success:       #10b981;
+            --error:         #ef4444;
+            --warning:       #f59e0b;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Navbar ── */
+        .navbar {
+            background: linear-gradient(135deg, #2a1f1a 0%, #362920 100%);
+            border-bottom: 1px solid var(--border);
+            padding: .85rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-shrink: 0;
+        }
+        .nav-brand { font-weight:700; font-size:1.1rem; color:var(--text-bright); }
+        .nav-brand strong { color:var(--caramel); }
+        .nav-back  { color:var(--text-muted); text-decoration:none; font-size:.88rem; transition:color .2s; }
+        .nav-back:hover { color:var(--caramel); }
+        .nav-right { margin-left:auto; color:var(--text-dim); font-size:.82rem; }
+
+        /* ── Two-column layout ── */
+        .workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            height: calc(100vh - 53px);
+        }
+
+        /* ── Left: Template panel ── */
+        .template-panel {
+            width: 280px;
+            flex-shrink: 0;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .panel-header {
+            padding: 1rem 1.1rem .75rem;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .panel-title {
+            font-size: .78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            color: var(--caramel);
+        }
+        .panel-hint {
+            font-size: .72rem;
+            color: var(--text-dim);
+            margin-top: .25rem;
+        }
+
+        /* Template list */
+        .template-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: .5rem 0;
+        }
+        .template-item {
+            display: flex;
+            align-items: center;
+            gap: .7rem;
+            padding: .6rem 1.1rem;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: background .15s, border-color .15s;
+        }
+        .template-item:hover {
+            background: rgba(212,165,116,.07);
+            border-left-color: rgba(212,165,116,.3);
+        }
+        .template-item.active {
+            background: rgba(212,165,116,.13);
+            border-left-color: var(--caramel);
+        }
+        .template-item.auto-matched {
+            border-left-color: var(--success);
+            background: rgba(16,185,129,.07);
+        }
+        .t-icon { font-size:1.2rem; flex-shrink:0; width:26px; text-align:center; }
+        .t-name { font-size:.88rem; font-weight:600; color:var(--text-bright); }
+        .t-exts { font-size:.7rem; color:var(--text-dim); margin-top:.1rem; }
+        .auto-badge {
+            margin-left: auto;
+            font-size: .62rem;
+            background: rgba(16,185,129,.2);
+            color: #6ee7b7;
+            border: 1px solid rgba(16,185,129,.3);
+            border-radius: 10px;
+            padding: 1px 6px;
+            flex-shrink: 0;
+        }
+
+        /* Template detail (bottom of left panel) */
+        .template-detail {
+            border-top: 1px solid var(--border);
+            padding: .9rem 1.1rem;
+            flex-shrink: 0;
+            background: var(--card);
+        }
+        .detail-name {
+            font-size:.85rem;
+            font-weight:700;
+            color:var(--caramel-light);
+            margin-bottom:.4rem;
+        }
+        .detail-desc {
+            font-size:.75rem;
+            color:var(--text-muted);
+            margin-bottom:.6rem;
+            line-height:1.5;
+        }
+        .detail-checks {
+            list-style: none;
+        }
+        .detail-checks li {
+            font-size:.72rem;
+            color:var(--text-dim);
+            padding:.15rem 0;
+            padding-left:.9rem;
+            position:relative;
+        }
+        .detail-checks li::before {
+            content:"·";
+            position:absolute;
+            left:0;
+            color:var(--caramel);
+        }
+        .detail-types {
+            margin-top:.55rem;
+            font-size:.68rem;
+            color:var(--text-dim);
+        }
+        .detail-types code {
+            background:rgba(212,165,116,.1);
+            color:var(--caramel);
+            border-radius:3px;
+            padding:1px 4px;
+            font-size:.68rem;
+        }
+
+        /* ── Right: Main area ── */
+        .main-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+        }
+
+        /* Drop zone */
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: 14px;
+            background: var(--surface);
+            padding: 2.2rem 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color .2s, background .2s;
+            position: relative;
+        }
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: var(--caramel);
+            background: rgba(212,165,116,.05);
+        }
+        .drop-zone input[type="file"] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+        .drop-icon  { font-size:2.4rem; margin-bottom:.6rem; }
+        .drop-label { font-size:1rem; font-weight:600; color:var(--text-bright); }
+        .drop-hint  { font-size:.78rem; color:var(--text-dim); margin-top:.3rem; }
+        .fmt-pills  { display:flex; flex-wrap:wrap; gap:.35rem; justify-content:center; margin-top:.75rem; }
+        .fmt-pill {
+            background:var(--card); border:1px solid var(--border);
+            border-radius:20px; padding:2px 9px; font-size:.7rem; color:var(--text-muted);
+        }
+
+        /* Cards */
+        .card-latte {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.2rem 1.4rem;
+            margin-top: 1rem;
+        }
+        .card-head {
+            display:flex; align-items:center; gap:.5rem;
+            font-size:.9rem; font-weight:700; color:var(--caramel);
+            margin-bottom:.9rem;
+        }
+
+        /* Active template banner */
+        .active-template-banner {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            background: rgba(16,185,129,.07);
+            border: 1px solid rgba(16,185,129,.2);
+            border-radius: 8px;
+            padding: .55rem .9rem;
+            font-size: .8rem;
+            color: #6ee7b7;
+            margin-top: 1rem;
+        }
+        .active-template-banner .t-label { color: var(--text-muted); margin-right: .2rem; }
+        .active-template-banner strong { color: var(--text-bright); }
+
+        /* Props grid */
+        .props-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: .6rem;
+        }
+        .prop-item {
+            background:var(--card); border:1px solid var(--border);
+            border-radius:8px; padding:.6rem .85rem;
+        }
+        .prop-label { font-size:.68rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.5px; margin-bottom:.15rem; }
+        .prop-value { font-size:.92rem; font-weight:600; color:var(--text-bright); word-break:break-all; }
+        .prop-value.danger { color:var(--error); }
+        .prop-value.warn   { color:var(--warning); }
+        .prop-value.ok     { color:var(--success); }
+        .extras-row { margin-top:.65rem; font-size:.78rem; color:var(--text-muted); line-height:1.8; }
+        .extras-row code { background:var(--card); border-radius:4px; padding:1px 5px; color:var(--caramel-light); font-size:.74rem; }
+
+        /* Delete badge */
+        .delete-badge {
+            display:inline-flex; align-items:center; gap:.3rem;
+            background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3);
+            border-radius:20px; padding:.18rem .65rem; font-size:.75rem; color:#fca5a5;
+            margin-left:auto;
+        }
+        #countdown { font-weight:700; font-variant-numeric:tabular-nums; }
+
+        /* Anomaly list */
+        .anomaly-item {
+            display:flex; gap:.75rem; align-items:flex-start;
+            padding:.75rem 0; border-bottom:1px solid var(--border);
+        }
+        .anomaly-item:last-child { border-bottom:none; }
+        .anomaly-icon { font-size:1.2rem; flex-shrink:0; }
+        .anomaly-body { flex:1; min-width:0; }
+        .anomaly-meta {
+            font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
+            display:flex; align-items:center; gap:.4rem; margin-bottom:.18rem;
+        }
+        .anomaly-type { margin-left:auto; font-weight:400; text-transform:none; color:var(--text-dim); font-size:.7rem; letter-spacing:0; }
+        .anomaly-line { color:var(--text-dim); font-weight:400; }
+        .anomaly-msg  { font-size:.85rem; color:var(--text-bright); }
+        .anomaly-detail { font-size:.75rem; color:var(--text-muted); margin-top:.15rem; }
+        .sev-critical { color:#f87171; } .sev-high { color:#fb923c; }
+        .sev-medium   { color:#fbbf24; } .sev-low  { color:#94a3b8; }
+        .result-count { font-size:.82rem; font-weight:600; color:var(--caramel); margin-bottom:.55rem; }
+
+        /* States */
+        .state-clean     { text-align:center; padding:1.5rem; color:var(--success); }
+        .state-analyzing { text-align:center; padding:1.5rem; color:var(--text-muted); }
+        .spinner {
+            display:inline-block; width:18px; height:18px;
+            border:3px solid rgba(212,165,116,.2); border-top-color:var(--caramel);
+            border-radius:50%; animation:spin .8s linear infinite;
+            vertical-align:middle; margin-right:.4rem;
+        }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        .alert-error {
+            background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3);
+            border-radius:8px; color:#fca5a5; padding:.85rem; margin-top:.85rem; font-size:.85rem;
+        }
+
+        /* Scrollbar */
+        .template-list::-webkit-scrollbar,
+        .main-area::-webkit-scrollbar { width:5px; }
+        .template-list::-webkit-scrollbar-track,
+        .main-area::-webkit-scrollbar-track { background:transparent; }
+        .template-list::-webkit-scrollbar-thumb,
+        .main-area::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <span class="nav-brand">☕ <strong>SQL</strong>atte</span>
+    <a href="/" class="nav-back">← Back</a>
+    <span class="nav-right">File Analyzer</span>
+</nav>
+
+<div class="workspace">
+
+    <!-- ── Left: Template panel ── -->
+    <aside class="template-panel">
+        <div class="panel-header">
+            <div class="panel-title">Templates</div>
+            <div class="panel-hint">Auto-selected by file type · click to override</div>
+        </div>
+
+        <div class="template-list" id="templateList">
+            <div style="padding:1rem;font-size:.78rem;color:var(--text-dim);">Loading…</div>
+        </div>
+
+        <div class="template-detail" id="templateDetail" style="display:none;">
+            <div class="detail-name" id="detailName"></div>
+            <div class="detail-desc" id="detailDesc"></div>
+            <ul class="detail-checks" id="detailChecks"></ul>
+            <div class="detail-types" id="detailTypes"></div>
+        </div>
+    </aside>
+
+    <!-- ── Right: Main area ── -->
+    <div class="main-area">
+
+        <!-- Drop zone -->
+        <div class="drop-zone" id="dropZone">
+            <input type="file" id="fileInput"
+                   accept=".js,.ts,.jsx,.tsx,.mjs,.csv,.tsv,.vy,.json,.jsonl,.yaml,.yml,.sql,.xml,.txt">
+            <div class="drop-icon">📂</div>
+            <div class="drop-label">Drop a file here, or click to browse</div>
+            <div class="drop-hint">Analyzed by AI · max 5 MB · auto-deleted after 10 min</div>
+            <div class="fmt-pills">
+                <span class="fmt-pill">CSV</span><span class="fmt-pill">TSV</span>
+                <span class="fmt-pill">VY</span><span class="fmt-pill">JSON</span>
+                <span class="fmt-pill">YAML</span><span class="fmt-pill">SQL</span>
+                <span class="fmt-pill">JS / TS</span><span class="fmt-pill">XML</span>
+                <span class="fmt-pill">TXT</span>
+            </div>
+        </div>
+
+        <!-- Active template banner (shown after file drop) -->
+        <div id="activeBanner" class="active-template-banner" style="display:none;">
+            <span>🛡️</span>
+            <span><span class="t-label">Template:</span> <strong id="bannerName"></strong></span>
+            <span id="bannerAuto" class="auto-badge" style="display:none;">auto-detected</span>
+        </div>
+
+        <!-- Props card -->
+        <div id="propsCard" class="card-latte" style="display:none;">
+            <div class="card-head">
+                <span id="propsIcon">📋</span> <span id="propsTitle">File Properties</span>
+                <div class="delete-badge" id="deleteBadge" style="display:none;">
+                    🗑️ <span id="countdown">--:--</span>
+                </div>
+            </div>
+            <div class="props-grid" id="propsGrid"></div>
+            <div class="extras-row" id="extrasRow" style="display:none;"></div>
+        </div>
+
+        <!-- Analysis card -->
+        <div id="analysisCard" class="card-latte" style="display:none;">
+            <div class="card-head"><span>🔎</span> Anomaly Report</div>
+            <div id="analysisBody">
+                <div class="state-analyzing"><span class="spinner"></span> Generating anomaly report…</div>
+            </div>
+        </div>
+
+        <div id="errorBox" class="alert-error" style="display:none;"></div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const API = location.protocol === 'file:'
+        ? 'http://localhost:8000'
+        : location.protocol + '//' + location.hostname + ':' + (location.port || '8000');
+
+    // ── State ──────────────────────────────────────────────────────────────────
+    let templates       = [];       // from /file-analysis/templates
+    let selectedId      = null;     // user-selected template id (null = auto)
+    let autoMatchedId   = null;     // template auto-matched to dropped file
+    let countdownTimer  = null;
+
+    // ── Elements ───────────────────────────────────────────────────────────────
+    const templateList   = document.getElementById('templateList');
+    const templateDetail = document.getElementById('templateDetail');
+    const detailName     = document.getElementById('detailName');
+    const detailDesc     = document.getElementById('detailDesc');
+    const detailChecks   = document.getElementById('detailChecks');
+    const detailTypes    = document.getElementById('detailTypes');
+
+    const dropZone       = document.getElementById('dropZone');
+    const fileInput      = document.getElementById('fileInput');
+    const activeBanner   = document.getElementById('activeBanner');
+    const bannerName     = document.getElementById('bannerName');
+    const bannerAuto     = document.getElementById('bannerAuto');
+    const propsCard      = document.getElementById('propsCard');
+    const propsIcon      = document.getElementById('propsIcon');
+    const propsTitle     = document.getElementById('propsTitle');
+    const propsGrid      = document.getElementById('propsGrid');
+    const extrasRow      = document.getElementById('extrasRow');
+    const deleteBadge    = document.getElementById('deleteBadge');
+    const countdownEl    = document.getElementById('countdown');
+    const analysisCard   = document.getElementById('analysisCard');
+    const analysisBody   = document.getElementById('analysisBody');
+    const errorBox       = document.getElementById('errorBox');
+
+    // ── Load templates on start ────────────────────────────────────────────────
+    async function loadTemplates() {
+        try {
+            const resp = await fetch(`${API}/file-analysis/templates`);
+            if (!resp.ok) throw new Error(resp.statusText);
+            templates = await resp.json();
+            renderTemplateList();
+        } catch (e) {
+            templateList.innerHTML = `<div style="padding:1rem;font-size:.75rem;color:var(--error);">Failed to load templates</div>`;
+        }
+    }
+
+    function renderTemplateList(highlightId) {
+        templateList.innerHTML = templates.map(t => {
+            const isActive   = selectedId ? selectedId === t.id : autoMatchedId === t.id;
+            const isAuto     = !selectedId && autoMatchedId === t.id;
+            let cls = 'template-item';
+            if (isActive) cls += isAuto ? ' auto-matched' : ' active';
+            return `
+                <div class="${cls}" data-id="${t.id}" onclick="selectTemplate('${t.id}')">
+                    <div class="t-icon">${t.icon}</div>
+                    <div>
+                        <div class="t-name">${esc(t.name)}</div>
+                        <div class="t-exts">${(t.file_types || []).join('  ')}</div>
+                    </div>
+                    ${isAuto ? '<span class="auto-badge">auto</span>' : ''}
+                </div>`;
+        }).join('');
+
+        // Show detail for active template
+        const active = templates.find(t => selectedId ? t.id === selectedId : t.id === autoMatchedId);
+        if (active) showDetail(active);
+        else templateDetail.style.display = 'none';
+    }
+
+    function showDetail(t) {
+        detailName.textContent = t.icon + '  ' + t.name;
+        detailDesc.textContent = t.description || '';
+        detailChecks.innerHTML = (t.checks || []).map(c => `<li>${esc(c)}</li>`).join('');
+        detailTypes.innerHTML  = 'Types: ' + (t.anomaly_types || '').split('|').map(x => `<code>${esc(x)}</code>`).join(' ');
+        templateDetail.style.display = '';
+    }
+
+    window.selectTemplate = function (id) {
+        selectedId = id;
+        renderTemplateList();
+    };
+
+    // ── Drag & drop ────────────────────────────────────────────────────────────
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault(); dropZone.classList.remove('drag-over');
+        const f = e.dataTransfer.files[0]; if (f) handleFile(f);
+    });
+    fileInput.addEventListener('change', () => {
+        const f = fileInput.files[0]; fileInput.value = ''; if (f) handleFile(f);
+    });
+
+    const MAX_BYTES = 5 * 1024 * 1024; // 5 MB — mirrors config max_file_size_mb
+
+    // ── Main flow ──────────────────────────────────────────────────────────────
+    async function handleFile(file) {
+        hideError();
+
+        if (file.size > MAX_BYTES) {
+            showError(`File too large: ${fmtSize(file.size)}. Maximum allowed size is 5 MB.`);
+            return;
+        }
+        if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+
+        // Auto-match template by extension
+        const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+        const matched = templates.find(t => (t.file_types || []).includes(ext));
+        autoMatchedId = matched ? matched.id : 'text';
+        renderTemplateList();
+
+        // Show preliminary props
+        showPrelimProps(file, matched || { icon: '📋', name: 'Plain Text', id: 'text' });
+
+        // Upload
+        const formData = new FormData();
+        formData.append('file', file);
+        if (selectedId) formData.append('template_id', selectedId);
+
+        try {
+            const resp = await fetch(`${API}/file-analysis/upload`, { method:'POST', body:formData });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                throw new Error(err.detail || resp.statusText);
+            }
+            const data = await resp.json();
+
+            // Update with actual template used
+            const usedTemplate = data.template || {};
+            fillActiveBanner(usedTemplate, !selectedId);
+            fillPropsCard(data.props, usedTemplate.id || autoMatchedId);
+            startCountdown(data.auto_delete_minutes || 10);
+            showAnalysisCard();
+            await pollResult(data.file_id);
+        } catch (err) {
+            showError('Upload failed: ' + err.message);
+        }
+    }
+
+    function showPrelimProps(file, t) {
+        propsIcon.textContent  = t.icon || '📋';
+        propsTitle.textContent = t.name + ' Properties';
+        propsGrid.innerHTML    = prop('File', esc(file.name))
+            + prop('Size', fmtSize(file.size))
+            + prop('Format', esc(t.name));
+        extrasRow.style.display = 'none';
+        deleteBadge.style.display = 'none';
+        propsCard.style.display = '';
+        activeBanner.style.display = 'none';
+        analysisCard.style.display = 'none';
+    }
+
+    function fillActiveBanner(t, isAuto) {
+        bannerName.textContent = (t.icon || '') + '  ' + (t.name || '');
+        bannerAuto.style.display = isAuto ? '' : 'none';
+        activeBanner.style.display = '';
+    }
+
+    function fillPropsCard(p, cat) {
+        if (!p) return;
+        const t = templates.find(x => x.id === cat) || { icon:'📋', name:'File' };
+        propsIcon.textContent  = t.icon;
+        propsTitle.textContent = t.name + ' Properties';
+
+        let html = prop('File', esc(p.name)) + prop('Size', esc(p.size_human)) + prop('Lines', p.total_lines ?? '—');
+
+        if (cat === 'code') {
+            html += prop('Functions', p.function_count ?? '—')
+                +   prop('Network calls', p.network_calls ?? '—')
+                +   prop('Dangerous patterns', p.dangerous_patterns ?? 0, (p.dangerous_patterns||0)>0?'danger':'ok');
+            const eps = p.sample_endpoints || [];
+            if (eps.length) { extrasRow.innerHTML='Endpoints: '+eps.slice(0,8).map(e=>`<code>${esc(e)}</code>`).join(' '); extrasRow.style.display=''; }
+
+        } else if (cat === 'data') {
+            html += prop('Columns', p.col_count ?? '—')
+                +   prop('Data rows', p.row_count ?? '—')
+                +   prop('Delimiter', esc(p.delimiter ?? ','))
+                +   prop('Nulls', p.null_count ?? 0, (p.null_count||0)>0?'warn':'ok')
+                +   prop('Duplicates', p.dupe_count ?? 0, (p.dupe_count||0)>0?'warn':'ok');
+            const cols = p.columns || [];
+            if (cols.length) { extrasRow.innerHTML='Columns: '+cols.map(c=>`<code>${esc(c)}</code>`).join(' '); extrasRow.style.display=''; }
+
+        } else if (cat === 'json') {
+            html += prop('Type', p.is_array ? 'Array' : 'Object')
+                +   (p.is_array ? prop('Items', p.array_length ?? '—') : '')
+                +   (p.parse_error ? prop('Parse', '⚠️ Invalid JSON','danger') : '');
+            const keys = p.top_keys || [];
+            if (keys.length) { extrasRow.innerHTML='Keys: '+keys.map(k=>`<code>${esc(k)}</code>`).join(' '); extrasRow.style.display=''; }
+
+        } else if (cat === 'sql') {
+            html += prop('SELECT', p.select_count??0)
+                +   prop('INSERT', p.insert_count??0)
+                +   prop('UPDATE', p.update_count??0)
+                +   prop('DELETE', p.delete_count??0, (p.delete_count||0)>0?'warn':'')
+                +   prop('DROP', p.drop_count??0, (p.drop_count||0)>0?'danger':'')
+                +   prop('TRUNCATE', p.truncate_count??0, (p.truncate_count||0)>0?'danger':'');
+        }
+
+        propsGrid.innerHTML = html;
+        deleteBadge.style.display = '';
+    }
+
+    function prop(label, value, cls='') {
+        return `<div class="prop-item"><div class="prop-label">${label}</div><div class="prop-value ${cls}">${value}</div></div>`;
+    }
+
+    function startCountdown(minutes) {
+        let remaining = minutes * 60;
+        countdownEl.textContent = fmt(remaining);
+        countdownTimer = setInterval(() => {
+            remaining--;
+            if (remaining <= 0) { clearInterval(countdownTimer); countdownEl.textContent='deleted'; return; }
+            countdownEl.textContent = fmt(remaining);
+        }, 1000);
+    }
+
+    function showAnalysisCard() {
+        analysisBody.innerHTML = `<div class="state-analyzing"><span class="spinner"></span> Generating anomaly report…</div>`;
+        analysisCard.style.display = '';
+    }
+
+    async function pollResult(fileId) {
+        for (let i = 0; i < 60; i++) {
+            await sleep(3000);
+            try {
+                const resp = await fetch(`${API}/file-analysis/result/${fileId}`);
+                if (!resp.ok) break;
+                const data = await resp.json();
+                if (data.status === 'done' || data.status === 'error') {
+                    renderAnomalies(data.result || []);
+                    return;
+                }
+            } catch (_) { break; }
+        }
+        analysisBody.innerHTML = `<div class="alert-error">⏱️ Timed out — file may have been deleted.</div>`;
+    }
+
+    function renderAnomalies(anomalies) {
+        if (!anomalies.length) {
+            analysisBody.innerHTML = `<div class="state-clean">✅ No anomalies detected — file looks clean.</div>`;
+            return;
+        }
+        const sevCls = { critical:'sev-critical', high:'sev-high', medium:'sev-medium', low:'sev-low' };
+        const rows = anomalies.map(a => `
+            <div class="anomaly-item">
+                <div class="anomaly-icon">${a.icon||'⚠️'}</div>
+                <div class="anomaly-body">
+                    <div class="anomaly-meta ${sevCls[a.severity]||'sev-low'}">
+                        ${esc((a.severity||'low').toUpperCase())}
+                        ${a.line ? `<span class="anomaly-line">· line ${a.line}</span>` : ''}
+                        <span class="anomaly-type">${esc(a.type||'')}</span>
+                    </div>
+                    <div class="anomaly-msg">${esc(a.message||'')}</div>
+                    ${a.detail ? `<div class="anomaly-detail">${esc(a.detail)}</div>` : ''}
+                </div>
+            </div>`).join('');
+        analysisBody.innerHTML = `<div class="result-count">🔎 ${anomalies.length} anomal${anomalies.length===1?'y':'ies'} found</div>${rows}`;
+    }
+
+    // ── Utilities ──────────────────────────────────────────────────────────────
+    function fmtSize(b) {
+        return b<1024 ? b+' B' : b<1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB';
+    }
+    function fmt(s) { return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+    function esc(s) {
+        return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+    function showError(m) { errorBox.textContent='❌ '+m; errorBox.style.display=''; }
+    function hideError()  { errorBox.style.display='none'; }
+
+    // ── Boot ───────────────────────────────────────────────────────────────────
+    loadTemplates();
+})();
+</script>
+</body>
+</html>
