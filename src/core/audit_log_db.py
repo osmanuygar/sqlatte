@@ -240,6 +240,74 @@ class AuditLogDB:
                 "by_model": [], "by_operation": [], "by_widget": [], "hourly": [],
             }
 
+    def get_user_stats(self, user_id: str) -> Dict:
+        """Token usage stats for a specific user (today and last 7 days)."""
+        now = datetime.now()
+        today_cutoff = now - timedelta(hours=24)
+        week_cutoff = now - timedelta(hours=168)
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            COUNT(*)                         AS total_calls,
+                            COALESCE(SUM(input_tokens),  0) AS total_input_tokens,
+                            COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+                            COALESCE(SUM(total_tokens),  0) AS total_tokens,
+                            COUNT(DISTINCT question)         AS unique_queries
+                        FROM audit_logs
+                        WHERE user_id = %s AND created_at >= %s
+                    """, [user_id, today_cutoff])
+                    today = dict(cur.fetchone())
+
+                    cur.execute("""
+                        SELECT
+                            COUNT(*)                         AS total_calls,
+                            COALESCE(SUM(input_tokens),  0) AS total_input_tokens,
+                            COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+                            COALESCE(SUM(total_tokens),  0) AS total_tokens,
+                            COUNT(DISTINCT question)         AS unique_queries
+                        FROM audit_logs
+                        WHERE user_id = %s AND created_at >= %s
+                    """, [user_id, week_cutoff])
+                    week = dict(cur.fetchone())
+
+                    cur.execute("""
+                        SELECT operation_type,
+                               COUNT(*)                        AS calls,
+                               COALESCE(SUM(total_tokens), 0) AS total_tokens
+                        FROM audit_logs
+                        WHERE user_id = %s AND created_at >= %s
+                        GROUP BY operation_type ORDER BY calls DESC
+                    """, [user_id, week_cutoff])
+                    by_operation = [dict(r) for r in cur.fetchall()]
+
+                    return {
+                        "today": {
+                            "calls": int(today["total_calls"]),
+                            "queries": int(today["unique_queries"]),
+                            "input_tokens": int(today["total_input_tokens"]),
+                            "output_tokens": int(today["total_output_tokens"]),
+                            "total_tokens": int(today["total_tokens"]),
+                        },
+                        "week": {
+                            "calls": int(week["total_calls"]),
+                            "queries": int(week["unique_queries"]),
+                            "input_tokens": int(week["total_input_tokens"]),
+                            "output_tokens": int(week["total_output_tokens"]),
+                            "total_tokens": int(week["total_tokens"]),
+                        },
+                        "by_operation": by_operation,
+                    }
+        except Exception as e:
+            print(f"❌ AuditLogDB.get_user_stats error: {e}")
+            import traceback; traceback.print_exc()
+            return {
+                "today": {"calls": 0, "queries": 0, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+                "week": {"calls": 0, "queries": 0, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+                "by_operation": [],
+            }
+
     def export_csv(
         self,
         session_id: Optional[str] = None,

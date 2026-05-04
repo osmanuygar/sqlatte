@@ -237,6 +237,25 @@ class AuthPlugin(BasePlugin):
                 "total_sessions": len(self.session_manager.sessions)
             }
 
+        @app.get("/auth/user-stats")
+        async def get_user_stats(session_id: str = Header(..., alias="X-Session-ID")):
+            """Get token usage stats for the currently logged-in user"""
+            session = self.session_manager.get_session(session_id)
+            if not session:
+                raise HTTPException(status_code=401, detail="Session expired or invalid")
+
+            try:
+                from src.core.audit_log_db import audit_log_db
+                if audit_log_db is None:
+                    return {"today": {}, "week": {}, "by_operation": [], "available": False}
+                stats = audit_log_db.get_user_stats(session.username)
+                stats["available"] = True
+                stats["username"] = session.username
+                return stats
+            except Exception as e:
+                print(f"❌ user-stats error: {e}")
+                return {"today": {}, "week": {}, "by_operation": [], "available": False}
+
         @app.get("/auth/tables")
         async def get_tables(session_id: str = Header(..., alias="X-Session-ID")):
             """Get available tables for authenticated user"""
@@ -456,6 +475,9 @@ class AuthPlugin(BasePlugin):
                         widget_type="auth",
                         user_id=session.username
                     )
+                elif "response_type" in result and result["response_type"] == "warning":
+                    content = f"[Security Warning] {result.get('reason', '')}"
+                    metadata = {"type": "warning"}
                 elif "response_type" in result and result["response_type"] == "chat":
                     content = result["message"]
                     metadata = {"type": "chat"}
@@ -712,6 +734,18 @@ class AuthPlugin(BasePlugin):
                 if not sql_query:
                     return {
                         "error": "Failed to generate SQL query. Please try rephrasing your question."
+                    }
+
+                # Block non-SELECT queries (SQL injection prevention)
+                from src.core.sql_validator import is_select_only, violation_reason
+                if not is_select_only(sql_query):
+                    reason = violation_reason(sql_query)
+                    print(f"🚫 Blocked non-SELECT query (auth): {reason} | SQL: {sql_query[:120]}")
+                    return {
+                        "response_type": "warning",
+                        "sql": sql_query,
+                        "reason": reason,
+                        "message": f"Only SELECT queries are permitted. {reason}.",
                     }
 
                 columns, data = db_provider.execute_query(sql_query)

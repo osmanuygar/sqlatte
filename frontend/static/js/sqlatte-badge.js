@@ -1855,7 +1855,17 @@
 
             let responseHTML = '';
 
-            if (result.response_type === 'chat') {
+            if (result.response_type === 'warning') {
+                const sqlBlock = result.sql
+                    ? `<pre class="sqlatte-warning-sql">${escapeHtml(result.sql)}</pre>`
+                    : '';
+                responseHTML = `
+                    <div class="sqlatte-security-warning">
+                        <strong>🔒 Security Warning: Only SELECT queries are allowed</strong><br>
+                        <span>${escapeHtml(result.reason || result.message || '')}</span>
+                        ${sqlBlock}
+                    </div>`;
+            } else if (result.response_type === 'chat') {
                 const formattedMessage = markdownToHtml(result.message);
                 responseHTML = `<div class="sqlatte-chat-message">${formattedMessage}</div>`;
             } else if (result.response_type === 'sql' || result.sql) {
@@ -2755,6 +2765,29 @@
     background: rgba(248, 113, 113, 0.1);
     border-left: 3px solid #f87171;
     border-radius: 4px;
+}
+
+.sqlatte-security-warning {
+    color: #f59e0b;
+    font-size: 12px;
+    margin: 8px 0;
+    padding: 12px 14px;
+    background: rgba(245, 158, 11, 0.1);
+    border-left: 3px solid #f59e0b;
+    border-radius: 4px;
+    line-height: 1.6;
+}
+
+.sqlatte-warning-sql {
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #fbbf24;
 }
 
 /* Results */

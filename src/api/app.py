@@ -39,6 +39,7 @@ from src.api import ops_agent_routes
 from src.core.provider_factory import initialize_ops_agent
 from src.api import alarm_routes
 from src.core.alarm_service import initialize_alarm_service, get_alarm_service
+from src.api import file_analysis_routes
 
 #from src.core.simple_insights import simple_insights
 from src.core.llm_insights_engine import (
@@ -197,6 +198,7 @@ app.include_router(semantic_router)
 app.include_router(ops_agent_routes.router)
 app.include_router(alarm_routes.router)
 app.include_router(audit_router)
+app.include_router(file_analysis_routes.router)
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
@@ -226,8 +228,16 @@ class ChatResponse(BaseModel):
     session_id: str
 
 
+class SecurityWarningResponse(BaseModel):
+    response_type: str = "warning"
+    message: str
+    sql: str
+    reason: str
+    session_id: str
+
+
 # Union response type
-QueryResponse = SQLQueryResponse | ChatResponse
+QueryResponse = SQLQueryResponse | ChatResponse | SecurityWarningResponse
 
 
 # ============================================
@@ -314,6 +324,18 @@ def _process_query_sync(
                     "type": "chat",
                     "message": "Failed to generate SQL. Please rephrase.",
                     "intent_info": intent_result
+                }
+
+            # Block non-SELECT queries (SQL injection prevention)
+            from src.core.sql_validator import is_select_only, violation_reason
+            if not is_select_only(sql_query):
+                reason = violation_reason(sql_query)
+                print(f"🚫 Blocked non-SELECT query: {reason} | SQL: {sql_query[:120]}")
+                return {
+                    "type": "security_warning",
+                    "sql": sql_query,
+                    "reason": reason,
+                    "message": f"Only SELECT queries are permitted. {reason}.",
                 }
 
             # Execute query
@@ -479,13 +501,14 @@ async def get_ui_config():
     """
     # Key: section id used in HTML, Value: enabled bool
     DEFAULTS = {
-        "assistant":    True,
-        "demo":         True,
-        "analytics":    True,
-        "schedules":    True,
-        "dashboards":   True,
-        "bigquery-ops": True,
-        "admin":        True,
+        "assistant":     True,
+        "demo":          True,
+        "analytics":     True,
+        "schedules":     True,
+        "dashboards":    True,
+        "bigquery-ops":  True,
+        "admin":         True,
+        "file-analyzer": True,
     }
 
     raw = config.get("ui", {}).get("sections", {})
@@ -863,6 +886,21 @@ async def process_query(request: QueryRequest):
                 insights=result.get("insights", [])
             )
 
+        elif result["type"] == "security_warning":
+            conversation_manager.add_message(
+                session_id,
+                role="assistant",
+                content=f"[Security Warning] {result['reason']}",
+                metadata={"response_type": "warning"}
+            )
+            return SecurityWarningResponse(
+                response_type="warning",
+                message=result["message"],
+                sql=result["sql"],
+                reason=result["reason"],
+                session_id=session_id,
+            )
+
         else:  # chat
             conversation_manager.add_message(
                 session_id,
@@ -1145,6 +1183,16 @@ async def ops_agent_page():
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Ops Agent page not found</h1>", status_code=404)
+
+@app.get("/file-analyzer", response_class=HTMLResponse)
+async def file_analyzer_page():
+    """Widget File Analyzer — anomaly detection UI"""
+    page_path = os.path.join(PROJECT_ROOT, 'frontend', 'file-analyzer.html')
+    try:
+        with open(page_path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>File Analyzer page not found</h1>", status_code=404)
 
 @app.get("/dashboards.html", response_class=HTMLResponse)
 async def dashboards_list_page():
