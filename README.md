@@ -35,7 +35,10 @@ SQLatte transforms natural language questions into SQL queries using AI, providi
 - 🔐 **Multi-Tenant Auth** - User-specific database connections
 - 📈 **AI Insights Engine** - Automatic data analysis and pattern detection
 - 🔧 **BigQuery Ops Console** - Cost optimization, security audits, and performance diagnostics
+- ⏰ **Ops Alarms** - Scheduled cost threshold alarms with email and Jira notifications
+- 📁 **File Analysis** - Upload files for LLM-powered anomaly detection and data profiling
 - 📋 **Audit Logs** - Full LLM call tracing with token usage and CSV export
+- 🔌 **MCP Server** - Native Claude Desktop integration via `sqlatte_mcp_server.py`
 - 🗄️ **Multi-Database Support** - Trino, PostgreSQL, MySQL, BigQuery
 - 🎨 **Embeddable Widgets** - Easy integration into existing applications
 
@@ -116,6 +119,7 @@ Operational automation for BigQuery environments, accessible at `/ops-agent`:
 - **🏛️ Governance** - Track unused tables and recent table access
 - **🤖 AI Insights** - Optional AI-generated findings per operation, prompt-configurable via `ops_insights_generation` in `config.yaml`
 - **🔀 Multi-Project Support** - Switch between GCP projects at runtime
+- **⏰ Cost Alarms** - Schedule threshold-based alarms (e.g. >0.5 TB processed) with cron triggers, email and Jira notifications, and test-on-demand
 
 ```yaml
 ops_agent:
@@ -609,7 +613,7 @@ Access at `/admin`:
 5. **Email & SMTP** - Email configuration
 6. **Scheduler** - Scheduled query management
 7. **Insights** - Insights engine settings
-8. **Ops Agent** - BigQuery Ops Console toggles and AI insights settings
+8. **Ops Agent** - BigQuery Ops Console toggles, AI insights settings, and cost alarms
 9. **Export** - Configuration export formats
 10. **History** - Configuration change log
 11. **Snapshots** - Backup and restore
@@ -677,6 +681,41 @@ Multi-tenant database access:
 - Session-based conversation memory
 
 ---
+
+---
+
+## 🔌 MCP Server (Claude Desktop Integration)
+
+Use SQLatte directly from Claude Desktop or Claude Code via the Model Context Protocol:
+
+```bash
+pip install mcp httpx
+```
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sqlatte": {
+      "command": "python3",
+      "args": ["/path/to/sqlatte/sqlatte_mcp_server.py"],
+      "env": {
+        "SQLATTE_URL": "http://localhost:8000",
+        "TRINO_HOST": "your-trino-host",
+        "TRINO_PORT": "443",
+        "TRINO_USER": "your-username",
+        "TRINO_PASSWORD": "your-password",
+        "TRINO_CATALOG": "hive",
+        "TRINO_SCHEMA": "default",
+        "TRINO_HTTP_SCHEME": "https"
+      }
+    }
+  }
+}
+```
+
+Available tools: **`ask_database`** (natural language → SQL → results), **`list_tables`**, **`get_schema`**.
 
 ---
 

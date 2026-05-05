@@ -668,7 +668,7 @@ class BigQueryOpsAgent(BaseOpsAgent):
 
         data = await self._run_query(sql)
 
-        total_time_travel_gb = sum(row.get('time_travel_gb', 0) for row in data)
+        total_time_travel_gb = sum(row.get('time_travel_gb') or 0 for row in data)
 
         summary = f"Found {len(data)} tables with time travel storage, totaling {total_time_travel_gb:.2f} GB"
 
@@ -752,7 +752,7 @@ class BigQueryOpsAgent(BaseOpsAgent):
 
         data = await self._run_query(sql)
 
-        total_savings = sum(row.get('potential_savings_usd', 0) for row in data)
+        total_savings = sum(row.get('potential_savings_usd') or 0 for row in data)
 
         summary = f"Analyzed {len(data)} tables. Potential savings: ${total_savings:.2f}/month with physical billing"
 
@@ -799,7 +799,7 @@ class BigQueryOpsAgent(BaseOpsAgent):
 
         data = await self._run_query(sql)
 
-        total_gb = sum(row.get('size_gb', 0) for row in data)
+        total_gb = sum(row.get('size_gb') or 0 for row in data)
 
         summary = f"Found {len(data)} large unpartitioned tables totaling {total_gb:.2f} GB"
 
@@ -972,7 +972,7 @@ class BigQueryOpsAgent(BaseOpsAgent):
 
         data = await self._run_query(sql)
 
-        avg_duration = sum(row.get('duration_sec', 0) for row in data) / len(data) if data else 0
+        avg_duration = sum(row.get('duration_sec') or 0 for row in data) / len(data) if data else 0
 
         summary = f"Found {len(data)} slow queries (>{min_duration_sec}s). Average: {avg_duration:.1f}s"
 
@@ -1154,7 +1154,7 @@ class BigQueryOpsAgent(BaseOpsAgent):
 
         data = await self._run_query(sql)
 
-        total_errors = sum(row.get('error_count', 0) for row in data)
+        total_errors = sum(row.get('error_count') or 0 for row in data)
 
         summary = f"Found {total_errors} errors across {len(data)} error types in last {days} days"
 
@@ -1210,7 +1210,7 @@ class BigQueryOpsAgent(BaseOpsAgent):
 
         data = await self._run_query(sql)
 
-        total_gb = sum(row.get('size_gb', 0) for row in data)
+        total_gb = sum(row.get('size_gb') or 0 for row in data)
 
         summary = f"Found {len(data)} unused tables ({days_inactive}+ days inactive) totaling {total_gb:.2f} GB"
 
