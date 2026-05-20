@@ -42,6 +42,7 @@
             --theme-icon:       "☀️";
         }
 
+
         * {
             margin: 0;
             padding: 0;
@@ -395,7 +396,7 @@
                 </a>
             </nav>
 
-            <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle-btn" title="Toggle light / dark mode">
+            <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle-btn" title="Cycle themes">
                 <span class="theme-toggle-icon" id="theme-icon">🌙</span>
                 <span class="theme-toggle-label" id="theme-label">Light Mode</span>
             </button>
@@ -560,17 +561,25 @@
         // ============================================
         // THEME (dark / light)
         // ============================================
+        const THEMES = ['dark', 'light'];
+        const THEME_META = {
+            dark:  { icon: '🌙', nextLabel: 'Light Mode' },
+            light: { icon: '☀️', nextLabel: 'Dark Mode'  },
+        };
+
         function applyTheme(theme) {
+            if (!THEMES.includes(theme)) theme = 'dark';
             document.documentElement.setAttribute('data-theme', theme);
-            const isDark = theme === 'dark';
-            document.getElementById('theme-icon').textContent  = isDark ? '🌙' : '☀️';
-            document.getElementById('theme-label').textContent = isDark ? 'Light Mode' : 'Dark Mode';
+            const meta = THEME_META[theme];
+            document.getElementById('theme-icon').textContent  = meta.icon;
+            document.getElementById('theme-label').textContent = meta.nextLabel;
             localStorage.setItem('sqlatte-theme', theme);
         }
 
         function toggleTheme() {
             const current = document.documentElement.getAttribute('data-theme') || 'dark';
-            applyTheme(current === 'dark' ? 'light' : 'dark');
+            const next = THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
+            applyTheme(next);
         }
 
         // Apply saved theme immediately (before paint)

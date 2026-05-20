@@ -2171,6 +2171,7 @@
                                 <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Widget</th>
                                 <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Operation</th>
                                 <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Model</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">Tables</th>
                                 <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">Question</th>
                                 <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">User</th>
                                 <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">In</th>
@@ -2180,7 +2181,7 @@
                             </tr>
                         </thead>
                         <tbody id="audit-tbody">
-                            <tr><td colspan="10" style="text-align:center;padding:24px;color:#505050;">Click Refresh to load logs</td></tr>
+                            <tr><td colspan="11" style="text-align:center;padding:24px;color:#505050;">Click Refresh to load logs</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -3733,16 +3734,27 @@
             _aBreakdown('audit-widget-table', d.by_widget||[],    'widget_type',    'total_tokens');
         }
 
+        function _auditTableCell(l) {
+            if (l.operation_type !== 'sql_generation' || (!l.table_names && !l.catalog_name)) {
+                return `<td style="padding:7px 12px;color:#404040;font-size:11px;">—</td>`;
+            }
+            const catalog = l.catalog_name ? `<span style="color:#505050;font-size:10px;">${_aEsc(l.catalog_name)} · </span>` : '';
+            const tables  = _aEsc(l.table_names || '');
+            const full    = (l.catalog_name ? l.catalog_name + ' · ' : '') + (l.table_names || '');
+            return `<td style="padding:7px 12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-family:monospace;" title="${_aEsc(full)}">${catalog}<span style="color:#8db4d4;">${tables}</span></td>`;
+        }
+
         function _auditRenderLogs(logs) {
             const tbody = document.getElementById('audit-tbody');
-            if (!logs.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px;color:#505050;">No log entries found</td></tr>'; return; }
+            if (!logs.length){ tbody.innerHTML='<tr><td colspan="11" style="text-align:center;padding:24px;color:#505050;">No log entries found</td></tr>'; return; }
             tbody.innerHTML = logs.map(l=>`
                 <tr style="border-bottom:1px solid #1e1e1e;" onmouseover="this.style.background='#161616'" onmouseout="this.style.background=''">
                     <td style="padding:7px 12px;white-space:nowrap;color:#707070;">${_aTime(l.created_at)}</td>
                     <td style="padding:7px 12px;">${_aWidgetBadge(l.widget_type)}</td>
                     <td style="padding:7px 12px;">${_aOpBadge(l.operation_type)}</td>
                     <td style="padding:7px 12px;color:#a0a0a0;white-space:nowrap;font-size:11px;">${_aEsc(l.model_name||'—')}</td>
-                    <td style="padding:7px 12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c0c0c0;" title="${_aEsc(l.question)}">${_aEsc(l.question||'—')}</td>
+                    ${_auditTableCell(l)}
+                    <td style="padding:7px 12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c0c0c0;" title="${_aEsc(l.question)}">${_aEsc(l.question||'—')}</td>
                     <td style="padding:7px 12px;color:#a0a0a0;font-size:11px;white-space:nowrap;">${_aEsc(l.user_id||'—')}</td>
                     <td style="padding:7px 12px;text-align:right;color:#c0c0c0;">${_afmt(l.input_tokens)}</td>
                     <td style="padding:7px 12px;text-align:right;color:#c0c0c0;">${_afmt(l.output_tokens)}</td>

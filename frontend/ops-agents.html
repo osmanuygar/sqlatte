@@ -1202,7 +1202,7 @@
             const parts = r.triggered
                 ? [`⚠️ TRIGGERED — ${r.value} TB > ${r.threshold} TB`,
                    r.email_sent  ? '📧 email sent' : '',
-                   r.jira_ticket ? `🎫 ${r.jira_ticket}` : '']
+                   r.jira_ticket ? `🎫 ${r.jira_ticket}` : (r.jira_error ? `⚠️ Jira: ${r.jira_error}` : '')]
                 : [`✅ OK — ${r.value} TB ≤ ${r.threshold} TB`];
             const msg = parts.filter(Boolean).join(' · ');
             showAlarmToast(msg, r.triggered ? 'warning' : 'success', 7000);
@@ -1311,9 +1311,12 @@
                 loadSchedulerAlarms();
                 return;
             }
-            const msg  = r.triggered
-                ? `⚠️ TRIGGERED — ${r.value} TB > ${r.threshold} TB${r.email_sent ? ' · 📧 sent' : ''}`
-                : `✅ OK — ${r.value} TB ≤ ${r.threshold} TB`;
+            const parts = r.triggered
+                ? [`⚠️ TRIGGERED — ${r.value} TB > ${r.threshold} TB`,
+                   r.email_sent  ? '📧 sent' : '',
+                   r.jira_ticket ? `🎫 ${r.jira_ticket}` : (r.jira_error ? `⚠️ Jira: ${r.jira_error}` : '')]
+                : [`✅ OK — ${r.value} TB ≤ ${r.threshold} TB`];
+            const msg = parts.filter(Boolean).join(' · ');
             showAlarmToast(msg, r.triggered ? 'warning' : 'success', 7000);
             loadSchedulerAlarms();
         } catch(e) { showAlarmToast('Run failed: ' + e.message, 'error'); }
