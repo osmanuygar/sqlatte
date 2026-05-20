@@ -311,12 +311,26 @@ def _process_query_sync(
             sql_query, explanation = llm_sql.generate_sql(enhanced_question, schema_info)
             if audit_log_db:
                 _u = getattr(llm_sql, "last_token_usage", {})
+                _full_tables = [
+                    line.replace("Table:", "").strip()
+                    for line in schema_info.split("\n")
+                    if line.startswith("Table:")
+                ]
+                _db_conf = current_config.get("database", {})
+                _prov = _db_conf.get("provider", "")
+                _catalog = (
+                    _db_conf.get(_prov, {}).get("catalog")
+                    or _db_conf.get(_prov, {}).get("project_id")
+                    or _db_conf.get(_prov, {}).get("database")
+                )
                 audit_log_db.log(
                     session_id=session_id, operation_type="sql_generation",
                     model_name=llm_sql.get_model_name(), question=question,
                     prompt_preview=enhanced_question[:500],
                     input_tokens=_u.get("input_tokens", 0),
                     output_tokens=_u.get("output_tokens", 0),
+                    catalog_name=_catalog,
+                    table_names=_full_tables or None,
                 )
 
             if not sql_query:

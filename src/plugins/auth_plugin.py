@@ -398,6 +398,7 @@ class AuthPlugin(BasePlugin):
 
                 question = request.get('question', '')
                 table_schema = request.get('table_schema', '') or request.get('schema', '')
+                bypass_intent = bool(request.get('bypass_intent', False))
 
                 if not question:
                     raise HTTPException(400, "Question is required")
@@ -438,6 +439,7 @@ class AuthPlugin(BasePlugin):
                     conv_id,
                     session_id,
                     session.username,
+                    bypass_intent,
                 )
                 execution_time = (time.time() - start_time) * 1000
 
@@ -661,6 +663,7 @@ class AuthPlugin(BasePlugin):
             conversation_id: str = None,
             session_id: str = None,
             user_id: str = None,
+            bypass_intent: bool = False,
     ) -> Dict[str, Any]:
         """
         Execute query with CONVERSATION CONTEXT support and model routing.
@@ -683,19 +686,23 @@ class AuthPlugin(BasePlugin):
             print(f"🤖 Processing query: {question[:50]}...")
 
             schema_info = table_schema if table_schema else "No schema provided."
-            intent_result = llm_intent.determine_intent(question, schema_info)
-            if audit_log_db and session_id:
-                _u = getattr(llm_intent, "last_token_usage", {})
-                audit_log_db.log(
-                    session_id=session_id, operation_type="intent_detection",
-                    model_name=llm_intent.get_model_name(), question=question,
-                    prompt_preview=question[:500],
-                    input_tokens=_u.get("input_tokens", 0),
-                    output_tokens=_u.get("output_tokens", 0),
-                    user_id=user_id, widget_type="auth",
-                )
 
-            print(f"🎯 Intent: {intent_result['intent']} (confidence: {intent_result['confidence']})")
+            if bypass_intent:
+                print("⚡ [MCP] Bypassing intent detection — going directly to SQL")
+                intent_result = {"intent": "sql", "confidence": 1.0}
+            else:
+                intent_result = llm_intent.determine_intent(question, schema_info)
+                if audit_log_db and session_id:
+                    _u = getattr(llm_intent, "last_token_usage", {})
+                    audit_log_db.log(
+                        session_id=session_id, operation_type="intent_detection",
+                        model_name=llm_intent.get_model_name(), question=question,
+                        prompt_preview=question[:500],
+                        input_tokens=_u.get("input_tokens", 0),
+                        output_tokens=_u.get("output_tokens", 0),
+                        user_id=user_id, widget_type="auth",
+                    )
+                print(f"🎯 Intent: {intent_result['intent']} (confidence: {intent_result['confidence']})")
 
             if intent_result["intent"] == "sql" and intent_result["confidence"] > 0.6:
                 if schema_info == "No schema provided.":
@@ -720,6 +727,17 @@ class AuthPlugin(BasePlugin):
                 sql_query, explanation = llm_sql.generate_sql(enhanced_question, schema_info)
                 if audit_log_db and session_id:
                     _u = getattr(llm_sql, "last_token_usage", {})
+                    _full_tables = [
+                        line.replace("Table:", "").strip()
+                        for line in schema_info.split("\n")
+                        if line.startswith("Table:")
+                    ]
+                    _prov = db_config.get("provider", "")
+                    _catalog = (
+                        db_config.get(_prov, {}).get("catalog")
+                        or db_config.get(_prov, {}).get("project_id")
+                        or db_config.get(_prov, {}).get("database")
+                    )
                     audit_log_db.log(
                         session_id=session_id, operation_type="sql_generation",
                         model_name=llm_sql.get_model_name(), question=question,
@@ -727,6 +745,8 @@ class AuthPlugin(BasePlugin):
                         input_tokens=_u.get("input_tokens", 0),
                         output_tokens=_u.get("output_tokens", 0),
                         user_id=user_id, widget_type="auth",
+                        catalog_name=_catalog,
+                        table_names=_full_tables or None,
                     )
 
                 print(f"📝 Generated SQL: {sql_query[:100]}...")

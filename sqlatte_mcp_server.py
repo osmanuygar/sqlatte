@@ -161,8 +161,9 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 schema_result = await _api("get", f"/auth/schema/{table_name}")
                 table_schema = schema_result.get("schema", "")
             result = await _api("post", "/auth/query", json={
-                "question":     arguments["question"],
-                "table_schema": table_schema,
+                "question":      arguments["question"],
+                "table_schema":  table_schema,
+                "bypass_intent": True,
             })
             return [types.TextContent(type="text", text=_format_query_result(result))]
 

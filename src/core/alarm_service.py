@@ -242,6 +242,7 @@ class AlarmService:
 
             email_sent = False
             jira_ticket = None
+            jira_error = None
 
             if triggered:
                 if alarm.notifications.email and alarm.recipients:
@@ -249,7 +250,7 @@ class AlarmService:
                     email_sent = True
 
                 if alarm.notifications.jira and self.jira_config.get('enabled'):
-                    jira_ticket = await self._create_jira_ticket(alarm, value, result.data, ai_insights)
+                    jira_ticket, jira_error = await self._create_jira_ticket(alarm, value, result.data, ai_insights)
 
             entry = AlarmHistoryEntry(
                 id=str(uuid.uuid4())[:8],
@@ -278,6 +279,7 @@ class AlarmService:
                 "message": message,
                 "email_sent": email_sent,
                 "jira_ticket": jira_ticket,
+                "jira_error": jira_error,
                 "project_id": self.ops_agent.project_id,
                 "insights": ai_insights,
             }
@@ -453,6 +455,9 @@ class AlarmService:
         if not over_rows:
             over_rows = data[:10]
 
+        JIRA_DESCRIPTION_LIMIT = 32_767
+        SQL_TRUNCATE_LIMIT = 2_000
+
         query_sections = []
         for i, row in enumerate(over_rows, 1):
             tb = float(row.get('tb_processed', 0) or 0)
@@ -460,6 +465,8 @@ class AlarmService:
             duration = row.get('duration_sec', 0)
             job_id = row.get('job_id', '')
             full_sql = str(row.get('query_text') or row.get('query_preview', '')).strip()
+            if len(full_sql) > SQL_TRUNCATE_LIMIT:
+                full_sql = full_sql[:SQL_TRUNCATE_LIMIT] + f"\n... [truncated, {len(full_sql)} chars total]"
             query_sections.append(
                 f"*Query {i}* — {user} | {tb:.4f} TB | {duration}s | Job: {job_id}\n"
                 f"{{code:sql}}\n{full_sql}\n{{code}}"
@@ -476,18 +483,24 @@ class AlarmService:
             )
             insights_str = f"\n\nh3. 🧠 AI Insights\n\n{insight_lines}\n"
 
-        description = (
+        footer = (
+            f"{insights_str}\n"
+            f"----\n"
+            f"_Triggered at: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}_"
+        )
+        header = (
             f"Alarm *{alarm.name}* triggered on project *{project_label}*.\n\n"
             f"*Total TB Processed* (last {alarm.params.get('days', 1)} day(s)): *{total_tb:.3f} TB*\n"
             f"*Threshold*: {threshold} TB\n"
             f"*Queries above threshold*: {len(over_rows)}\n\n"
             f"----\n\n"
             f"h3. Queries Exceeding {threshold} TB\n\n"
-            f"{queries_str}"
-            f"{insights_str}\n"
-            f"----\n"
-            f"_Triggered at: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}_"
         )
+        body = header + queries_str + footer
+        if len(body) > JIRA_DESCRIPTION_LIMIT:
+            truncation_note = "\n\n_[Description truncated to fit Jira limit]_"
+            body = body[:JIRA_DESCRIPTION_LIMIT - len(truncation_note)] + truncation_note
+        description = body
 
         payload = {
             "fields": {
@@ -533,17 +546,18 @@ class AlarmService:
             result = await loop.run_in_executor(None, _post_jira)
             ticket_key = result.get('key', '')
             logger.info(f"🎫 Jira ticket created: {ticket_key} for alarm '{alarm.name}'")
-            return ticket_key
+            return ticket_key, None
         except urllib.error.HTTPError as e:
             body = e.read().decode(errors="replace")
+            error_msg = f"HTTP {e.code}: {body[:300]}"
             logger.error(
                 f"Failed to create Jira ticket for '{alarm.name}': {e} | "
                 f"status={e.code} url={e.url} response_body={body}"
             )
-            return None
+            return None, error_msg
         except Exception as e:
             logger.error(f"Failed to create Jira ticket for '{alarm.name}': {e}")
-            return None
+            return None, str(e)
 
 
 # ──────────────────────────────────────────────────────────
