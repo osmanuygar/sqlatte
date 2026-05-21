@@ -36,8 +36,7 @@ SQLatte transforms natural language questions into SQL queries using AI, providi
 - 📈 **AI Insights Engine** - Automatic data analysis and pattern detection
 - 🔧 **BigQuery Ops Console** - Cost optimization, security audits, and performance diagnostics
 - ⏰ **Ops Alarms** - Scheduled cost threshold alarms with email and Jira notifications
-- 📁 **File Analysis** - Upload files for LLM-powered anomaly detection and data profiling
-- 📋 **Audit Logs** - Full LLM call tracing with token usage and CSV export
+- 📋 **Audit Logs** - Full LLM call tracing with token usage, widget source (default/auth/MCP), and CSV export
 - 🔌 **MCP Server** - Native Claude Desktop integration via `sqlatte_mcp_server.py`
 - 🗄️ **Multi-Database Support** - Trino, PostgreSQL, MySQL, BigQuery
 - 🎨 **Embeddable Widgets** - Easy integration into existing applications
@@ -617,7 +616,7 @@ Access at `/admin`:
 9. **Export** - Configuration export formats
 10. **History** - Configuration change log
 11. **Snapshots** - Backup and restore
-12. **Audit Logs** - LLM call history with token usage
+12. **Audit Logs** - LLM call history with token usage, filterable by widget source (default / auth / MCP)
 
 ### Key Capabilities
 

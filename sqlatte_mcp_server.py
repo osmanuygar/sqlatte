@@ -215,8 +215,9 @@ def _format_query_result(result: dict) -> str:
     if summary:
         parts.append(f"**Summary:** {summary}")
 
-    raw = f"**Raw response:**\n```json\n{json.dumps(result, ensure_ascii=False, indent=2)}\n```"
-    parts.append(raw)
+    if result.get("row_cap_applied"):
+        parts.append(f"_⚠️ Results capped at {result['row_cap_applied']} rows by server limit._")
+
     return "\n\n".join(parts)
 
 

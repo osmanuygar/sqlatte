@@ -2121,6 +2121,7 @@
                             <option value="">All</option>
                             <option value="default">Default</option>
                             <option value="auth">Auth Widget</option>
+                            <option value="mcp">MCP</option>
                         </select>
                     </div>
                     <div>
@@ -3682,9 +3683,11 @@
             return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;background:${bg};color:${c}">${l}</span>`;
         }
         function _aWidgetBadge(w) {
-            return w === 'auth'
-                ? `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;background:rgba(251,191,36,.15);color:#fbbf24">Auth</span>`
-                : `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;background:rgba(99,102,241,.15);color:#818cf8">Default</span>`;
+            if (w === 'auth')
+                return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;background:rgba(251,191,36,.15);color:#fbbf24">Auth</span>`;
+            if (w === 'mcp')
+                return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;background:rgba(16,185,129,.15);color:#34d399">MCP</span>`;
+            return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;background:rgba(99,102,241,.15);color:#818cf8">Default</span>`;
         }
         function _aBreakdown(tableId, rows, nameKey, valKey) {
             const t = document.getElementById(tableId);
@@ -3785,6 +3788,7 @@
         }
 
         document.getElementById('audit-hours').addEventListener('change', ()=>loadAuditLogs(true));
+
     </script>
 </body>
 </html>
