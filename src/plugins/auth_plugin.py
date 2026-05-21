@@ -744,7 +744,8 @@ class AuthPlugin(BasePlugin):
                         prompt_preview=enhanced_question[:500],
                         input_tokens=_u.get("input_tokens", 0),
                         output_tokens=_u.get("output_tokens", 0),
-                        user_id=user_id, widget_type="auth",
+                        user_id=user_id,
+                        widget_type="mcp" if bypass_intent else "auth",
                         catalog_name=_catalog,
                         table_names=_full_tables or None,
                     )
@@ -771,11 +772,20 @@ class AuthPlugin(BasePlugin):
                 columns, data = db_provider.execute_query(sql_query)
                 print(f"✅ Query executed: {len(data)} rows returned")
 
+                row_cap = None
+                if bypass_intent:
+                    mcp_cfg = llm_config.get("mcp", {})
+                    row_cap = int(mcp_cfg.get("max_rows", 1000))
+                    if len(data) > row_cap:
+                        print(f"⚡ [MCP] Row cap applied: {len(data)} → {row_cap}")
+                        data = data[:row_cap]
+
                 return {
                     "sql": sql_query,
                     "columns": columns,
                     "data": data,
                     "explanation": explanation,
+                    "row_cap_applied": row_cap if row_cap and len(data) == row_cap else None,
                     "query_id": None
                 }
 

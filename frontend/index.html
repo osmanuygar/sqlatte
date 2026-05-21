@@ -386,10 +386,6 @@
                     <span class="nav-icon">🔧</span>
                     <span class="nav-label">BigQuery Ops</span>
                 </a>
-                <a class="nav-item" data-section="file-analyzer" onclick="showSection('file-analyzer')">
-                    <span class="nav-icon">🔍</span>
-                    <span class="nav-label">File Analyzer</span>
-                </a>
                 <a class="nav-item" data-section="admin" onclick="showSection('admin')">
                     <span class="nav-icon">⚙️</span>
                     <span class="nav-label">Configuration</span>
@@ -458,11 +454,6 @@
                             <div class="quick-action-desc">LLM and database settings</div>
                         </div>
 
-                        <div class="quick-action-card" data-section="file-analyzer" onclick="showSection('file-analyzer')">
-                            <div class="quick-action-icon">🔍</div>
-                            <div class="quick-action-title">File Analyzer</div>
-                            <div class="quick-action-desc">AI anomaly detection for CSV, JSON, JS and more</div>
-                        </div>
                     </div>
                 </div>
             </section>
@@ -527,17 +518,6 @@
                 </div>
                 <div class="iframe-container">
                     <iframe id="ops-iframe" src="/ops-agent"></iframe>
-                </div>
-            </section>
-
-            <!-- FILE ANALYZER SECTION -->
-            <section id="file-analyzer" class="content-section">
-                <div class="page-header">
-                    <h2>🔍 File Analyzer</h2>
-                    <p>AI-powered anomaly detection for CSV, VY, JSON, YAML, SQL, JS and more</p>
-                </div>
-                <div class="iframe-container">
-                    <iframe id="file-analyzer-iframe" src="/file-analyzer"></iframe>
                 </div>
             </section>
 

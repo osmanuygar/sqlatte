@@ -39,7 +39,6 @@ from src.api import ops_agent_routes
 from src.core.provider_factory import initialize_ops_agent
 from src.api import alarm_routes
 from src.core.alarm_service import initialize_alarm_service, get_alarm_service
-from src.api import file_analysis_routes
 
 #from src.core.simple_insights import simple_insights
 from src.core.llm_insights_engine import (
@@ -198,7 +197,6 @@ app.include_router(semantic_router)
 app.include_router(ops_agent_routes.router)
 app.include_router(alarm_routes.router)
 app.include_router(audit_router)
-app.include_router(file_analysis_routes.router)
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
@@ -522,7 +520,6 @@ async def get_ui_config():
         "dashboards":    True,
         "bigquery-ops":  True,
         "admin":         True,
-        "file-analyzer": True,
     }
 
     raw = config.get("ui", {}).get("sections", {})
@@ -1197,16 +1194,6 @@ async def ops_agent_page():
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Ops Agent page not found</h1>", status_code=404)
-
-@app.get("/file-analyzer", response_class=HTMLResponse)
-async def file_analyzer_page():
-    """Widget File Analyzer — anomaly detection UI"""
-    page_path = os.path.join(PROJECT_ROOT, 'frontend', 'file-analyzer.html')
-    try:
-        with open(page_path, 'r', encoding='utf-8') as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        return HTMLResponse(content="<h1>File Analyzer page not found</h1>", status_code=404)
 
 @app.get("/dashboards.html", response_class=HTMLResponse)
 async def dashboards_list_page():
