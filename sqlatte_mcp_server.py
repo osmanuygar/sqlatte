@@ -31,6 +31,7 @@ Authentication — choose ONE method:
           "command": "python3",
           "args": ["/path/to/sqlatte_mcp_server.py"],
           "env": {
+
             "SQLATTE_URL": "http://localhost:8002",
             "TRINO_HOST": "your-trino-host",
             "TRINO_PORT": "443",

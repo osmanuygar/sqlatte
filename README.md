@@ -691,7 +691,35 @@ Use SQLatte directly from Claude Desktop or Claude Code via the Model Context Pr
 pip install mcp httpx
 ```
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+### Option A — API Token (Recommended)
+
+Keeps real database credentials out of MCP config. Token is generated from the SQLatte UI and stores the connection details server-side (encrypted).
+
+**1. Generate a token:**
+
+Login to SQLatte → open the chat widget → click **🔑 API Tokens** → Generate.
+Copy the token (shown only once).
+
+**2. Add to Claude config:**
+
+```json
+{
+  "mcpServers": {
+    "sqlatte": {
+      "command": "python3",
+      "args": ["/path/to/sqlatte/sqlatte_mcp_server.py"],
+      "env": {
+        "SQLATTE_URL": "http://localhost:8000",
+        "SQLATTE_TOKEN": "<token>"
+      }
+    }
+  }
+}
+```
+
+Token TTL is configurable (24h default). Each user generates their own token — the token carries their catalog/schema context.
+
+### Option B — Username / Password (Legacy)
 
 ```json
 {
