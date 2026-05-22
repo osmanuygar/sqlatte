@@ -19,10 +19,11 @@ Features:
 
 import os
 import json
+import secrets
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from cryptography.fernet import Fernet
 import base64
 
@@ -125,6 +126,22 @@ class ConfigDB:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_by VARCHAR(100),
                 description TEXT
+            )
+        """)
+
+        # API tokens for MCP and programmatic access
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_tokens (
+                id SERIAL PRIMARY KEY,
+                token VARCHAR(64) UNIQUE NOT NULL,
+                username VARCHAR(255) NOT NULL,
+                db_config_encrypted TEXT NOT NULL,
+                description VARCHAR(255),
+                ttl_hours INTEGER NOT NULL DEFAULT 24,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                last_used_at TIMESTAMP,
+                revoked BOOLEAN DEFAULT FALSE
             )
         """)
 
@@ -720,6 +737,110 @@ class ConfigDB:
         except Exception as e:
             print(f"⚠️  Decryption failed: {e}")
             return value
+
+    # ============================================
+    # API Token Management
+    # ============================================
+
+    def create_api_token(
+        self,
+        username: str,
+        db_config: Dict[str, Any],
+        ttl_hours: int = 24,
+        description: str = "MCP Token"
+    ) -> str:
+        """Create a persisted API token storing encrypted db_config."""
+        token = secrets.token_urlsafe(48)
+        db_config_json = json.dumps(db_config)
+        encrypted = self._encrypt(db_config_json)
+        expires_at = datetime.now() + timedelta(hours=ttl_hours)
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO api_tokens (token, username, db_config_encrypted, description, ttl_hours, expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (token, username, encrypted, description, ttl_hours, expires_at)
+        )
+        self.conn.commit()
+        cursor.close()
+        print(f"🔑 API token created for {username} (TTL: {ttl_hours}h)")
+        return token
+
+    def validate_api_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Validate token and return {username, db_config} or None."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT username, db_config_encrypted, expires_at, revoked
+            FROM api_tokens WHERE token = %s
+            """,
+            (token,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            return None
+
+        username, encrypted, expires_at, revoked = row[0], row[1], row[2], row[3]
+
+        if revoked:
+            cursor.close()
+            return None
+
+        if datetime.now() > expires_at:
+            cursor.close()
+            return None
+
+        cursor.execute(
+            "UPDATE api_tokens SET last_used_at = %s WHERE token = %s",
+            (datetime.now(), token)
+        )
+        self.conn.commit()
+        cursor.close()
+
+        db_config = json.loads(self._decrypt(encrypted))
+        return {"username": username, "db_config": db_config}
+
+    def revoke_api_token(self, token: str, username: str) -> bool:
+        """Revoke a token (only owner can revoke)."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE api_tokens SET revoked = TRUE WHERE token = %s AND username = %s",
+            (token, username)
+        )
+        affected = cursor.rowcount
+        self.conn.commit()
+        cursor.close()
+        return affected > 0
+
+    def list_api_tokens(self, username: str) -> List[Dict[str, Any]]:
+        """List all active (non-revoked, non-expired) tokens for a user."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT token, description, ttl_hours, created_at, expires_at, last_used_at
+            FROM api_tokens
+            WHERE username = %s AND revoked = FALSE AND expires_at > %s
+            ORDER BY created_at DESC
+            """,
+            (username, datetime.now())
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        return [
+            {
+                "token_prefix": row[0][:12] + "...",
+                "token": row[0],
+                "description": row[1],
+                "ttl_hours": row[2],
+                "created_at": row[3].isoformat() if row[3] else None,
+                "expires_at": row[4].isoformat() if row[4] else None,
+                "last_used_at": row[5].isoformat() if row[5] else None,
+            }
+            for row in rows
+        ]
 
     def close(self):
         """Close database connection"""

@@ -8,14 +8,30 @@ Configure via environment variables and add to Claude settings.
 Setup:
     pip install mcp httpx
 
-Claude settings.json:
+Authentication — choose ONE method:
+
+  Option A (Recommended): API Token — no plaintext DB credentials in config
     {
       "mcpServers": {
         "sqlatte": {
           "command": "python3",
           "args": ["/path/to/sqlatte_mcp_server.py"],
           "env": {
-            "SQLATTE_URL": "http://localhost:8000",
+            "SQLATTE_URL": "http://localhost:8002",
+            "SQLATTE_TOKEN": "<token from SQLatte UI → API Tokens>"
+          }
+        }
+      }
+    }
+
+  Option B: Username/password (legacy)
+    {
+      "mcpServers": {
+        "sqlatte": {
+          "command": "python3",
+          "args": ["/path/to/sqlatte_mcp_server.py"],
+          "env": {
+            "SQLATTE_URL": "http://localhost:8002",
             "TRINO_HOST": "your-trino-host",
             "TRINO_PORT": "443",
             "TRINO_USER": "your-username",
@@ -38,7 +54,10 @@ from mcp.server.stdio import stdio_server
 from mcp import types
 
 # ── Config from environment ────────────────────────────────────────────────────
-SQLATTE_URL   = os.environ.get("SQLATTE_URL", "http://localhost:8000").rstrip("/")
+SQLATTE_URL    = os.environ.get("SQLATTE_URL", "http://localhost:8002").rstrip("/")
+SQLATTE_TOKEN  = os.environ.get("SQLATTE_TOKEN", "")       # Option A: API token
+
+# Option B: legacy username/password (used only when SQLATTE_TOKEN is not set)
 TRINO_HOST    = os.environ.get("TRINO_HOST", "")
 TRINO_PORT    = int(os.environ.get("TRINO_PORT", "443"))
 TRINO_USER    = os.environ.get("TRINO_USER", "")
@@ -50,7 +69,19 @@ TRINO_SCHEME  = os.environ.get("TRINO_HTTP_SCHEME", "https")
 _session_id: str | None = None
 
 # ── SQLatte API helpers ────────────────────────────────────────────────────────
-async def _login() -> str:
+async def _login_with_token() -> str:
+    """Validate API token and get a fresh session_id."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"{SQLATTE_URL}/auth/token/validate",
+            json={"token": SQLATTE_TOKEN}
+        )
+        resp.raise_for_status()
+        return resp.json()["session_id"]
+
+
+async def _login_with_password() -> str:
+    """Login with username/password and get a session_id."""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(f"{SQLATTE_URL}/auth/login", json={
             "username":    TRINO_USER,
@@ -63,14 +94,16 @@ async def _login() -> str:
             "http_scheme": TRINO_SCHEME,
         })
         resp.raise_for_status()
-        data = resp.json()
-        return data["session_id"]
+        return resp.json()["session_id"]
 
 
 async def _get_session() -> str:
     global _session_id
     if not _session_id:
-        _session_id = await _login()
+        if SQLATTE_TOKEN:
+            _session_id = await _login_with_token()
+        else:
+            _session_id = await _login_with_password()
     return _session_id
 
 
@@ -86,7 +119,7 @@ async def _api(method: str, path: str, **kwargs) -> dict:
             f"{SQLATTE_URL}{path}", headers=headers, **kwargs
         )
         if resp.status_code == 401:
-            _session_id = None
+            _session_id = None          # force re-auth (token re-validate or re-login)
             sid = await _get_session()
             headers["X-Session-ID"] = sid
             resp = await getattr(client, method)(

@@ -563,6 +563,110 @@ class AuthPlugin(BasePlugin):
 
             return {"message": "Conversation cleared", "success": True}
 
+        # ── API Token endpoints ──────────────────────────────────────────────────
+
+        @app.post("/auth/token/generate")
+        async def generate_api_token(
+            request: dict,
+            session_id: str = Header(..., alias="X-Session-ID")
+        ):
+            """Generate a persisted API token from an active session."""
+            session = self.session_manager.get_session(session_id)
+            if not session:
+                raise HTTPException(401, "Session expired or invalid")
+
+            try:
+                from src.core.config_db import get_config_db
+                config_db = get_config_db()
+
+                ttl_hours = int(request.get("ttl_hours", 24))
+                description = request.get("description", "MCP Token")
+
+                token = config_db.create_api_token(
+                    username=session.username,
+                    db_config=session.db_config,
+                    ttl_hours=ttl_hours,
+                    description=description
+                )
+                return {
+                    "success": True,
+                    "token": token,
+                    "ttl_hours": ttl_hours,
+                    "description": description,
+                    "message": f"Token valid for {ttl_hours} hours. Set SQLATTE_TOKEN in your MCP config.",
+                }
+            except Exception as e:
+                print(f"❌ Token generate error: {e}")
+                raise HTTPException(500, f"Token generation failed: {e}")
+
+        @app.post("/auth/token/validate")
+        async def validate_api_token(request: dict):
+            """Validate an API token and return a fresh session_id."""
+            token = request.get("token", "")
+            if not token:
+                raise HTTPException(400, "token is required")
+
+            try:
+                from src.core.config_db import get_config_db
+                config_db = get_config_db()
+                result = config_db.validate_api_token(token)
+                if not result:
+                    raise HTTPException(401, "Invalid, expired, or revoked token")
+
+                new_session_id = self.session_manager.create_session(
+                    username=result["username"],
+                    db_config=result["db_config"]
+                )
+                return {"success": True, "session_id": new_session_id, "username": result["username"]}
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"❌ Token validate error: {e}")
+                raise HTTPException(500, f"Token validation failed: {e}")
+
+        @app.post("/auth/token/revoke")
+        async def revoke_api_token(
+            request: dict,
+            session_id: str = Header(..., alias="X-Session-ID")
+        ):
+            """Revoke an API token (owner only)."""
+            session = self.session_manager.get_session(session_id)
+            if not session:
+                raise HTTPException(401, "Session expired or invalid")
+
+            token = request.get("token", "")
+            if not token:
+                raise HTTPException(400, "token is required")
+
+            try:
+                from src.core.config_db import get_config_db
+                config_db = get_config_db()
+                ok = config_db.revoke_api_token(token=token, username=session.username)
+                if not ok:
+                    raise HTTPException(404, "Token not found or not owned by you")
+                return {"success": True, "message": "Token revoked"}
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(500, f"Token revoke failed: {e}")
+
+        @app.get("/auth/tokens")
+        async def list_api_tokens(
+            session_id: str = Header(..., alias="X-Session-ID")
+        ):
+            """List active API tokens for the current user."""
+            session = self.session_manager.get_session(session_id)
+            if not session:
+                raise HTTPException(401, "Session expired or invalid")
+
+            try:
+                from src.core.config_db import get_config_db
+                config_db = get_config_db()
+                tokens = config_db.list_api_tokens(session.username)
+                return {"tokens": tokens, "username": session.username}
+            except Exception as e:
+                raise HTTPException(500, f"Failed to list tokens: {e}")
+
 
     def _build_db_config(self, request: LoginRequest) -> Dict[str, Any]:
         """Build database config from login request"""
