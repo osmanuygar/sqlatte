@@ -35,6 +35,7 @@
     let isHistoryPanelOpen = false;
     let isFavoritesPanelOpen = false;
     let isStatsPanelOpen = false;
+    let isTokenPanelOpen = false;
     let queryHistory = [];
     let favorites = [];
 
@@ -598,6 +599,9 @@
                         <button id="sqlatte-auth-stats-btn" class="sqlatte-modal-btn sqlatte-modal-btn-labeled" onclick="SQLatteAuthWidget.toggleStats()" title="Token Usage Stats">
                             📊 Usage
                         </button>
+                        <button class="sqlatte-modal-btn sqlatte-modal-btn-labeled" onclick="SQLatteAuthWidget.toggleTokenPanel()" title="API Tokens for MCP">
+                            🔑 API Tokens
+                        </button>
                         <button class="sqlatte-modal-btn" onclick="SQLatteAuthWidget.clearConversation()" title="Clear Conversation">
                             🗑️
                         </button>
@@ -642,6 +646,48 @@
                     <div id="sqlatte-auth-stats-panel" class="sqlatte-slide-panel" style="display: none;">
                         <div class="sqlatte-panel-empty">Loading...</div>
                     </div>
+
+                    <div id="sqlatte-auth-token-panel" class="sqlatte-slide-panel" style="display: none;">
+                        <div class="sqlatte-token-panel-inner">
+                            <h4 style="margin:0 0 8px 0; color:#8B4513;">🔑 API Tokens (MCP Access)</h4>
+                            <p style="margin:0 0 12px 0; font-size:12px; color:#666;">
+                                Generate a token to use in Claude MCP config instead of username/password.
+                            </p>
+                            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+                                <input id="sqlatte-token-desc" type="text" placeholder="Description (e.g. Claude MCP)"
+                                    style="flex:1; min-width:120px; padding:6px 8px; border:1px solid #ddd; border-radius:4px; font-size:12px;"/>
+                                <select id="sqlatte-token-ttl"
+                                    style="padding:6px 8px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
+                                    <option value="24">24h</option>
+                                    <option value="48">48h</option>
+                                    <option value="168">7 days</option>
+                                    <option value="720">30 days</option>
+                                </select>
+                                <button onclick="SQLatteAuthWidget.generateToken()"
+                                    style="padding:6px 12px; background:#8B4513; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px;">
+                                    + Generate
+                                </button>
+                            </div>
+                            <div id="sqlatte-token-result" style="display:none; margin-bottom:12px; padding:10px; background:#f0f8f0; border:1px solid #4CAF50; border-radius:6px;">
+                                <div style="font-size:11px; color:#2e7d32; margin-bottom:4px; font-weight:600;">✅ Token created — copy it now, it won't be shown again:</div>
+                                <div style="display:flex; gap:6px; align-items:center;">
+                                    <code id="sqlatte-token-value" style="flex:1; font-size:10px; word-break:break-all; background:#fff; padding:4px; border-radius:3px; border:1px solid #ccc;"></code>
+                                    <button onclick="SQLatteAuthWidget.copyToken()"
+                                        style="padding:4px 8px; background:#4CAF50; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px; white-space:nowrap;">
+                                        📋 Copy
+                                    </button>
+                                </div>
+                                <div style="margin-top:8px; font-size:10px; color:#555;">
+                                    Add to Claude MCP config:
+                                    <pre id="sqlatte-token-mcp-snippet" style="margin:4px 0 0 0; padding:6px; background:#1e1e1e; color:#d4d4d4; border-radius:4px; font-size:10px; overflow-x:auto;"></pre>
+                                </div>
+                            </div>
+                            <div id="sqlatte-token-list" style="font-size:12px;">
+                                <em style="color:#999;">Loading tokens...</em>
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="sqlatte-auth-chat-area" class="sqlatte-chat-area">
                         <div class="sqlatte-empty-state">
                             <svg width="48" height="48" viewBox="0 0 200 200">
@@ -1754,6 +1800,121 @@
         }
     }
 
+    // ── API Token Panel ──────────────────────────────────────────────────────────
+
+    function toggleTokenPanel() {
+        isTokenPanelOpen = !isTokenPanelOpen;
+        const panel = document.getElementById('sqlatte-auth-token-panel');
+        if (!panel) return;
+
+        if (isTokenPanelOpen) {
+            if (isHistoryPanelOpen) toggleHistory();
+            if (isFavoritesPanelOpen) toggleFavorites();
+            if (isStatsPanelOpen) toggleStats();
+            panel.style.display = 'flex';
+            setTimeout(() => { panel.style.transform = 'translateX(0)'; }, 10);
+            loadTokenList();
+        } else {
+            panel.style.transform = 'translateX(-100%)';
+            setTimeout(() => { panel.style.display = 'none'; }, 300);
+        }
+    }
+
+    async function loadTokenList() {
+        const listEl = document.getElementById('sqlatte-token-list');
+        if (!listEl) return;
+        listEl.innerHTML = '<em style="color:#999;">Loading...</em>';
+
+        try {
+            const res = await fetch(`${AUTH_WIDGET_CONFIG.apiBase}/auth/tokens`, {
+                headers: { 'X-Session-ID': sessionId }
+            });
+            if (!res.ok) throw new Error('Failed');
+            const data = await res.json();
+            const tokens = data.tokens || [];
+
+            if (tokens.length === 0) {
+                listEl.innerHTML = '<div style="color:#999;font-size:12px;text-align:center;padding:8px;">No active tokens. Generate one above.</div>';
+                return;
+            }
+
+            listEl.innerHTML = tokens.map(t => {
+                const exp = t.expires_at ? new Date(t.expires_at).toLocaleString() : '—';
+                const last = t.last_used_at ? new Date(t.last_used_at).toLocaleString() : 'never';
+                return `
+                <div style="padding:8px; border:1px solid #eee; border-radius:6px; margin-bottom:6px; font-size:11px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong style="color:#333;">${t.description || 'Token'}</strong>
+                        <button onclick="SQLatteAuthWidget.revokeToken('${t.token}')"
+                            style="padding:2px 6px; background:#e74c3c; color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:10px;">
+                            Revoke
+                        </button>
+                    </div>
+                    <div style="color:#888; margin-top:3px;"><code style="font-size:10px;">${t.token_prefix}</code></div>
+                    <div style="color:#aaa; margin-top:2px;">Expires: ${exp} · Last used: ${last}</div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            listEl.innerHTML = '<div style="color:#e74c3c;font-size:12px;">Failed to load tokens</div>';
+        }
+    }
+
+    async function generateToken() {
+        const desc = document.getElementById('sqlatte-token-desc')?.value.trim() || 'MCP Token';
+        const ttl = parseInt(document.getElementById('sqlatte-token-ttl')?.value || '24');
+
+        try {
+            const res = await fetch(`${AUTH_WIDGET_CONFIG.apiBase}/auth/token/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Session-ID': sessionId },
+                body: JSON.stringify({ description: desc, ttl_hours: ttl })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+
+            const resultEl = document.getElementById('sqlatte-token-result');
+            const valueEl  = document.getElementById('sqlatte-token-value');
+            const snippetEl = document.getElementById('sqlatte-token-mcp-snippet');
+
+            if (resultEl) resultEl.style.display = 'block';
+            if (valueEl)  valueEl.textContent = data.token;
+            if (snippetEl) {
+                snippetEl.textContent = JSON.stringify({
+                    env: { SQLATTE_URL: AUTH_WIDGET_CONFIG.apiBase, SQLATTE_TOKEN: data.token }
+                }, null, 2);
+            }
+
+            loadTokenList();
+            showToast('✅ Token generated — copy it now!', 'success');
+        } catch (e) {
+            showToast('❌ Failed to generate token', 'error');
+        }
+    }
+
+    function copyToken() {
+        const val = document.getElementById('sqlatte-token-value')?.textContent;
+        if (val) {
+            navigator.clipboard.writeText(val).then(() => showToast('📋 Copied!', 'success'));
+        }
+    }
+
+    async function revokeToken(token) {
+        if (!confirm('Revoke this token?')) return;
+        try {
+            const res = await fetch(`${AUTH_WIDGET_CONFIG.apiBase}/auth/token/revoke`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Session-ID': sessionId },
+                body: JSON.stringify({ token })
+            });
+            if (!res.ok) throw new Error();
+            showToast('✅ Token revoked', 'success');
+            loadTokenList();
+        } catch (e) {
+            showToast('❌ Failed to revoke token', 'error');
+        }
+    }
+    // ── End API Token Panel ──────────────────────────────────────────────────────
+
     function useQuery(query) {
         const input = document.getElementById('sqlatte-auth-input');
         if (input) {
@@ -2519,6 +2680,16 @@ function visualizeData(resultId) {
     font-size: 10px;
     min-width: 45px;
     text-align: right;
+}
+
+.sqlatte-token-panel-inner {
+    padding: 16px;
+    color: #222;
+    background: #fafafa;
+    height: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Modal Body */
@@ -3473,6 +3644,10 @@ em {
         toggleHistory: toggleHistory,
         toggleFavorites: toggleFavorites,
         toggleStats: toggleStats,
+        toggleTokenPanel: toggleTokenPanel,
+        generateToken: generateToken,
+        copyToken: copyToken,
+        revokeToken: revokeToken,
         clearHistory: clearHistory,
         removeFavorite: removeFavorite,
         rerunQuestion: rerunQuestion,
