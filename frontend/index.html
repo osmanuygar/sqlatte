@@ -344,6 +344,85 @@
                 padding: 12px;
             }
         }
+        /* ===================================== */
+        /* VERSION BUTTON & INFO MODAL */
+        /* ===================================== */
+        .version-btn {
+            position: fixed;
+            bottom: 16px;
+            left: 16px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 11px;
+            padding: 4px 9px;
+            border-radius: 20px;
+            cursor: pointer;
+            z-index: 999;
+            transition: all 0.2s;
+            font-family: inherit;
+            letter-spacing: 0.3px;
+        }
+        .version-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--bg-card);
+        }
+
+        .version-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 9000;
+            align-items: flex-end;
+            justify-content: flex-start;
+            padding: 0 0 52px 16px;
+        }
+        .version-modal-overlay.open { display: flex; }
+
+        .version-modal {
+            background: var(--bg-sidebar);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 18px 20px;
+            min-width: 240px;
+            max-width: 300px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            animation: vmSlide 0.18s ease;
+        }
+        @keyframes vmSlide {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .version-modal h4 {
+            font-size: 15px;
+            color: var(--accent);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .version-modal-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 12px;
+            gap: 12px;
+        }
+        .version-modal-row:last-child { border-bottom: none; }
+        .version-modal-row .vm-label { color: var(--text-secondary); }
+        .version-modal-row .vm-value { color: var(--text-primary); font-weight: 500; text-align: right; }
+        .vm-status-dot {
+            display: inline-block;
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            margin-right: 4px;
+            background: #4caf50;
+        }
+        .vm-status-dot.warn { background: #ff9800; }
     </style>
 </head>
 <body>
@@ -709,6 +788,69 @@
             }
         }
     });
+    </script>
+
+    <!-- Version Button -->
+    <button class="version-btn" onclick="openVersionModal()">☕ v<span id="ver-badge">...</span></button>
+
+    <!-- Version Info Modal -->
+    <div class="version-modal-overlay" id="version-modal-overlay" onclick="closeVersionModal(event)">
+        <div class="version-modal">
+            <h4>☕ SQLatte Info</h4>
+            <div id="version-modal-body">
+                <div class="version-modal-row">
+                    <span class="vm-label">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    async function openVersionModal() {
+        document.getElementById('version-modal-overlay').classList.add('open');
+        const body = document.getElementById('version-modal-body');
+        try {
+            const res = await fetch('/health');
+            const d = await res.json();
+            const dot = ok => `<span class="vm-status-dot${ok ? '' : ' warn'}"></span>`;
+            body.innerHTML = `
+                <div class="version-modal-row">
+                    <span class="vm-label">Version</span>
+                    <span class="vm-value">${d.version || '—'}</span>
+                </div>
+                <div class="version-modal-row">
+                    <span class="vm-label">LLM</span>
+                    <span class="vm-value">${dot(d.llm?.healthy)}${d.llm?.provider} / ${d.llm?.model}</span>
+                </div>
+                <div class="version-modal-row">
+                    <span class="vm-label">Database</span>
+                    <span class="vm-value">${dot(d.database?.healthy)}${d.database?.provider}<br><small style="color:var(--text-secondary);font-weight:400">${d.database?.info || ''}</small></span>
+                </div>
+                <div class="version-modal-row">
+                    <span class="vm-label">Sessions</span>
+                    <span class="vm-value">${d.conversations?.active_sessions ?? '—'} active</span>
+                </div>
+                <div class="version-modal-row">
+                    <span class="vm-label">Queries</span>
+                    <span class="vm-value">${d.query_history?.total_queries ?? '—'} total</span>
+                </div>
+            `;
+            document.getElementById('ver-badge').textContent = d.version || '?';
+        } catch(e) {
+            body.innerHTML = '<div class="version-modal-row"><span class="vm-label" style="color:#e74c3c">Failed to load</span></div>';
+        }
+    }
+
+    function closeVersionModal(e) {
+        if (e.target === document.getElementById('version-modal-overlay')) {
+            document.getElementById('version-modal-overlay').classList.remove('open');
+        }
+    }
+
+    // Load version badge silently on startup
+    fetch('/health').then(r => r.json()).then(d => {
+        if (d.version) document.getElementById('ver-badge').textContent = d.version;
+    }).catch(() => {});
     </script>
 </body>
 </html>
