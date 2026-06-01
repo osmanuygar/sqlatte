@@ -109,12 +109,13 @@ class MySQLProvider(DatabaseProvider):
 
     def get_table_schema(self, table_name: str) -> str:
         """Get table schema with column details"""
+        from src.core.sql_validator import validate_identifier
         conn = self.connect()
         cursor = conn.cursor()
 
         try:
             # Get column information
-            cursor.execute(f"DESCRIBE `{table_name}`")
+            cursor.execute(f"DESCRIBE `{validate_identifier(table_name)}`")
             columns = cursor.fetchall()
 
             if not columns:
@@ -190,7 +191,7 @@ class MySQLProvider(DatabaseProvider):
                         schema_info += f"  - {idx_name} ({', '.join(cols)})\n"
 
             # Get table status (engine, row count, etc.)
-            cursor.execute(f"SHOW TABLE STATUS LIKE '{table_name}'")
+            cursor.execute("SHOW TABLE STATUS LIKE %s", (validate_identifier(table_name),))
             status = cursor.fetchone()
             if status:
                 engine = status[1]  # Engine

@@ -4,6 +4,19 @@ Strips string literals and comments before analysis to avoid false positives.
 """
 import re
 
+_SAFE_ID = re.compile(r'^[a-zA-Z0-9_][a-zA-Z0-9_.]{0,127}$')
+
+
+def validate_identifier(name: str) -> str:
+    """Validate a SQL identifier (table/schema name) to prevent injection.
+
+    Allows letters, digits, underscores, and dots (for catalog.schema.table).
+    Raises ValueError for anything else.
+    """
+    if not _SAFE_ID.match(name):
+        raise ValueError(f"Invalid identifier: {name!r}")
+    return name
+
 _DANGEROUS = re.compile(
     r'\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|GRANT|REVOKE|'
     r'EXEC|EXECUTE|CALL|MERGE|REPLACE|LOAD|COPY|IMPORT|ATTACH|DETACH|'

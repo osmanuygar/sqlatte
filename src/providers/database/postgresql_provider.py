@@ -255,7 +255,8 @@ class PostgreSQLProvider(DatabaseProvider):
             # ==========================================
             try:
                 # Use COUNT(*) which is more reliable than pg_class
-                cursor.execute(f"SELECT COUNT(*) FROM {self.schema}.{table_name}")
+                from src.core.sql_validator import validate_identifier
+                cursor.execute(f"SELECT COUNT(*) FROM {validate_identifier(self.schema)}.{validate_identifier(table_name)}")
                 count_result = cursor.fetchone()
                 if count_result and len(count_result) > 0:
                     row_count = count_result[0]

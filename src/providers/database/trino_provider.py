@@ -56,11 +56,12 @@ class TrinoProvider(DatabaseProvider):
     
     def get_table_schema(self, table_name: str) -> str:
         """Get table schema"""
+        from src.core.sql_validator import validate_identifier
         conn = self.connect()
         cursor = conn.cursor()
-        
+
         try:
-            cursor.execute(f"DESCRIBE {table_name}")
+            cursor.execute(f"DESCRIBE {validate_identifier(table_name)}")
             columns = cursor.fetchall()
             
             schema_info = f"Table: {table_name}\nColumns:\n"

@@ -294,6 +294,12 @@ class AuthPlugin(BasePlugin):
             session_id: str = Header(..., alias="X-Session-ID")
         ):
             """Get schema for a specific table"""
+            from src.core.sql_validator import validate_identifier
+            try:
+                validate_identifier(table_name)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid table name")
+
             try:
                 session = self.session_manager.get_session(session_id)
 
@@ -322,7 +328,7 @@ class AuthPlugin(BasePlugin):
                 print(f"❌ Error loading schema: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Failed to load schema: {str(e)}"
+                    detail="Failed to load schema"
                 )
 
         @app.post("/auth/schema/multiple")
