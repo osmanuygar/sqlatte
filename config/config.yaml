@@ -5,243 +5,137 @@
 # Application Settings
 app:
   name: "SQLatte"
-  version: "0.3.0"
+  version: "0.6.0"
   host: "0.0.0.0"
-  port: 8000
+  port: 8002
 
 # Analytics Database Configuration
 analytics:
-  enabled: false
+  enabled: true
   backend: "postgresql"
   postgresql:
-    host: "localhost"
+    host: "${ANALYTICS_DB_HOST:localhost}"
     port: 5432
-    database: "sqlatte_analytics"
-    user: "sqlatte"
-    password: "sqlatte"
-    
+    database: "${ANALYTICS_DB_NAME:sqlatte_analytics}"
+    user: "${ANALYTICS_DB_USER:sqlatte}"
+    password: "${ANALYTICS_DB_PASSWORD}"
+
 config_db:
-  enabled: false
-  type: postgresql  # veya sqlite
+  enabled: true
+  type: postgresql
 
   postgresql:
-    host: localhost
-    database: sqlatte_config  # ⚠️ AYRI DATABASE!
-    user: "sqlatte"
-    password: "sqlatte"
+    host: "${CONFIG_DB_HOST:localhost}"
+    database: "${CONFIG_DB_NAME:sqlatte_config}"
+    user: "${CONFIG_DB_USER:sqlatte}"
+    password: "${CONFIG_DB_PASSWORD}"
 
-  encryption_key: "******"
+  # Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  encryption_key: "${CONFIG_DB_ENCRYPTION_KEY}"
 
 admin:
   enabled: true
-  username: "admin"
-  password: "admin!"
+  username: "${ADMIN_USERNAME:admin}"
+  password: "${ADMIN_PASSWORD}"
+
 # ============================================
 # AUTHENTICATION PLUGIN
 # ============================================
 plugins:
   auth:
     enabled: true
-    session_ttl_minutes: 480  # 8 hours
-    max_workers: 40  # Thread pool for concurrent users
+    session_ttl_minutes: 480
+    max_workers: 40
 
-    # Database Provider Configuration
-    # Users will NOT see this - it's server-side only
-    db_provider: "trino"  # Options: trino, postgresql, mysql
-    db_host: "trino_hostname"
+    db_provider: "trino"
+    db_host: "${TRINO_HOST}"
     db_port: 443
 
-    
-    # Catalog/Schema Restrictions
-    # If empty lists, all catalogs/schemas are allowed
-    # If filled, only these will be available in login form
     allowed_catalogs:
-      - name: "hive"
-        allowed_schemas: ["edr", "hive"]
+      - name: "hadoop"
+        allowed_schemas: [ "hive" ]
       - name: "network"
         allowed_schemas: [ "cloudflare" ]
-      - name: "mongo_stores_db"
-        allowed_schemas: [ "mongo" ]
 
-    # Database Type Restrictions
     allowed_db_types:
       - "trino"
 
-
-# LLM Provider Configuration
+# ============================================
+# LLM Provider
+# ============================================
 llm:
-  #provider: "gemini"  # Which LLM to use
-  #provider: "vertexai"  # Which LLM to use
-  provider: "anthropic"  # Which LLM to use
-  
-  # Anthropic Claude
-  anthropic:
-    # Option 1: Direct API key (simple)
-    api_key: "sk-anthropic-api"
+  #provider: "gemini"
+  #provider: "anthropic"
+  provider: "vertexai"
 
-    
-    # Option 2: From environment variable (secure)
-    # api_key: "${ANTHROPIC_API_KEY}"
-    
+  anthropic:
+    api_key: "${ANTHROPIC_API_KEY}"
     model: "claude-sonnet-4-20250514"
     max_tokens: 1000
 
   gemini:
-    # Option 1: Direct API key (simple)
-    api_key: "sk-gemini-api"
-
-    # Option 2: From environment variable (secure)
-    # api_key: "${GEMINI_API_KEY}"
-
-    # Available models:
-    # - gemini-pro (recommended, free tier available)
-    # - gemini-pro-vision (for image analysis)
-    # - gemini-1.5-pro (latest version)
+    api_key: "${GEMINI_API_KEY}"
     model: "gemini-pro"
     max_tokens: 1000
 
-  # Google Vertex AI (Enterprise)
   vertexai:
-    # GCP Project ID (REQUIRED)
-    project_id: "my-gcp-project-id"
-
-    # Region/Location (REQUIRED)
-    # Options: us-central1, europe-west1, asia-southeast1, etc.
-    location: "europe-west1"
-
-    # Model name
-    # Options: gemini-pro, gemini-1.5-pro, gemini-1.5-flash
-    model: "gemini-2.5-flash"
-    #    model_routing:
-    #      intent_detection: "gemini-2.5-flash"
-    #      chat: "gemini-2.5-flash"
-    #      sql: "gemini-2.5-pro"
-    #      insights: "gemini-2.5-flash"
-    #      ops_insights: "gemini-2.5-flash"
-
-    # Token limit
+    project_id: "${VERTEXAI_PROJECT_ID}"
+    location: "${VERTEXAI_LOCATION:europe-west1}"
+    model: "gemini-2.5-pro"
+    model_routing:
+      intent_detection: "gemini-2.5-flash"
+      chat: "gemini-2.5-flash"
+      sql: "gemini-2.5-pro"
+      insights: "gemini-2.5-flash"
+      ops_insights: "gemini-2.5-flash"
     max_tokens: 1000
-
-    # ========================================
-    # AUTHENTICATION (3 yöntem var!)
-    # ========================================
-
-    # METHOD 1: Service Account JSON File Path (RECOMMENDED for local)
-    # credentials_path: "/path/to/service-account-key.json"
-    credentials_path: "/path/to/service-account-key.json"
-
-    # METHOD 2: Service Account JSON Content (RECOMMENDED for containers)
-    # JSON içeriğini direkt buraya yapıştır (string olarak)
-    # credentials_json: '{"type": "service_account", "project_id": "...", ...}'
-
-    # METHOD 3: Default Credentials (RECOMMENDED for GCP ortamları)
-    # GCP üzerinde çalışıyorsan (Cloud Run, GKE, Compute Engine)
-    # Bu durumda credentials_path ve credentials_json boş bırak
-    # ADC (Application Default Credentials) otomatik kullanılır
-
-    # Environment variable da kullanabilirsin:
-    # credentials_path: "${GOOGLE_APPLICATION_CREDENTIALS}"
-
-# Database Provider Configuration
-database:
-  #provider: "mysql"      # Distributed SQL engine
-  #provider: "postgresql" # PostgreSQL database
-  provider: "trino"  # Which database to use
-  
-  # Trino Configuration
-  trino:
-    # Direct values (simple)
-    host: "trino.example.com"
-    port: 443
-    user: "username123"
-    password: "***********"
-    catalog: "hive"
-    schema: "default"
-    http_scheme: "https"
-    
-    # Or use environment variables (secure)
-    # host: "${TRINO_HOST}"
-    # port: "${TRINO_PORT:8443}"
+    # Path to service account JSON key file
+    credentials_path: "${GOOGLE_APPLICATION_CREDENTIALS}"
+    # Or paste JSON content directly (for containers):
+    # credentials_json: "${VERTEXAI_CREDENTIALS_JSON}"
 
 # ============================================
-  # POSTGRESQL Configuration
-  # ============================================
+# Database Providers
+# ============================================
+database:
+  provider: "trino"
+
+  trino:
+    host: "${TRINO_HOST}"
+    port: 443
+    user: "${TRINO_USER}"
+    password: "${TRINO_PASSWORD}"
+    catalog: "${TRINO_CATALOG:s3_edr_accesslog}"
+    schema: "${TRINO_SCHEMA:edr}"
+    http_scheme: "https"
+
   postgresql:
-    # Direct configuration (simple)
-    host: "host.docker.internal"
+    host: "${POSTGRES_HOST}"
     port: 5432
-    database: "database1"
-    user: "Username1"
-    password: "********"
-    schema: "public"
-
-    # Or use environment variables (secure)
-    # host: "${POSTGRES_HOST:localhost}"
-    # port: "${POSTGRES_PORT:5432}"
-    # database: "${POSTGRES_DB:postgres}"
-    # user: "${POSTGRES_USER:postgres}"
-    # password: "${POSTGRES_PASSWORD}"
-    # schema: "${POSTGRES_SCHEMA:public}"
-
-    # Connection pool settings (optional)
+    database: "${POSTGRES_DB}"
+    user: "${POSTGRES_USER}"
+    password: "${POSTGRES_PASSWORD}"
+    schema: "${POSTGRES_SCHEMA:public}"
     min_connections: 1
     max_connections: 10
 
-  # ============================================
-  # MYSQL Configuration
-  # ============================================
   mysql:
-    # Direct configuration (simple)
-    host: "host.docker.internal"
+    host: "${MYSQL_HOST}"
     port: 3306
-    database: "database1"
-    user: "username1"
-    password: "**********"
-
-    # Or use environment variables (secure)
-    # host: "${MYSQL_HOST:localhost}"
-    # port: "${MYSQL_PORT:3306}"
-    # database: "${MYSQL_DATABASE:mysql}"
-    # user: "${MYSQL_USER:root}"
-    # password: "${MYSQL_PASSWORD}"
-
-    # MySQL specific settings (optional)
-    #charset: "utf8mb4"
-    #use_unicode: true
+    database: "${MYSQL_DB}"
+    user: "${MYSQL_USER}"
+    password: "${MYSQL_PASSWORD}"
     autocommit: true
-  # ============================================
-  # BIGQUERY Configuration
-  # ============================================
+
   bigquery:
-    # GCP Project ID (REQUIRED)
-    project_id: "my-gcp-project-id"
-
-    # Dataset (OPTIONAL)
-    # If empty, allows cross-dataset queries
-    # If specified, simplifies table references (e.g., just "table_name" instead of "dataset.table_name")
-    dataset: ""  # e.g., "analytics", "warehouse", etc.
-
-    # Location (OPTIONAL)
-    # Options: US, EU, asia-northeast1, us-central1, europe-west1, etc.
+    project_id: "${BQ_PROJECT_ID}"
+    dataset: ""
     location: "US"
-
-    # ========================================
-    # AUTHENTICATION (2 methods - choose ONE!)
-    # ========================================
-
-    # METHOD 1: Service Account JSON File Path (RECOMMENDED for local development)
-    # credentials_path: "/path/to/service-account-key.json"
-    credentials_path: ""
-
-    # METHOD 2: Service Account JSON Content (RECOMMENDED for containers/CI/CD)
-    # Paste the entire JSON content as a string
-    # credentials_json: '{"type": "service_account", "project_id": "...", "private_key": "...", ...}'
+    credentials_path: "${GOOGLE_APPLICATION_CREDENTIALS}"
     credentials_json: ""
-    
-    # Query timeout in seconds
     timeout: 300
-    # Maximum rows to return (to prevent huge result sets)
     max_results: 10000
+
 # CORS Settings
 cors:
   allow_origins: ["*"]
@@ -255,201 +149,174 @@ query:
   max_limit: 1000
   timeout: 300
 
-# Tips:
-# 1. Edit values directly in this file (easiest)
-# 2. Or use ${VAR} for environment variables
-# 3. No .env file needed unless you want to use env vars
-
-
 # ============================================
-# SCHEDULED QUERIES & EMAIL REPORTS
+# Scheduler & Email
 # ============================================
 scheduler:
-  enabled: false                  # Enable scheduled queries feature
-  timezone: "UTC"               # Default timezone for schedules
-  max_concurrent_jobs: 10       # Max jobs running simultaneously
-  job_timeout_seconds: 300      # Timeout for each job execution
+  enabled: true
+  timezone: "UTC"
+  max_concurrent_jobs: 10
+  job_timeout_seconds: 300
+  keep_history_days: 30
+  max_executions_per_schedule: 100
 
-  # Execution History
-  keep_history_days: 30         # How long to keep execution logs
-  max_executions_per_schedule: 100  # Max execution logs per schedule
-
-# Email Configuration
 email:
-  enabled: false                # Set to true to enable email reports
-  provider: "smtp"              # Currently only SMTP supported
-
+  enabled: true
+  provider: "smtp"
   smtp:
-    host: "smtp.gmail.com"
-    port: 587
-    user: "your-email@gmail.com"  # SMTP username
-    password: "app-password"  # SMTP password (use app password for Gmail)
-    from_email: "from-email-address@gmail.com"  # From email address
-    from_name: "SQLatte Reports"       # From name
-
-  # Email Templates
+    host: "${SMTP_HOST}"
+    port: 25
+    user: "${SMTP_USER:}"
+    password: "${SMTP_PASSWORD:}"
+    from_email: "${SMTP_FROM_EMAIL}"
+    from_name: "SQLatte Reports"
   templates:
     success_subject: "✅ {{schedule_name}} - {{date}}"
     failure_subject: "❌ Failed: {{schedule_name}}"
+  max_emails_per_day: 1000
+  max_recipients_per_email: 10
 
-  # Rate Limiting
-  max_emails_per_day: 1000      # Max emails per day
-  max_recipients_per_email: 10  # Max recipients per email
-
-# Export Configuration
 export:
   formats:
     - csv
     - excel
     - html
-
-  max_rows: 1000               # Max rows to export (prevent huge files)
-  max_file_size_mb: 25          # Max attachment size
-
-  # File naming
+  max_rows: 10000
+  max_file_size_mb: 25
   filename_template: "{{schedule_name}}_{{date}}_{{time}}.{{format}}"
-# ═══════════════════════════════════════════════════
-# NEW: BigQuery Ops Agent
-# ═══════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════
+# BigQuery Ops Agent
+# ═══════════════════════════════════════════════════
 ops_agent:
-  # Enable/disable ops agent feature
-  enabled: true  # Set to false to disable
-  # AI insights after each operation (requires ops_insights_generation prompt to be set)
-  ai_insights: false       # set to false to disable
-  ai_insights_max: 5      # max number of insights to show
-  # Provider type
+  enabled: true
+  ai_insights: true
+  ai_insights_max: 5
   provider: "bigquery_ops"
-
-    # Provider-specific configuration
   config:
-    # Multi-project support: each entry gets its own credentials and region.
-    # The first entry is the default active project on startup.
     projects:
-      - project_id: "project-id-0"
-        region: "US"
-        credentials_path: "/path/to/bigquery-ops.json"
-      - project_id: "project-id-1"
-        region: "EU"
-        credentials_path: "/path/to/bigquery-ops2.json"
-
-    # Optional: Restrict which operations are available
-    # Omit this field to allow all operations
+      - project_id: "${BQ_OPS_PROJECT_ID}"
+        region: "${BQ_OPS_REGION:europe-west1}"
+        credentials_path: "${BQ_OPS_CREDENTIALS_PATH}"
+      # Add more projects as needed:
+      # - project_id: "${BQ_OPS_PROJECT_ID_2}"
+      #   region: "europe-west1"
+      #   credentials_path: "${BQ_OPS_CREDENTIALS_PATH_2}"
     allowed_operations:
-      # Cost operations
       - get_expensive_queries
       - forecast_monthly_costs
       - get_time_travel_consumers
       - analyze_storage_compression
       - identify_large_unpartitioned_tables
       - get_on_demand_vs_flat_rate_analysis
-
-      # Security operations
       - find_public_datasets
       - check_table_permissions
       - audit_service_account_usage
-
-      # Performance operations
       - get_slow_queries
       - analyze_data_skew
       - check_slot_saturation
       - get_partition_recommendations
       - get_query_errors
       - find_full_table_scans
-
-      # Governance operations
       - find_unused_tables
       - get_recent_table_users
 
 # ============================================
-# OPS ALARMS
+# OPS Alarms
 # ============================================
 alarms:
   enabled: true
   storage_path: "config/alarms.json"
   default_recipients:
-    - "osmanuygar@gmail.com"
+    - "${ALARM_DEFAULT_RECIPIENT}"
 
 jira:
-  enabled: true                           # Set to true to enable Jira integration
-  url: "https://jira.url"   # Jira Cloud base URL
-  email: "osmanuygar@gmail.com"         # Atlassian account email
-  api_token: "api-token"                           # Jira API token (Atlassian account → Security → API tokens)
-  project_key: "DATA"                      # Jira project key to create tickets in
-  issue_type: "Bug"                       # Issue type: Bug | Task | Story
-  priority: "High"                        # Priority: Highest | High | Medium | Low
-
+  enabled: true
+  url: "${JIRA_URL}"
+  email: "${JIRA_EMAIL}"
+  api_token: "${JIRA_API_TOKEN}"
+  project_key: "${JIRA_PROJECT_KEY:DATA}"
+  issue_type: "Bug"
+  priority: "High"
 
 # ============================================
-# UI SECTION VISIBILITY
+# UI Section Visibility
 # ============================================
-# Set false to hide a section from the sidebar and home quick-actions.
-# 'home' is always visible and cannot be disabled.
 ui:
   sections:
     assistant: true
-    demo: false
-    analytics: true
+    demo: true
+    analytics: false
     schedules: true
     dashboards: true
-    bigquery_ops: false
+    bigquery_ops: true
     admin: true
-      
+    file_analyzer: true
+
 insights:
-  enabled: false               # Başlangıçta kapalı
-  mode: hybrid                 # llm_only, statistical_only, hybrid
+  enabled: true
+  mode: hybrid
   max_insights: 3
   include_statistical: true
+
+rate_limiting:
+  enabled: false
+  strategy: sliding_window
+  key_type: session_id
+  requests_per_window: 30
+  window_seconds: 60
+  protected_paths:
+    - "/query"
+    - "/auth/query"
+  exclude_paths:
+    - "/health"
+    - "/static"
+    - "/admin"
 
 # ============================================
 # PROMPTS CONFIGURATION
 # ============================================
-# These prompts control how SQLatte interacts with your data
-# You can customize them via Admin Panel or directly here
 prompts:
-  # Intent Detection: Determines if question needs SQL or is chat
   intent_detection: |
     Analyze this user question and determine if it requires a SQL query or is general conversation.
-    
+
     Available Tables Schema:
     {schema_info}
-    
+    1
     User Question: {question}
-    
+
     Rules:
     1. If question asks about data, analytics, or queries related to the available tables → intent: "sql"
     2. If question is greeting, general chat, help, or unrelated to tables → intent: "chat"
     3. If tables are not selected but question seems like SQL query → intent: "chat" (explain they need to select tables)
-    
+
     Respond in this exact format:
     INTENT: sql or chat
     CONFIDENCE: 0.0 to 1.0
     REASONING: brief explanation
 
-  # Barista Personality: Chat response personality
   barista_personality: |
     You are SQLatte ☕ - a friendly AI assistant that helps users query their databases with natural language.
-    
+
     Your personality:
     - Helpful and friendly, like a barista serving the perfect drink
     - Knowledgeable about SQL and databases
     - Can have casual conversations too
     - Use coffee/brewing metaphors occasionally when appropriate
-    
+
     When users ask general questions (not about data):
     - Respond naturally and helpfully
     - If they seem lost, guide them on how to use SQLatte
     - Be concise but friendly
 
-  # SQL Generation: Natural language to SQL translation
   sql_generation: |
     You are a SQL expert. Generate a SQL query based on the user's question.
-    
+
     Table Schema(s):
     {schema_info}
-    
+
     User Question: {question}
-    
+
     Rules:
     1. Generate ONLY valid SQL syntax for trino
     2. If multiple tables are provided, use appropriate JOINs
@@ -458,7 +325,7 @@ prompts:
     5. Include LIMIT clause for safety (default 100 rows)
     6. For aggregations, use GROUP BY appropriately
     7. Use explicit JOIN syntax (INNER JOIN, LEFT JOIN, etc.)
-    
+
     ⚡ PERFORMANCE OPTIMIZATION (CRITICAL):
     8. **PARTITION COLUMN**: If schema contains a 'dt' column (VARCHAR format YYYYMMDD, e.g., '20251218'), this is a PARTITION KEY
        - ALWAYS add WHERE clause with 'dt' filter when possible
@@ -468,44 +335,40 @@ prompts:
        - For specific date range → convert to dt format
        - ⚠️ NEVER query without dt filter unless explicitly asked for "all time" data
     9. If 'datetime' column exists alongside 'dt', use 'dt' for filtering (faster) and 'datetime' for display
-    10. Example optimized query: 
+    10. Example optimized query:
         SELECT * FROM orders WHERE dt >= '20251201' AND status = 'completed' LIMIT 100
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')  -> Yesterday's dt=yesterday 
-                          
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')  -> Yesterday's dt=yesterday
+
     Format your response as:
     SQL: [your SQL query here]
     EXPLANATION: [brief explanation including JOIN strategy if applicable]
 
-  # Insights Generation: Analyze results and provide insights
   insights_generation: |
     Analyze query results and generate actionable insights.
-    
+
     Available Information:
     - User Question: {user_question}
     - SQL Query: {sql_query}
     - Data Sample: {data_preview}
     - Schema: {schema_info}
-    
+
     Generate 1-3 key insights that are:
     1. Actionable and specific
     2. Based on actual data patterns
     3. Relevant to the user's question
     4. Easy to understand
-    
+
     Identify patterns such as:
     - Trends (increasing/decreasing over time)
     - Anomalies (unexpected values, outliers)
     - Recommendations (what action to take)
     - Summaries (key takeaways)
-    
+
     Format each insight as:
     TYPE: trend/anomaly/recommendation/summary
     SEVERITY: low/medium/high
     MESSAGE: <concise, actionable insight>
 
-  # Ops Insights Generation: Analyze BigQuery operational results and surface actionable findings
-  # To disable AI insights in the ops widget, set this to null:
-  #   ops_insights_generation: null
   ops_insights_generation: |
     You are a BigQuery cost and performance expert. Analyze the operational data below and generate concise, actionable insights.
 
@@ -535,3 +398,6 @@ prompts:
     ```
 
     JSON:
+
+# ============================================================
+
