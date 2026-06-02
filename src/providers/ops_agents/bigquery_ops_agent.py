@@ -897,36 +897,31 @@ class BigQueryOpsAgent(BaseOpsAgent):
         """
         Analyze who has access to a specific table
         """
+        from src.core.sql_validator import validate_identifier
         # Parse table_id (might be dataset.table or just table)
         parts = table_id.split('.')
-        table_name = parts[-1]
-        dataset_name = parts[0] if len(parts) == 2 else None
+        table_name = validate_identifier(parts[-1])
+        dataset_name = validate_identifier(parts[0]) if len(parts) == 2 else None
 
-        where_clause = "object_name = @table_name"
-        params_dict = {"table_name": table_name}
+        # Values are identifier-validated; single-quote escaping is safe for BQ string literals
+        table_literal = table_name.replace("'", "")
+        dataset_literal = dataset_name.replace("'", "") if dataset_name else None
 
-        if dataset_name:
-            where_clause += " AND object_schema = @dataset_name"
-            params_dict["dataset_name"] = dataset_name
+        where_clause = f"object_name = '{table_literal}'"
+        if dataset_literal:
+            where_clause += f" AND object_schema = '{dataset_literal}'"
 
-        # Convert to BigQuery parameter format
-        sql = f"""
-            SELECT 
-                grantee, 
-                privilege_type, 
-                object_schema AS dataset, 
+        sql_exec = f"""
+            SELECT
+                grantee,
+                privilege_type,
+                object_schema AS dataset,
                 object_name AS table
             FROM `{self.project_id}.region-{self.region}.INFORMATION_SCHEMA.OBJECT_PRIVILEGES`
-            WHERE object_type = 'TABLE' 
+            WHERE object_type = 'TABLE'
                 AND {where_clause}
                 AND privilege_type = 'SELECT'
         """
-
-        # Note: parametrized queries with self.client need job_config
-        # For simplicity, using direct substitution (table_id is validated)
-        sql_exec = sql.replace('@table_name', f"'{table_name}'")
-        if dataset_name:
-            sql_exec = sql_exec.replace('@dataset_name', f"'{dataset_name}'")
 
         data = await self._run_query(sql_exec)
 
