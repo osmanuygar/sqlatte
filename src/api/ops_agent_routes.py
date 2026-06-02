@@ -4,10 +4,9 @@ BigQuery Ops Agent API Routes
 Provides REST endpoints for operational playbook execution
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-from src.api.admin_auth import require_admin
 
 router = APIRouter(prefix="/ops-agent", tags=["BigQuery Ops"])
 
@@ -28,7 +27,7 @@ class OpsSwitchProjectRequest(BaseModel):
 # ═══════════════════════════════════════════════════
 
 @router.get("/operations")
-async def list_operations(admin_user: str = Depends(require_admin)):
+async def list_operations():
     """
     List all available operations
 
@@ -73,7 +72,7 @@ async def list_operations(admin_user: str = Depends(require_admin)):
 # ═══════════════════════════════════════════════════
 
 @router.get("/projects")
-async def list_projects(admin_user: str = Depends(require_admin)):
+async def list_projects():
     """List all configured projects and which one is currently active."""
     from src.core.provider_factory import get_ops_agent
 
@@ -85,7 +84,7 @@ async def list_projects(admin_user: str = Depends(require_admin)):
 
 
 @router.post("/switch-project")
-async def switch_project(request: OpsSwitchProjectRequest, admin_user: str = Depends(require_admin)):
+async def switch_project(request: OpsSwitchProjectRequest):
     """Switch the active BigQuery project (updates credentials and region too)."""
     from src.core.provider_factory import get_ops_agent
 
@@ -113,7 +112,7 @@ async def switch_project(request: OpsSwitchProjectRequest, admin_user: str = Dep
 # ═══════════════════════════════════════════════════
 
 @router.post("/execute")
-async def execute_operation(request: OpsExecuteRequest, admin_user: str = Depends(require_admin)):
+async def execute_operation(request: OpsExecuteRequest):
     """
     Execute an operational playbook
 
