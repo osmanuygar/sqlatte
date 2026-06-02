@@ -344,6 +344,8 @@
                 padding: 12px;
             }
         }
+        /* Hide floating badge button — widget only opens via Assistant nav */
+        .sqlatte-widget { display: none !important; }
     </style>
 </head>
 <body>
@@ -367,8 +369,8 @@
                     <span class="nav-label">Assistant</span>
                 </a>
                 <a class="nav-item" data-section="demo" onclick="showSection('demo')">
-                    <span class="nav-icon">🎮</span>
-                    <span class="nav-label">Demo</span>
+                    <span class="nav-icon">🔐</span>
+                    <span class="nav-label">Authenticated Agent</span>
                 </a>
                 <a class="nav-item" data-section="analytics" onclick="showSection('analytics')">
                     <span class="nav-icon">📊</span>
@@ -460,18 +462,14 @@
 
             <!-- ASSISTANT SECTION -->
             <section id="assistant" class="content-section">
-                <div class="page-header">
-                    <h2>🤖 SQLatte Assistant</h2>
-                    <p>Ask questions in natural language and get SQL queries</p>
-                </div>
                 <div id="assistant-widget-container"></div>
             </section>
 
-            <!-- DEMO SECTION -->
+            <!-- AUTHENTICATED AGENT SECTION -->
             <section id="demo" class="content-section">
                 <div class="page-header">
-                    <h2>🎮 Interactive Demo</h2>
-                    <p>Try SQLatte with sample queries</p>
+                    <h2>🔐 Authenticated Agent</h2>
+                    <p>Interact with SQLatte using your authenticated session</p>
                 </div>
                 <div class="iframe-container">
                     <iframe id="demo-iframe" src="/demo"></iframe>
@@ -622,27 +620,17 @@
             // Add active to clicked nav item
             event.target.closest('.nav-item')?.classList.add('active');
 
-            // Special handling for assistant
+            // Open/close widget based on section
             if (sectionId === 'assistant') {
-                openAssistantWidget();
+                if (window.SQLatteWidget) window.SQLatteWidget.open();
+            } else {
+                if (window.SQLatteWidget) window.SQLatteWidget.close();
             }
 
             // Update URL hash
             window.location.hash = sectionId;
         }
 
-        // ============================================
-        // ASSISTANT WIDGET
-        // ============================================
-        function openAssistantWidget() {
-            if (window.SQLatteWidget) {
-                window.SQLatteWidget.open();
-            } else {
-                console.log('Widget loading...');
-            }
-        }
-
-        // Configure widget
         window.addEventListener('load', async () => {
             // Apply section visibility from config.yaml first
             await applyUiConfig();
@@ -653,7 +641,6 @@
                     fullscreen: true,
                     title: 'SQLatte Assistant ☕'
                 });
-                console.log('✅ SQLatte Widget loaded');
             }
 
             // Handle initial hash
