@@ -50,7 +50,6 @@ async def list_operations():
             ]
         }
     """
-    # Import here to avoid circular dependencies
     from src.core.provider_factory import get_ops_agent
 
     ops_agent = get_ops_agent()

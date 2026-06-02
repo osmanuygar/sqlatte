@@ -6,8 +6,9 @@ import time
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from src.core.rate_limiter import RateLimitMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -27,6 +28,7 @@ from src.core.config_manager_enhanced import config_manager
 from src.core.conversation_manager import conversation_manager
 from src.core.query_history import query_history
 from src.api.admin_routes_enhanced import router as admin_router
+from src.api.admin_auth import require_admin
 from src.api.demo_routes import router as demo_router
 from src.api.analytics_routes import router as analytics_router
 from src.core.analytics_db_postgres import analytics_db
@@ -178,6 +180,9 @@ app.add_middleware(
     allow_methods=config['cors']['allow_methods'],
     allow_headers=config['cors']['allow_headers'],
 )
+
+# Rate limiting (reads config at runtime — enable via rate_limiting.enabled: true)
+app.add_middleware(RateLimitMiddleware)
 
 # Mount static files (CSS, JS)
 STATIC_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static')
