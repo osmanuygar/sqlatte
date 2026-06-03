@@ -312,29 +312,6 @@ def _process_query_sync(
 
             # SQL generation (güçlü model)
             sql_query, explanation = llm_sql.generate_sql(enhanced_question, schema_info)
-            if audit_log_db:
-                _u = getattr(llm_sql, "last_token_usage", {})
-                _full_tables = [
-                    line.replace("Table:", "").strip()
-                    for line in schema_info.split("\n")
-                    if line.startswith("Table:")
-                ]
-                _db_conf = current_config.get("database", {})
-                _prov = _db_conf.get("provider", "")
-                _catalog = (
-                    _db_conf.get(_prov, {}).get("catalog")
-                    or _db_conf.get(_prov, {}).get("project_id")
-                    or _db_conf.get(_prov, {}).get("database")
-                )
-                audit_log_db.log(
-                    session_id=session_id, operation_type="sql_generation",
-                    model_name=llm_sql.get_model_name(), question=question,
-                    prompt_preview=enhanced_question[:500],
-                    input_tokens=_u.get("input_tokens", 0),
-                    output_tokens=_u.get("output_tokens", 0),
-                    catalog_name=_catalog,
-                    table_names=_full_tables or None,
-                )
 
             if not sql_query:
                 return {
@@ -343,11 +320,39 @@ def _process_query_sync(
                     "intent_info": intent_result
                 }
 
-            # Block non-SELECT queries (SQL injection prevention)
-            from src.core.sql_validator import is_select_only, violation_reason
-            if not is_select_only(sql_query):
+            from src.core.sql_validator import is_select_only, violation_reason, risk_score
+            _sql_valid = is_select_only(sql_query)
+            _risk = risk_score(sql_query)
+            _u = getattr(llm_sql, "last_token_usage", {})
+            _full_tables = [
+                line.replace("Table:", "").strip()
+                for line in schema_info.split("\n")
+                if line.startswith("Table:")
+            ]
+            _db_conf = current_config.get("database", {})
+            _prov = _db_conf.get("provider", "")
+            _catalog = (
+                _db_conf.get(_prov, {}).get("catalog")
+                or _db_conf.get(_prov, {}).get("project_id")
+                or _db_conf.get(_prov, {}).get("database")
+            )
+
+            if not _sql_valid:
                 reason = violation_reason(sql_query)
                 print(f"🚫 Blocked non-SELECT query: {reason} | SQL: {sql_query[:120]}")
+                if audit_log_db:
+                    audit_log_db.log(
+                        session_id=session_id, operation_type="sql_generation",
+                        model_name=llm_sql.get_model_name(), question=question,
+                        prompt_preview=enhanced_question[:500],
+                        input_tokens=_u.get("input_tokens", 0),
+                        output_tokens=_u.get("output_tokens", 0),
+                        catalog_name=_catalog,
+                        table_names=_full_tables or None,
+                        generated_sql=sql_query,
+                        risk_score=_risk,
+                        sql_valid=False,
+                    )
                 return {
                     "type": "security_warning",
                     "sql": sql_query,
@@ -356,8 +361,25 @@ def _process_query_sync(
                 }
 
             # Execute query
+            _exec_start = time.time()
             columns, data = db.execute_query(sql_query)
+            _execution_ms = int((time.time() - _exec_start) * 1000)
             print(f"✅ Query executed: {len(data)} rows")
+
+            if audit_log_db:
+                audit_log_db.log(
+                    session_id=session_id, operation_type="sql_generation",
+                    model_name=llm_sql.get_model_name(), question=question,
+                    prompt_preview=enhanced_question[:500],
+                    input_tokens=_u.get("input_tokens", 0),
+                    output_tokens=_u.get("output_tokens", 0),
+                    catalog_name=_catalog,
+                    table_names=_full_tables or None,
+                    generated_sql=sql_query,
+                    risk_score=_risk,
+                    sql_valid=True,
+                    execution_ms=_execution_ms,
+                )
 
             # Insights (güçlü model — insights engine config'den okur)
             insights = []

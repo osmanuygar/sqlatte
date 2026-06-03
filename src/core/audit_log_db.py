@@ -73,6 +73,14 @@ class AuditLogDB:
                         ADD COLUMN IF NOT EXISTS catalog_name  TEXT;
                     ALTER TABLE audit_logs
                         ADD COLUMN IF NOT EXISTS table_names   TEXT;
+                    ALTER TABLE audit_logs
+                        ADD COLUMN IF NOT EXISTS generated_sql TEXT;
+                    ALTER TABLE audit_logs
+                        ADD COLUMN IF NOT EXISTS risk_score    INTEGER;
+                    ALTER TABLE audit_logs
+                        ADD COLUMN IF NOT EXISTS sql_valid     BOOLEAN;
+                    ALTER TABLE audit_logs
+                        ADD COLUMN IF NOT EXISTS execution_ms  INTEGER;
 
                     CREATE INDEX IF NOT EXISTS idx_audit_session_id  ON audit_logs(session_id);
                     CREATE INDEX IF NOT EXISTS idx_audit_operation    ON audit_logs(operation_type);
@@ -97,6 +105,10 @@ class AuditLogDB:
         widget_type: str = "default",
         catalog_name: Optional[str] = None,
         table_names: Optional[List[str]] = None,
+        generated_sql: Optional[str] = None,
+        risk_score: Optional[int] = None,
+        sql_valid: Optional[bool] = None,
+        execution_ms: Optional[int] = None,
     ) -> str:
         entry_id = str(uuid.uuid4())
         table_names_str = ", ".join(table_names) if table_names else None
@@ -109,8 +121,10 @@ class AuditLogDB:
                             (id, session_id, user_id, widget_type, question,
                              operation_type, model_name, prompt_preview,
                              input_tokens, output_tokens, total_tokens,
-                             success, catalog_name, table_names, created_at)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                             success, catalog_name, table_names,
+                             generated_sql, risk_score, sql_valid, execution_ms,
+                             created_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         """,
                         (
                             entry_id,
@@ -127,6 +141,10 @@ class AuditLogDB:
                             success,
                             catalog_name,
                             table_names_str,
+                            generated_sql,
+                            risk_score,
+                            sql_valid,
+                            execution_ms,
                             datetime.now(),
                         ),
                     )
@@ -338,6 +356,7 @@ class AuditLogDB:
             "catalog_name", "table_names", "question", "prompt_preview",
             "input_tokens", "output_tokens", "total_tokens",
             "user_id", "session_id", "success",
+            "generated_sql", "risk_score", "sql_valid", "execution_ms",
         ]
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore")

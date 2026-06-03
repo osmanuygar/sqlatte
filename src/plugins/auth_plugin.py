@@ -835,31 +835,6 @@ class AuthPlugin(BasePlugin):
 
                 # Generate SQL with task-routed model
                 sql_query, explanation = llm_sql.generate_sql(enhanced_question, schema_info)
-                if audit_log_db and session_id:
-                    _u = getattr(llm_sql, "last_token_usage", {})
-                    _full_tables = [
-                        line.replace("Table:", "").strip()
-                        for line in schema_info.split("\n")
-                        if line.startswith("Table:")
-                    ]
-                    _prov = db_config.get("provider", "")
-                    _catalog = (
-                        db_config.get(_prov, {}).get("catalog")
-                        or db_config.get(_prov, {}).get("project_id")
-                        or db_config.get(_prov, {}).get("database")
-                    )
-                    audit_log_db.log(
-                        session_id=session_id, operation_type="sql_generation",
-                        model_name=llm_sql.get_model_name(), question=question,
-                        prompt_preview=enhanced_question[:500],
-                        input_tokens=_u.get("input_tokens", 0),
-                        output_tokens=_u.get("output_tokens", 0),
-                        user_id=user_id,
-                        widget_type="mcp" if bypass_intent else "auth",
-                        catalog_name=_catalog,
-                        table_names=_full_tables or None,
-                    )
-
                 print(f"📝 Generated SQL: {sql_query[:100]}...")
 
                 if not sql_query:
@@ -867,11 +842,40 @@ class AuthPlugin(BasePlugin):
                         "error": "Failed to generate SQL query. Please try rephrasing your question."
                     }
 
-                # Block non-SELECT queries (SQL injection prevention)
-                from src.core.sql_validator import is_select_only, violation_reason
-                if not is_select_only(sql_query):
+                from src.core.sql_validator import is_select_only, violation_reason, risk_score
+                _sql_valid = is_select_only(sql_query)
+                _risk = risk_score(sql_query)
+                _u = getattr(llm_sql, "last_token_usage", {})
+                _full_tables = [
+                    line.replace("Table:", "").strip()
+                    for line in schema_info.split("\n")
+                    if line.startswith("Table:")
+                ]
+                _prov = db_config.get("provider", "")
+                _catalog = (
+                    db_config.get(_prov, {}).get("catalog")
+                    or db_config.get(_prov, {}).get("project_id")
+                    or db_config.get(_prov, {}).get("database")
+                )
+                _widget = "mcp" if bypass_intent else "auth"
+
+                if not _sql_valid:
                     reason = violation_reason(sql_query)
                     print(f"🚫 Blocked non-SELECT query (auth): {reason} | SQL: {sql_query[:120]}")
+                    if audit_log_db and session_id:
+                        audit_log_db.log(
+                            session_id=session_id, operation_type="sql_generation",
+                            model_name=llm_sql.get_model_name(), question=question,
+                            prompt_preview=enhanced_question[:500],
+                            input_tokens=_u.get("input_tokens", 0),
+                            output_tokens=_u.get("output_tokens", 0),
+                            user_id=user_id, widget_type=_widget,
+                            catalog_name=_catalog,
+                            table_names=_full_tables or None,
+                            generated_sql=sql_query,
+                            risk_score=_risk,
+                            sql_valid=False,
+                        )
                     return {
                         "response_type": "warning",
                         "sql": sql_query,
@@ -879,8 +883,27 @@ class AuthPlugin(BasePlugin):
                         "message": f"Only SELECT queries are permitted. {reason}.",
                     }
 
+                import time as _time
+                _exec_start = _time.time()
                 columns, data = db_provider.execute_query(sql_query)
+                _execution_ms = int((_time.time() - _exec_start) * 1000)
                 print(f"✅ Query executed: {len(data)} rows returned")
+
+                if audit_log_db and session_id:
+                    audit_log_db.log(
+                        session_id=session_id, operation_type="sql_generation",
+                        model_name=llm_sql.get_model_name(), question=question,
+                        prompt_preview=enhanced_question[:500],
+                        input_tokens=_u.get("input_tokens", 0),
+                        output_tokens=_u.get("output_tokens", 0),
+                        user_id=user_id, widget_type=_widget,
+                        catalog_name=_catalog,
+                        table_names=_full_tables or None,
+                        generated_sql=sql_query,
+                        risk_score=_risk,
+                        sql_valid=True,
+                        execution_ms=_execution_ms,
+                    )
 
                 row_cap = None
                 if bypass_intent:
