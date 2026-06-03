@@ -2177,12 +2177,16 @@
                                 <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">User</th>
                                 <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">In</th>
                                 <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Out</th>
-                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Total</th>
+                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Cost ($)</th>
+                                <th style="padding:8px 12px;text-align:center;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Valid</th>
+                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Risk</th>
+                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Exec ms</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">Generated SQL</th>
                                 <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Session</th>
                             </tr>
                         </thead>
                         <tbody id="audit-tbody">
-                            <tr><td colspan="11" style="text-align:center;padding:24px;color:#505050;">Click Refresh to load logs</td></tr>
+                            <tr><td colspan="15" style="text-align:center;padding:24px;color:#505050;">Click Refresh to load logs</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -3725,13 +3729,15 @@
 
         function _auditRenderSummary(d) {
             if (d.error) return;
+            const _estCost = _auditEstimateCost(d.by_model || [], d.total_input_tokens, d.total_output_tokens);
             document.getElementById('audit-summary-cards').innerHTML = [
-                {label:'Total Calls',  value:_afmt(d.total_calls)},
-                {label:'Input Tokens', value:_afmt(d.total_input_tokens)},
-                {label:'Output Tokens',value:_afmt(d.total_output_tokens)},
-                {label:'Total Tokens', value:_afmt(d.total_tokens)},
-                {label:'Avg / Call',   value:_afmt(Math.round(d.avg_tokens_per_call))},
-            ].map(c=>`<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px 14px;"><div style="font-size:11px;color:#707070;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">${c.label}</div><div style="font-size:1.4rem;font-weight:700;color:#f0e8d8;">${c.value}</div></div>`).join('');
+                {label:'Total Calls',   value:_afmt(d.total_calls)},
+                {label:'Input Tokens',  value:_afmt(d.total_input_tokens)},
+                {label:'Output Tokens', value:_afmt(d.total_output_tokens)},
+                {label:'Est. Cost',     value:'≈ $' + _estCost, title:'Estimated cost based on per-model pricing. Output tokens are billed at a higher rate than input tokens.'},
+                {label:'Avg In / Call', value:_afmt(d.total_calls ? Math.round(d.total_input_tokens / d.total_calls) : 0)},
+                {label:'Avg Out / Call',value:_afmt(d.total_calls ? Math.round(d.total_output_tokens / d.total_calls) : 0)},
+            ].map(c=>`<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px 14px;" ${c.title?`title="${c.title}"`:''}><div style="font-size:11px;color:#707070;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">${c.label}</div><div style="font-size:1.4rem;font-weight:700;color:#f0e8d8;">${c.value}</div></div>`).join('');
             _aBreakdown('audit-model-table',  d.by_model||[],     'model_name',     'total_tokens');
             _aBreakdown('audit-op-table',     d.by_operation||[], 'operation_type', 'total_tokens');
             _aBreakdown('audit-widget-table', d.by_widget||[],    'widget_type',    'total_tokens');
@@ -3747,9 +3753,80 @@
             return `<td style="padding:7px 12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-family:monospace;" title="${_aEsc(full)}">${catalog}<span style="color:#8db4d4;">${tables}</span></td>`;
         }
 
+        // Anthropic & Gemini pricing (USD per 1M tokens, as of 2026)
+        const _AUDIT_PRICING = {
+            'claude-opus-4':    { input: 15,   output: 75   },
+            'claude-opus':      { input: 15,   output: 75   },
+            'claude-sonnet-4':  { input: 3,    output: 15   },
+            'claude-sonnet-3-7':{ input: 3,    output: 15   },
+            'claude-sonnet-3-5':{ input: 3,    output: 15   },
+            'claude-sonnet':    { input: 3,    output: 15   },
+            'claude-haiku-4':   { input: 0.8,  output: 4    },
+            'claude-haiku-3-5': { input: 0.8,  output: 4    },
+            'claude-haiku':     { input: 0.8,  output: 4    },
+            'gemini-pro':       { input: 0.35, output: 1.05 },
+        };
+        function _auditRates(modelName) {
+            if (!modelName) return { input: 3, output: 15 };
+            const lower = modelName.toLowerCase();
+            for (const [key, rates] of Object.entries(_AUDIT_PRICING)) {
+                if (lower.includes(key)) return rates;
+            }
+            return { input: 3, output: 15 };
+        }
+        function _auditCostUsd(inputTok, outputTok, modelName) {
+            const r = _auditRates(modelName);
+            return (inputTok * r.input + outputTok * r.output) / 1_000_000;
+        }
+        function _auditFmtCost(cost) {
+            if (cost === null || cost === undefined) return '—';
+            if (cost < 0.000001) return '$0.00';
+            if (cost < 0.01) return '$' + cost.toFixed(6);
+            return '$' + cost.toFixed(4);
+        }
+        // Summary-level estimate: use by_model breakdown weighted by call share
+        function _auditEstimateCost(byModel, totalIn, totalOut) {
+            if (!byModel.length) {
+                const cost = _auditCostUsd(totalIn, totalOut, null);
+                return cost.toFixed(4);
+            }
+            const totalCalls = byModel.reduce((s, m) => s + (m.calls || 0), 0);
+            if (!totalCalls) return '0.0000';
+            let cost = 0;
+            byModel.forEach(m => {
+                const share = (m.calls || 0) / totalCalls;
+                const r = _auditRates(m.model_name);
+                cost += share * (totalIn * r.input + totalOut * r.output) / 1_000_000;
+            });
+            return cost.toFixed(4);
+        }
+
+        function _auditValidBadge(v) {
+            if (v === null || v === undefined) return '<span style="color:#505050;">—</span>';
+            return v
+                ? '<span style="color:#4caf50;font-weight:700;">✓</span>'
+                : '<span style="color:#e57373;font-weight:700;">✗</span>';
+        }
+        function _auditRiskBadge(score) {
+            if (score === null || score === undefined) return '<span style="color:#505050;">—</span>';
+            const color = score === 0 ? '#4caf50' : score <= 50 ? '#f5a623' : '#e57373';
+            return `<span style="color:${color};font-weight:600;">${score}</span>`;
+        }
+        function _auditExecMs(ms) {
+            if (ms === null || ms === undefined) return '<span style="color:#505050;">—</span>';
+            const color = ms < 1000 ? '#c0c0c0' : ms < 5000 ? '#f5a623' : '#e57373';
+            return `<span style="color:${color};">${ms.toLocaleString()}</span>`;
+        }
+        function _auditSqlCell(sql) {
+            if (!sql) return '<td style="padding:7px 12px;color:#505050;">—</td>';
+            const escaped = _aEsc(sql);
+            const preview = _aEsc(sql.length > 60 ? sql.slice(0, 60) + '…' : sql);
+            return `<td style="padding:7px 12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:11px;color:#8db4d4;cursor:pointer;" title="${escaped}" onclick="navigator.clipboard.writeText(${JSON.stringify(sql)}).then(()=>alert('SQL copied!'))">${preview}</td>`;
+        }
+
         function _auditRenderLogs(logs) {
             const tbody = document.getElementById('audit-tbody');
-            if (!logs.length){ tbody.innerHTML='<tr><td colspan="11" style="text-align:center;padding:24px;color:#505050;">No log entries found</td></tr>'; return; }
+            if (!logs.length){ tbody.innerHTML='<tr><td colspan="15" style="text-align:center;padding:24px;color:#505050;">No log entries found</td></tr>'; return; }
             tbody.innerHTML = logs.map(l=>`
                 <tr style="border-bottom:1px solid #1e1e1e;" onmouseover="this.style.background='#161616'" onmouseout="this.style.background=''">
                     <td style="padding:7px 12px;white-space:nowrap;color:#707070;">${_aTime(l.created_at)}</td>
@@ -3761,7 +3838,11 @@
                     <td style="padding:7px 12px;color:#a0a0a0;font-size:11px;white-space:nowrap;">${_aEsc(l.user_id||'—')}</td>
                     <td style="padding:7px 12px;text-align:right;color:#c0c0c0;">${_afmt(l.input_tokens)}</td>
                     <td style="padding:7px 12px;text-align:right;color:#c0c0c0;">${_afmt(l.output_tokens)}</td>
-                    <td style="padding:7px 12px;text-align:right;color:#f5ddb8;font-weight:600;">${_afmt(l.total_tokens)}</td>
+                    <td style="padding:7px 12px;text-align:right;color:#f5ddb8;font-weight:600;" title="${_auditRates(l.model_name).input}/${_auditRates(l.model_name).output} per 1M in/out">${_auditFmtCost(_auditCostUsd(l.input_tokens||0, l.output_tokens||0, l.model_name))}</td>
+                    <td style="padding:7px 12px;text-align:center;">${_auditValidBadge(l.sql_valid)}</td>
+                    <td style="padding:7px 12px;text-align:right;">${_auditRiskBadge(l.risk_score)}</td>
+                    <td style="padding:7px 12px;text-align:right;">${_auditExecMs(l.execution_ms)}</td>
+                    ${_auditSqlCell(l.generated_sql)}
                     <td style="padding:7px 12px;font-family:monospace;font-size:11px;color:#505050;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_aEsc(l.session_id)}">${_aEsc(l.session_id)}</td>
                 </tr>`).join('');
         }

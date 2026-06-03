@@ -57,3 +57,17 @@ def violation_reason(sql: str) -> str:
     if m:
         return f"Query contains forbidden keyword '{m.group().upper()}'"
     return "Query is not a read-only SELECT statement"
+
+
+def risk_score(sql: str) -> int:
+    """Return an integer risk score 0–100. 0 = safe SELECT, 100 = maximum risk."""
+    clean = _strip_sql(sql)
+    if not clean:
+        return 100
+    first_word = clean.split()[0].upper()
+    if first_word not in ('SELECT', 'WITH'):
+        return 75
+    matches = _DANGEROUS.findall(clean)
+    if matches:
+        return min(100, 25 * len(matches))
+    return 0
