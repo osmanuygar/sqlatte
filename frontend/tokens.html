@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQLatte — API Tokens</title>
+  <style>
+    :root {
+      --bg:         #1a1a1a;
+      --bg-card:    #242424;
+      --bg-input:   #2a2a2a;
+      --border:     #333;
+      --accent:     #D4A574;
+      --accent-dk:  #A67C52;
+      --text:       #e0e0e0;
+      --text-muted: #888;
+      --danger:     #e05252;
+      --success:    #52c97a;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; padding: 40px 24px;
+    }
+    .page { max-width: 820px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; color: var(--accent); margin-bottom: 4px; }
+    .subtitle { color: var(--text-muted); font-size: 0.88rem; margin-bottom: 28px; }
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 24px; margin-bottom: 20px;
+    }
+    .card-title { font-size: 0.95rem; color: var(--accent); margin-bottom: 18px; font-weight: 600; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label { font-size: 0.78rem; color: var(--text-muted); }
+    .field input, .field select {
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); padding: 8px 11px;
+      font-size: 0.88rem; outline: none; transition: border-color 0.15s; width: 100%;
+    }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+
+    /* info panel like auth widget */
+    .info-panel {
+      background: rgba(212,165,116,.06); border: 1px solid rgba(212,165,116,.18);
+      border-radius: 8px; padding: 12px 16px; margin-top: 18px;
+      font-size: 0.82rem; color: var(--text-muted); line-height: 1.7;
+    }
+    .info-panel strong { color: var(--accent); }
+
+    button {
+      cursor: pointer; border: none; border-radius: 6px;
+      font-size: 0.85rem; padding: 9px 20px;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    button:disabled { opacity: 0.42; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #1a1a1a; font-weight: 600; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-dk); }
+    .btn-danger {
+      background: rgba(224,82,82,.14); color: var(--danger);
+      border: 1px solid rgba(224,82,82,.3);
+    }
+    .btn-danger:hover:not(:disabled) { background: rgba(224,82,82,.28); }
+    .btn-ghost {
+      background: transparent; color: var(--text-muted);
+      border: 1px solid var(--border); font-size: 0.8rem; padding: 6px 14px;
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    #session-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(212,165,116,.07); border: 1px solid rgba(212,165,116,.2);
+      border-radius: 8px; padding: 10px 16px; margin-bottom: 24px; font-size: 0.85rem;
+    }
+
+    #new-token-banner {
+      display: none; background: rgba(82,201,122,.07);
+      border: 1px solid rgba(82,201,122,.3); border-radius: 8px;
+      padding: 14px 18px; margin-top: 16px;
+    }
+    #new-token-banner p { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px; }
+    .token-box {
+      font-family: monospace; font-size: 0.82rem; background: #111;
+      border: 1px solid #333; border-radius: 6px; padding: 10px 14px;
+      word-break: break-all; color: var(--success); cursor: pointer; user-select: all;
+    }
+    .copy-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; }
+
+    .create-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .create-row .field input { width: 280px; }
+
+    .tbl-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    th {
+      text-align: left; padding: 9px 12px; color: var(--text-muted);
+      border-bottom: 1px solid var(--border); font-weight: 500; white-space: nowrap;
+    }
+    td { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .badge { display: inline-block; font-size: 0.72rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+    .badge-active  { background: rgba(82,201,122,.14); color: var(--success); }
+    .badge-expired { background: rgba(200,200,200,.09); color: #666; }
+    .badge-revoked { background: rgba(224,82,82,.12); color: var(--danger); }
+    .empty { color: var(--text-muted); text-align: center; padding: 32px; font-size: 0.88rem; }
+    .err   { color: var(--danger); font-size: 0.83rem; margin-top: 10px; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <h1>API Tokens</h1>
+  <p class="subtitle">Create tokens so AI agents and MCP clients can connect to SQLatte without sharing your password.</p>
+
+  <!-- ── LOGIN SCREEN ── -->
+  <div id="screen-login">
+    <div class="card">
+      <div class="card-title">Sign in to manage your tokens</div>
+      <div id="login-form-body">
+        <div style="color:var(--text-muted);font-size:.85rem">Loading connection info…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TOKEN MANAGEMENT SCREEN ── -->
+  <div id="screen-tokens" style="display:none">
+    <div id="session-bar">
+      <span>Signed in as <strong id="session-username" style="color:var(--accent)">—</strong></span>
+      <button class="btn-ghost" onclick="doLogout()">Sign out</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Create New Token</div>
+      <div class="create-row">
+        <div class="field">
+          <label>Description</label>
+          <input id="tok-desc" type="text" placeholder="e.g. Claude Desktop – Windows" maxlength="120">
+        </div>
+        <div class="field">
+          <label>Expires in</label>
+          <select id="tok-ttl">
+            <option value="24">24 hours</option>
+            <option value="168">7 days</option>
+            <option value="720" selected>30 days</option>
+            <option value="2160">90 days</option>
+            <option value="8760">1 year</option>
+          </select>
+        </div>
+        <button class="btn-primary" id="btn-create" onclick="createToken()" style="align-self:flex-end">Generate</button>
+      </div>
+      <div id="new-token-banner">
+        <p>Copy this token now — it will not be shown again.</p>
+        <div class="token-box" id="new-token-val" onclick="copyToken()"></div>
+        <div class="copy-hint" id="copy-hint">Click to copy</div>
+      </div>
+      <div id="create-err" class="err"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Your Tokens</div>
+      <div id="tok-list"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let _sessionId = '';
+let _username  = '';
+let _cfg       = {};   // /auth/config response
+
+const SKEY = 'sqlatte_token_page_session';
+
+function _saveSession(sid, user) {
+  _sessionId = sid; _username = user;
+  try { localStorage.setItem(SKEY, JSON.stringify({ sid, user })); } catch(e) {}
+}
+function _loadSession() {
+  try { const r = localStorage.getItem(SKEY); return r ? JSON.parse(r) : null; } catch(e) { return null; }
+}
+function _clearSession() {
+  _sessionId = ''; _username = '';
+  try { localStorage.removeItem(SKEY); } catch(e) {}
+}
+function _hdr() {
+  return { 'Content-Type': 'application/json', 'X-Session-ID': _sessionId };
+}
+
+function showLogin()  {
+  document.getElementById('screen-login').style.display  = '';
+  document.getElementById('screen-tokens').style.display = 'none';
+}
+function showTokens() {
+  document.getElementById('screen-login').style.display  = 'none';
+  document.getElementById('screen-tokens').style.display = '';
+  document.getElementById('session-username').textContent = _username;
+}
+
+// ── Build login form from /auth/config ──────────────────────────────────────
+function buildLoginForm(cfg) {
+  const catalogs      = cfg.allowed_catalogs  || [];
+  const schemas       = cfg.allowed_schemas   || [];
+  const csMap         = cfg.catalog_schema_map || {};
+  const provider      = cfg.db_provider       || 'trino';
+  const hasCsMap      = Object.keys(csMap).length > 0;
+
+  // Catalog field: dropdown if >1, hidden+auto if =1, absent if 0
+  let catalogHtml = '';
+  if (catalogs.length > 1) {
+    catalogHtml = `
+      <div class="field">
+        <label>Catalog</label>
+        <select id="l-catalog" required onchange="onCatalogChange(this.value)">
+          <option value="">Select catalog…</option>
+          ${catalogs.map(c => `<option value="${c}">${c}</option>`).join('')}
+        </select>
+      </div>`;
+  } else if (catalogs.length === 1) {
+    catalogHtml = `<input type="hidden" id="l-catalog" value="${catalogs[0]}">`;
+  }
+
+  // Schema field
+  let schemaHtml = '';
+  const schemaLabel = (provider === 'postgresql' || provider === 'mysql') ? 'Database' : 'Schema';
+  if (catalogs.length > 0) {
+    // Will be populated by onCatalogChange; start empty or auto-fill if 1 catalog
+    const initOpt = catalogs.length === 1
+      ? ''   // will auto-fill on mount
+      : '<option value="">← Select a catalog first</option>';
+    schemaHtml = `
+      <div class="field">
+        <label>${schemaLabel}</label>
+        <select id="l-schema" required>${initOpt}</select>
+      </div>`;
+  } else if (schemas.length > 1) {
+    schemaHtml = `
+      <div class="field">
+        <label>${schemaLabel}</label>
+        <select id="l-schema" required>
+          <option value="">Select ${schemaLabel.toLowerCase()}…</option>
+          ${schemas.map(s => `<option value="${s}">${s}</option>`).join('')}
+        </select>
+      </div>`;
+  } else if (schemas.length === 1) {
+    schemaHtml = `<input type="hidden" id="l-schema" value="${schemas[0]}">`;
+  } else {
+    schemaHtml = `
+      <div class="field">
+        <label>${schemaLabel}</label>
+        <input id="l-schema" type="text" placeholder="${schemaLabel.toLowerCase()}">
+      </div>`;
+  }
+
+  // Info panel
+  const infoLines = [];
+  infoLines.push(`<strong>Database:</strong> ${provider} — ${cfg.db_host}:${cfg.db_port}`);
+  if (catalogs.length > 0) {
+    infoLines.push(`<strong>Available catalogs:</strong> ${catalogs.join(', ')}`);
+  }
+  if (hasCsMap) {
+    for (const [cat, schs] of Object.entries(csMap)) {
+      infoLines.push(`<strong>${cat}:</strong> ${schs.join(', ')}`);
+    }
+  } else if (schemas.length > 0) {
+    infoLines.push(`<strong>Available schemas:</strong> ${schemas.join(', ')}`);
+  }
+
+  document.getElementById('login-form-body').innerHTML = `
+    <div class="form-grid">
+      <div class="field">
+        <label>Username</label>
+        <input id="l-user" type="text" placeholder="your_db_user" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      ${catalogHtml}
+      ${schemaHtml}
+    </div>
+    <div style="margin-top:18px;display:flex;align-items:center;gap:14px">
+      <button class="btn-primary" id="btn-login" onclick="doLogin()">Sign In</button>
+      <span id="login-err" class="err"></span>
+    </div>
+    ${infoLines.length ? `<div class="info-panel">${infoLines.join('<br>')}</div>` : ''}`;
+
+  // Auto-trigger catalog if only one option
+  if (catalogs.length === 1) {
+    onCatalogChange(catalogs[0]);
+  }
+
+  // Enter key
+  document.getElementById('login-form-body').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+}
+
+function onCatalogChange(cat) {
+  const schemaEl = document.getElementById('l-schema');
+  if (!schemaEl || schemaEl.tagName !== 'SELECT') return;
+  const csMap    = _cfg.catalog_schema_map || {};
+  const fallback = _cfg.allowed_schemas    || [];
+  const options  = csMap[cat] || fallback;
+
+  if (!options.length) {
+    schemaEl.innerHTML = '<option value="">No schemas available</option>';
+    return;
+  }
+  schemaEl.innerHTML = options.map(s => `<option value="${s}">${s}</option>`).join('');
+  if (options.length === 1) schemaEl.value = options[0];
+}
+
+// ── Login ────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const btn = document.getElementById('btn-login');
+  const err = document.getElementById('login-err');
+  if (!btn || btn.disabled) return;
+  err.textContent = '';
+  btn.disabled = true;
+
+  const schemaVal  = document.getElementById('l-schema')?.value?.trim()  || 'default';
+  const catalogVal = document.getElementById('l-catalog')?.value?.trim() || null;
+  const body = {
+    username:      document.getElementById('l-user').value.trim(),
+    password:      document.getElementById('l-pass').value,
+    database_type: _cfg.db_provider || 'trino',
+    host:          _cfg.db_host,
+    port:          _cfg.db_port,
+    catalog:       catalogVal,
+    schema:        schemaVal,
+    database:      schemaVal,
+  };
+
+  try {
+    const res  = await fetch(`${API}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) { err.textContent = data.detail || `Login failed (${res.status})`; return; }
+    _saveSession(data.session_id, body.username);
+    showTokens();
+    loadTokens();
+  } catch(e) {
+    err.textContent = 'Network error.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function doLogout() { _clearSession(); showLogin(); }
+
+// ── Tokens ───────────────────────────────────────────────────────────────────
+async function loadTokens() {
+  document.getElementById('tok-list').innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const res = await fetch(`${API}/auth/tokens`, { headers: _hdr() });
+    if (res.status === 401) { _clearSession(); showLogin(); return; }
+    renderTokens((await res.json()).tokens || []);
+  } catch(e) {
+    document.getElementById('tok-list').innerHTML =
+      '<div class="empty" style="color:var(--danger)">Network error.</div>';
+  }
+}
+
+function _status(t) {
+  if (t.revoked) return '<span class="badge badge-revoked">Revoked</span>';
+  if (new Date(t.expires_at) < new Date()) return '<span class="badge badge-expired">Expired</span>';
+  return '<span class="badge badge-active">Active</span>';
+}
+function _dt(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function renderTokens(tokens) {
+  if (!tokens.length) {
+    document.getElementById('tok-list').innerHTML =
+      '<div class="empty">No tokens yet. Create one above.</div>';
+    return;
+  }
+  const rows = tokens.map(t => `
+    <tr>
+      <td>${t.description || '<em style="color:#555">—</em>'}</td>
+      <td><code style="font-size:.78rem;color:#888">${t.token_prefix}</code></td>
+      <td>${_status(t)}</td>
+      <td style="color:#777">${_dt(t.created_at)}</td>
+      <td style="color:#777">${_dt(t.expires_at)}</td>
+      <td style="color:#777">${_dt(t.last_used_at)}</td>
+      <td>${!t.revoked && new Date(t.expires_at) > new Date()
+        ? `<button class="btn-danger" onclick="revokeToken('${t.token}',this)">Revoke</button>` : ''}</td>
+    </tr>`).join('');
+  document.getElementById('tok-list').innerHTML = `
+    <div class="tbl-wrap"><table>
+      <thead><tr>
+        <th>Description</th><th>Prefix</th><th>Status</th>
+        <th>Created</th><th>Expires</th><th>Last Used</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+async function createToken() {
+  const btn = document.getElementById('btn-create');
+  const err = document.getElementById('create-err');
+  err.textContent = ''; btn.disabled = true;
+  const desc = document.getElementById('tok-desc').value.trim() || 'API Token';
+  const ttl  = parseInt(document.getElementById('tok-ttl').value, 10);
+  try {
+    const res = await fetch(`${API}/auth/token/generate`, {
+      method: 'POST', headers: _hdr(),
+      body: JSON.stringify({ description: desc, ttl_hours: ttl }),
+    });
+    if (res.status === 401) { _clearSession(); showLogin(); return; }
+    if (!res.ok) { err.textContent = (await res.json().catch(()=>({}))).detail || `Error ${res.status}`; return; }
+    const data = await res.json();
+    document.getElementById('new-token-val').textContent = data.token;
+    document.getElementById('copy-hint').textContent = 'Click to copy';
+    document.getElementById('new-token-banner').style.display = 'block';
+    document.getElementById('tok-desc').value = '';
+    await loadTokens();
+  } catch(e) { err.textContent = 'Network error.'; }
+  finally { btn.disabled = false; }
+}
+
+function copyToken() {
+  navigator.clipboard.writeText(document.getElementById('new-token-val').textContent).then(() => {
+    document.getElementById('copy-hint').textContent = 'Copied!';
+    setTimeout(() => document.getElementById('copy-hint').textContent = 'Click to copy', 2000);
+  });
+}
+
+async function revokeToken(token, btn) {
+  if (!confirm('Revoke this token? Connected agents will lose access immediately.')) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/auth/token/revoke`, {
+      method: 'POST', headers: _hdr(), body: JSON.stringify({ token }),
+    });
+    if (res.status === 401) { _clearSession(); showLogin(); return; }
+    if (!res.ok) { alert((await res.json().catch(()=>({}))).detail || 'Revoke failed'); btn.disabled = false; return; }
+    await loadTokens();
+  } catch(e) { alert('Network error.'); btn.disabled = false; }
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+(async function boot() {
+  // 1. Check saved session first
+  const saved = _loadSession();
+  if (saved?.sid) {
+    _sessionId = saved.sid; _username = saved.user;
+    try {
+      const res = await fetch(`${API}/auth/tokens`, { headers: _hdr() });
+      if (res.ok) { showTokens(); renderTokens((await res.json()).tokens || []); return; }
+    } catch(e) {}
+    _clearSession();
+  }
+
+  // 2. Load config to build smart login form
+  try {
+    const res = await fetch(`${API}/auth/config`);
+    _cfg = res.ok ? await res.json() : {};
+  } catch(e) { _cfg = {}; }
+
+  buildLoginForm(_cfg);
+  showLogin();
+})();
+</script>
+</body>
+</html>
