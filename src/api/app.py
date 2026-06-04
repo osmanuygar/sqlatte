@@ -547,6 +547,7 @@ async def get_ui_config():
         "dashboards":    True,
         "bigquery-ops":  True,
         "admin":         True,
+        "tokens":        True,
     }
 
     raw = config.get("ui", {}).get("sections", {})
@@ -1221,6 +1222,16 @@ async def ops_agent_page():
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Ops Agent page not found</h1>", status_code=404)
+
+@app.get("/tokens", response_class=HTMLResponse)
+async def tokens_page():
+    """User API token management page."""
+    path = os.path.join(PROJECT_ROOT, 'frontend', 'tokens.html')
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Tokens page not found</h1>", status_code=404)
 
 @app.get("/dashboards.html", response_class=HTMLResponse)
 async def dashboards_list_page():

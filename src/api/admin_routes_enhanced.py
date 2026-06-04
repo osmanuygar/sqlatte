@@ -1060,3 +1060,38 @@ async def reset_prompt(request: Request):
             "success": False,
             "error": str(e)
         }
+
+
+# ── Admin Token Management ────────────────────────────────────────────────────
+
+@router.get("/tokens")
+async def admin_list_tokens(admin_user: str = Depends(require_admin)):
+    """List all API tokens across all users."""
+    try:
+        from src.core.config_db import get_config_db
+        tokens = get_config_db().list_all_api_tokens()
+        return {"tokens": tokens}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to list tokens: {e}")
+
+
+@router.post("/token/revoke")
+async def admin_revoke_token(
+    request: Request,
+    admin_user: str = Depends(require_admin),
+):
+    """Revoke any user's API token (admin only)."""
+    body = await request.json()
+    token = body.get("token", "")
+    if not token:
+        raise HTTPException(400, "token is required")
+    try:
+        from src.core.config_db import get_config_db
+        ok = get_config_db().admin_revoke_token(token)
+        if not ok:
+            raise HTTPException(404, "Token not found")
+        return {"success": True, "message": "Token revoked"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Revoke failed: {e}")
