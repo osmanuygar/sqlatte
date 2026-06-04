@@ -735,6 +735,10 @@
                 <span>🔍</span>
                 Audit Logs
             </div>
+            <div class="tab" onclick="switchTab('api-tokens'); loadAdminTokens();">
+                <span>🔑</span>
+                API Tokens
+            </div>
         </div>
 
         <!-- TAB: Providers (LLM & Database) -->
@@ -3870,6 +3874,123 @@
 
         document.getElementById('audit-hours').addEventListener('change', ()=>loadAuditLogs(true));
 
+        // ── Admin API Tokens ──────────────────────────────────────────────────────
+        async function loadAdminTokens() {
+            document.getElementById('admin-tok-body').innerHTML =
+                '<tr><td colspan="7" style="color:#888;text-align:center;padding:20px">Loading…</td></tr>';
+            try {
+                const res = await fetch('/admin/tokens');
+                if (!res.ok) { throw new Error(`HTTP ${res.status}`); }
+                const data = await res.json();
+                renderAdminTokens(data.tokens || []);
+            } catch(e) {
+                document.getElementById('admin-tok-body').innerHTML =
+                    `<tr><td colspan="7" style="color:#e05252;text-align:center;padding:20px">${e.message}</td></tr>`;
+            }
+        }
+
+        function _tokStatus(t) {
+            if (t.revoked) return '<span style="color:#e05252;font-size:.8rem;font-weight:600">Revoked</span>';
+            if (t.expired) return '<span style="color:#888;font-size:.8rem">Expired</span>';
+            return '<span style="color:#52c97a;font-size:.8rem;font-weight:600">Active</span>';
+        }
+        function _tokDate(iso) {
+            if (!iso) return '—';
+            return new Date(iso).toLocaleString(undefined,{dateStyle:'short',timeStyle:'short'});
+        }
+
+        function renderAdminTokens(tokens) {
+            if (!tokens.length) {
+                document.getElementById('admin-tok-body').innerHTML =
+                    '<tr><td colspan="7" style="color:#888;text-align:center;padding:32px">No tokens found.</td></tr>';
+                return;
+            }
+            document.getElementById('admin-tok-body').innerHTML = tokens.map(t => `
+                <tr>
+                    <td style="color:#D4A574;font-weight:500">${t.username}</td>
+                    <td>${t.description || '<em style="color:#555">—</em>'}</td>
+                    <td><code style="font-size:.78rem;color:#aaa">${t.token_prefix}</code></td>
+                    <td>${_tokStatus(t)}</td>
+                    <td style="color:#888;font-size:.8rem">${_tokDate(t.created_at)}</td>
+                    <td style="color:#888;font-size:.8rem">${_tokDate(t.expires_at)}</td>
+                    <td>
+                        ${!t.revoked && !t.expired
+                            ? `<button onclick="adminRevokeToken('${t.token}',this)"
+                                style="background:rgba(224,82,82,.12);color:#e05252;border:1px solid rgba(224,82,82,.3);
+                                       border-radius:5px;padding:4px 12px;cursor:pointer;font-size:.8rem">
+                                Revoke</button>`
+                            : ''}
+                    </td>
+                </tr>`).join('');
+        }
+
+        async function adminRevokeToken(token, btn) {
+            if (!confirm('Revoke this token? The owner will lose access immediately.')) return;
+            btn.disabled = true;
+            try {
+                const res = await fetch('/admin/token/revoke', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({token}),
+                });
+                if (!res.ok) {
+                    const d = await res.json().catch(()=>({}));
+                    alert(d.detail || 'Revoke failed');
+                    btn.disabled = false;
+                    return;
+                }
+                await loadAdminTokens();
+            } catch(e) {
+                alert('Network error.');
+                btn.disabled = false;
+            }
+        }
+
     </script>
+
+<!-- TAB: API Tokens -->
+<template id="tpl-api-tokens">
+</template>
+<script>
+// Inject API Tokens tab content
+(function() {
+    const div = document.createElement('div');
+    div.id = 'tab-api-tokens';
+    div.className = 'tab-content';
+    div.innerHTML = `
+        <div style="max-width:1100px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+                <div>
+                    <h2 style="font-size:1.1rem;color:#D4A574;margin-bottom:4px">API Token Management</h2>
+                    <p style="color:#888;font-size:.85rem">All tokens across all users. Active tokens grant API and MCP access.</p>
+                </div>
+                <button onclick="loadAdminTokens()"
+                    style="background:rgba(212,165,116,.12);color:#D4A574;border:1px solid rgba(212,165,116,.3);
+                           border-radius:6px;padding:7px 16px;cursor:pointer;font-size:.85rem">
+                    ↺ Refresh
+                </button>
+            </div>
+            <div style="overflow-x:auto;background:#1e1e1e;border:1px solid #333;border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+                    <thead>
+                        <tr style="border-bottom:1px solid #333">
+                            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">User</th>
+                            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Description</th>
+                            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Prefix</th>
+                            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Status</th>
+                            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Created</th>
+                            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Expires</th>
+                            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-tok-body">
+                        <tr><td colspan="7" style="color:#888;text-align:center;padding:32px">Click tab to load.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+    document.querySelector('.tabs').parentElement.appendChild(div);
+})();
+</script>
 </body>
 </html>

@@ -842,6 +842,48 @@ class ConfigDB:
             for row in rows
         ]
 
+    def list_all_api_tokens(self) -> list:
+        """List all tokens across all users (admin use)."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT token, username, description, ttl_hours, created_at, expires_at,
+                   last_used_at, revoked
+            FROM api_tokens
+            ORDER BY created_at DESC
+            """
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        now = datetime.now()
+        return [
+            {
+                "token_prefix": row[0][:12] + "...",
+                "token": row[0],
+                "username": row[1],
+                "description": row[2],
+                "ttl_hours": row[3],
+                "created_at": row[4].isoformat() if row[4] else None,
+                "expires_at": row[5].isoformat() if row[5] else None,
+                "last_used_at": row[6].isoformat() if row[6] else None,
+                "revoked": bool(row[7]),
+                "expired": row[5] is not None and now > row[5],
+            }
+            for row in rows
+        ]
+
+    def admin_revoke_token(self, token: str) -> bool:
+        """Revoke any token regardless of owner (admin only)."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE api_tokens SET revoked = TRUE WHERE token = %s",
+            (token,)
+        )
+        affected = cursor.rowcount
+        self.conn.commit()
+        cursor.close()
+        return affected > 0
+
     def close(self):
         """Close database connection"""
         if self.conn:
