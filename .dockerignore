@@ -1,0 +1,29 @@
+# Secrets and config — never bake into image; mount at runtime via docker-compose
+config/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Dev / VCS
+.git/
+.gitignore
+.env
+.env.*
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Tests / docs
+tests/
+docs/
+*.md

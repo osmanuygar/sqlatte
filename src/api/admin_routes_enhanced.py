@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 from src.core.config_manager_enhanced import config_manager
+from src.core.error_utils import server_error
 from src.api.admin_auth import (
     require_admin,
     verify_credentials,
@@ -252,7 +253,7 @@ async def get_current_config(admin_user: str = Depends(require_admin)):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 @router.post("/config")
 async def update_config(request: ConfigUpdateRequest, http_request: Request, admin_user: str = Depends(require_admin)):
@@ -293,7 +294,7 @@ async def update_config(request: ConfigUpdateRequest, http_request: Request, adm
             "config": config_manager.get_safe_config()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.put("/config/llm")
@@ -330,7 +331,7 @@ async def update_llm_config(request: LLMConfigRequest, http_request: Request, ad
             "config": updated_config.get('llm', {})
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.put("/config/database")
@@ -369,7 +370,7 @@ async def update_database_config(request: DatabaseConfigRequest, http_request: R
             "config": updated_config.get('database', {})
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.put("/config/email")
@@ -410,7 +411,7 @@ async def update_email_config(request: EmailConfigRequest, http_request: Request
             "config": updated_config.get('email', {})
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 class SchedulerConfigRequest(BaseModel):
@@ -456,7 +457,7 @@ async def update_scheduler_config(request: SchedulerConfigRequest, http_request:
             "config": request.config
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 class InsightsConfigRequest(BaseModel):
@@ -509,7 +510,7 @@ async def update_insights_config(request: InsightsConfigRequest, http_request: R
             "config": request.config
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 class OpsAgentConfigRequest(BaseModel):
@@ -546,7 +547,7 @@ async def update_ops_agent_config(request: OpsAgentConfigRequest, http_request: 
             "config": existing
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 class ExportConfigRequest(BaseModel):
@@ -591,7 +592,7 @@ async def update_export_config(request: ExportConfigRequest, http_request: Reque
             "config": request.config
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.post("/test/email")
@@ -678,11 +679,11 @@ async def update_email_config(request: EmailConfigRequest, http_request: Request
             "config": updated_config.get('email', {})
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.post("/config/reset")
-async def reset_config():
+async def reset_config(admin_user: str = Depends(require_admin)):
     """
     Reset configuration to file defaults (clear runtime overrides)
     """
@@ -695,7 +696,7 @@ async def reset_config():
             "config": config_manager.get_safe_config()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 # ============================================
@@ -703,7 +704,7 @@ async def reset_config():
 # ============================================
 
 @router.get("/config/history")
-async def get_config_history(key: Optional[str] = None, limit: int = 100):
+async def get_config_history(key: Optional[str] = None, limit: int = 100, admin_user: str = Depends(require_admin)):
     """
     Get configuration change history
 
@@ -721,11 +722,11 @@ async def get_config_history(key: Optional[str] = None, limit: int = 100):
             "db_enabled": config_manager.db_enabled
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.post("/config/snapshot")
-async def create_snapshot(request: SnapshotRequest, http_request: Request):
+async def create_snapshot(request: SnapshotRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
     Create a configuration snapshot for rollback
 
@@ -757,11 +758,11 @@ async def create_snapshot(request: SnapshotRequest, http_request: Request):
                 "message": "Snapshots require database-backed configuration"
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.post("/config/restore")
-async def restore_snapshot(request: RestoreSnapshotRequest, http_request: Request):
+async def restore_snapshot(request: RestoreSnapshotRequest, http_request: Request, admin_user: str = Depends(require_admin)):
     """
     Restore configuration from a snapshot
 
@@ -792,7 +793,7 @@ async def restore_snapshot(request: RestoreSnapshotRequest, http_request: Reques
                 "message": "Snapshots require database-backed configuration"
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 # ============================================
@@ -800,7 +801,7 @@ async def restore_snapshot(request: RestoreSnapshotRequest, http_request: Reques
 # ============================================
 
 @router.post("/test")
-async def test_connection(request: TestConnectionRequest):
+async def test_connection(request: TestConnectionRequest, admin_user: str = Depends(require_admin)):
     """
     Test a provider configuration before applying
 
@@ -825,7 +826,7 @@ async def test_connection(request: TestConnectionRequest):
 
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 # ============================================
@@ -833,7 +834,7 @@ async def test_connection(request: TestConnectionRequest):
 # ============================================
 
 @router.post("/reload")
-async def reload_providers():
+async def reload_providers(admin_user: str = Depends(require_admin)):
     """
     Reload LLM and Database providers with current config
 
@@ -868,7 +869,7 @@ async def reload_providers():
 # ============================================
 
 @router.get("/info")
-async def get_system_info():
+async def get_system_info(admin_user: str = Depends(require_admin)):
     """Get system and configuration info"""
     config = config_manager.get_config()
 
@@ -905,7 +906,7 @@ async def get_system_info():
 # ============================================
 
 @router.get("/prompts")
-async def get_prompts():
+async def get_prompts(admin_user: str = Depends(require_admin)):
     """
     Get all prompts (read from config)
     """
@@ -934,7 +935,7 @@ async def get_prompts():
 
 
 @router.post("/prompts/update")
-async def update_prompt(request: Request):
+async def update_prompt(request: Request, admin_user: str = Depends(require_admin)):
     """
     Update a specific prompt
 
@@ -996,7 +997,7 @@ async def update_prompt(request: Request):
 
 
 @router.post("/prompts/reset")
-async def reset_prompt(request: Request):
+async def reset_prompt(request: Request, admin_user: str = Depends(require_admin)):
     """
     Reset a prompt to default value from config.yaml
 
@@ -1072,7 +1073,7 @@ async def admin_list_tokens(admin_user: str = Depends(require_admin)):
         tokens = get_config_db().list_all_api_tokens()
         return {"tokens": tokens}
     except Exception as e:
-        raise HTTPException(500, f"Failed to list tokens: {e}")
+        raise server_error(e)
 
 
 @router.post("/token/revoke")
@@ -1080,18 +1081,81 @@ async def admin_revoke_token(
     request: Request,
     admin_user: str = Depends(require_admin),
 ):
-    """Revoke any user's API token (admin only)."""
+    """Revoke any user's API token by its DB id (admin only)."""
     body = await request.json()
-    token = body.get("token", "")
-    if not token:
-        raise HTTPException(400, "token is required")
+    token_id = body.get("id")
+    if not token_id:
+        raise HTTPException(400, "id is required")
     try:
         from src.core.config_db import get_config_db
-        ok = get_config_db().admin_revoke_token(token)
+        ok = get_config_db().admin_revoke_token(int(token_id))
         if not ok:
             raise HTTPException(404, "Token not found")
         return {"success": True, "message": "Token revoked"}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Revoke failed: {e}")
+        raise server_error(e)
+
+
+@router.get("/token-policy")
+async def get_token_policy(admin_user: str = Depends(require_admin)):
+    """Return the platform-wide token query budget policy."""
+    from src.core.config_db import get_config_db
+    limit = get_config_db().get_default_token_limit()
+    return {"default_daily_limit": limit}
+
+
+@router.post("/token-policy")
+async def set_token_policy(
+    request: Request,
+    admin_user: str = Depends(require_admin),
+):
+    """Set the platform-wide default daily query limit for new tokens."""
+    body = await request.json()
+    raw = body.get("default_daily_limit")
+    try:
+        limit = int(raw) if raw not in (None, "", "null") else None
+        if limit is not None and limit < 1:
+            raise HTTPException(400, "limit must be a positive integer or null (unlimited)")
+        from src.core.config_db import get_config_db
+        get_config_db().set_default_token_limit(limit, changed_by=admin_user)
+        return {
+            "success": True,
+            "default_daily_limit": limit,
+            "message": f"Default daily limit set to {limit if limit is not None else 'unlimited'}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise server_error(e)
+
+
+@router.post("/token/set-limit")
+async def admin_set_token_limit(
+    request: Request,
+    admin_user: str = Depends(require_admin),
+):
+    """Override the daily query limit on a specific token by DB id (admin only)."""
+    body = await request.json()
+    token_id = body.get("id")
+    if not token_id:
+        raise HTTPException(400, "id is required")
+    raw = body.get("daily_query_limit")
+    try:
+        limit = int(raw) if raw not in (None, "", "null") else None
+        if limit is not None and limit < 1:
+            raise HTTPException(400, "limit must be a positive integer or null (unlimited)")
+        from src.core.config_db import get_config_db
+        ok = get_config_db().admin_set_token_limit(int(token_id), limit)
+        if not ok:
+            raise HTTPException(404, "Token not found")
+        return {
+            "success": True,
+            "daily_query_limit": limit,
+            "message": f"Token limit set to {limit if limit is not None else 'unlimited'}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise server_error(e)

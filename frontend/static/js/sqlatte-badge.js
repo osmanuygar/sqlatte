@@ -538,6 +538,35 @@
         localStorage.removeItem('sqlatte_session_id');
     }
 
+    // Acquire a server-credential-backed auto-session for embedded/widget use.
+    // Returns the session_id string on success, null if auto-session is disabled
+    // (403) or unavailable.
+    async function acquireAutoSession() {
+        try {
+            const response = await fetch(`${BADGE_CONFIG.apiBase}/auth/auto-session`, {
+                method: 'POST',
+            });
+            if (!response.ok) {
+                // 403 = feature disabled; any other error = fall back silently
+                return null;
+            }
+            const data = await response.json();
+            if (data.session_id) {
+                saveSession(data.session_id);
+                console.log('[SQLatte] auto-session acquired');
+                return data.session_id;
+            }
+        } catch (e) {
+            console.warn('[SQLatte] auto-session unavailable:', e);
+        }
+        return null;
+    }
+
+    // Returns fetch headers with X-Session-ID when a session is active.
+    function getAuthHeaders() {
+        return sessionId ? { 'X-Session-ID': sessionId } : {};
+    }
+
     /**
      * QUERY HISTORY & FAVORITES
      */
@@ -1549,15 +1578,34 @@
         const select = document.getElementById('sqlatte-table-select');
         if (!select) return;
 
+        // Try to acquire an auto-session if none is active.
+        if (!sessionId) await acquireAutoSession();
+
+        const doFetch = () => {
+            if (sessionId) {
+                return fetch(`${BADGE_CONFIG.apiBase}/auth/tables`, {
+                    headers: getAuthHeaders(),
+                });
+            }
+            return fetch(`${BADGE_CONFIG.apiBase}/tables`);
+        };
+
         try {
-            const response = await fetch(`${BADGE_CONFIG.apiBase}/tables`);
+            let response = await doFetch();
+
+            // Session expired — drop it and retry once with a fresh auto-session.
+            if (response.status === 401 && sessionId) {
+                clearSession();
+                await acquireAutoSession();
+                response = await doFetch();
+            }
 
             if (!response.ok) {
                 throw new Error(`Server error: ${response.status}`);
             }
 
             const data = await response.json();
-            allTables = data.tables || []; // Global'e kaydet
+            allTables = data.tables || [];
             updateTableList(allTables);
 
         } catch (error) {
@@ -1605,17 +1653,40 @@
         }
 
         try {
+            const authHeaders = getAuthHeaders();
             if (selectedTables.length === 1) {
-                const response = await fetch(`${BADGE_CONFIG.apiBase}/schema/${selectedTables[0]}`);
-                const data = await response.json();
+                const schemaPath = sessionId
+                    ? `/auth/schema/${selectedTables[0]}`
+                    : `/schema/${selectedTables[0]}`;
+                let resp = await fetch(`${BADGE_CONFIG.apiBase}${schemaPath}`, {
+                    headers: authHeaders,
+                });
+                if (resp.status === 401 && sessionId) {
+                    clearSession();
+                    await acquireAutoSession();
+                    resp = await fetch(`${BADGE_CONFIG.apiBase}/auth/schema/${selectedTables[0]}`, {
+                        headers: getAuthHeaders(),
+                    });
+                }
+                const data = await resp.json();
                 currentSchema = data.schema;
             } else {
-                const response = await fetch(`${BADGE_CONFIG.apiBase}/schema/multiple`, {
+                const schemaPath = sessionId ? `/auth/schema/multiple` : `/schema/multiple`;
+                let resp = await fetch(`${BADGE_CONFIG.apiBase}${schemaPath}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...authHeaders },
                     body: JSON.stringify({ tables: selectedTables })
                 });
-                const data = await response.json();
+                if (resp.status === 401 && sessionId) {
+                    clearSession();
+                    await acquireAutoSession();
+                    resp = await fetch(`${BADGE_CONFIG.apiBase}/auth/schema/multiple`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                        body: JSON.stringify({ tables: selectedTables })
+                    });
+                }
+                const data = await resp.json();
                 currentSchema = data.combined_schema;
             }
         } catch (error) {
@@ -1831,16 +1902,30 @@
         addMessage('user', escapeHtml(question));
         input.value = '';
 
-        try {
-            const response = await fetch(`${BADGE_CONFIG.apiBase}/query`, {
+        const doQuery = async () => {
+            if (sessionId) {
+                return fetch(`${BADGE_CONFIG.apiBase}/auth/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                    body: JSON.stringify({ question, table_schema: currentSchema })
+                });
+            }
+            return fetch(`${BADGE_CONFIG.apiBase}/query`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    question: question,
-                    table_schema: currentSchema,
-                    session_id: sessionId
-                })
+                body: JSON.stringify({ question, table_schema: currentSchema, session_id: sessionId })
             });
+        };
+
+        try {
+            let response = await doQuery();
+
+            // Session expired mid-conversation — refresh and retry once.
+            if (response.status === 401 && sessionId) {
+                clearSession();
+                await acquireAutoSession();
+                response = await doQuery();
+            }
 
             if (!response.ok) {
                 const error = await response.json();

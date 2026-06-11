@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 
 from src.core.semantic_layer_db import get_semantic_layer_db
+from src.core.error_utils import server_error
 
 
 # ==========================================
@@ -99,7 +100,7 @@ async def get_entities(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.get("/entities/{entity_id}")
@@ -125,7 +126,7 @@ async def get_entity(entity_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.post("/entities")
@@ -151,7 +152,7 @@ async def create_entity(entity: EntityCreate):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.put("/entities/{entity_id}")
@@ -174,7 +175,7 @@ async def update_entity(entity_id: int, updates: EntityUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.delete("/entities/{entity_id}")
@@ -195,7 +196,7 @@ async def delete_entity(entity_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 # ==========================================
@@ -216,7 +217,7 @@ async def get_columns(entity_id: int):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.post("/columns")
@@ -244,7 +245,7 @@ async def create_column(column: ColumnCreate):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 # ==========================================
@@ -265,7 +266,7 @@ async def get_relationships(entity_id: Optional[int] = None):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.post("/relationships")
@@ -292,7 +293,7 @@ async def create_relationship(relationship: RelationshipCreate):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 # ==========================================
@@ -313,7 +314,7 @@ async def get_metrics(active_only: bool = True):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @router.post("/metrics")
@@ -339,7 +340,7 @@ async def create_metric(metric: MetricCreate):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 # ==========================================
@@ -372,7 +373,7 @@ async def get_semantic_context(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 # ==========================================
@@ -453,4 +454,4 @@ async def discover_entities(request: Dict[str, Any]):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)

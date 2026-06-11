@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from src.core.analytics_db_postgres import analytics_db
 from src.core.query_history import query_history
+from src.core.error_utils import server_error
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -56,7 +57,7 @@ async def get_analytics_summary(
         print(f"❌ Analytics summary error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to get summary: {str(e)}")
+        raise server_error(e)
 
 
 # ============================================
@@ -95,7 +96,7 @@ async def get_hourly_statistics(
         print(f"❌ Hourly stats error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to get hourly stats: {str(e)}")
+        raise server_error(e)
 
 
 # ============================================
@@ -138,7 +139,7 @@ async def get_error_breakdown(
         print(f"❌ Error breakdown error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to get errors: {str(e)}")
+        raise server_error(e)
 
 
 # ============================================
@@ -210,7 +211,7 @@ async def get_widget_comparison(
         print(f"❌ Widget comparison error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to compare widgets: {str(e)}")
+        raise server_error(e)
 
 
 # ============================================
@@ -300,7 +301,7 @@ async def get_performance_metrics(
         print(f"❌ Performance metrics error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to get performance metrics: {str(e)}")
+        raise server_error(e)
 
 
 # ============================================
@@ -371,7 +372,7 @@ async def get_top_users(
         print(f"❌ Top users error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to get top users: {str(e)}")
+        raise server_error(e)
 
 
 # ============================================
@@ -469,7 +470,7 @@ async def get_query_complexity(
         print(f"❌ Query complexity error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to analyze complexity: {str(e)}")
+        raise server_error(e)
 
 
 # ============================================

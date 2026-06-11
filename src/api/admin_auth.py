@@ -66,12 +66,24 @@ def verify_credentials(username: str, password: str) -> bool:
     cfg = _get_admin_config()
 
     if not cfg.get("enabled", True):
-        # Auth devre dışıysa her zaman true döndür (dev modu)
-        logger.warning("⚠️  Admin auth DISABLED — set admin.enabled: true in config.yaml")
-        return True
+        # Auth disabled path removed — fail-closed to prevent accidental open access.
+        # Set admin.enabled: true and admin.password in config.yaml.
+        logger.error(
+            "SECURITY: admin.enabled=false but auth bypass is disabled. "
+            "Set admin.enabled: true and configure admin.username/password."
+        )
+        return False
 
     expected_user = cfg.get("username", "admin")
-    expected_pass = cfg.get("password", "admin")
+    expected_pass = cfg.get("password", "")
+
+    # Refuse to operate with an empty password — fail-closed
+    if not expected_pass:
+        logger.error(
+            "SECURITY: Admin password is not configured. "
+            "Set admin.password in config.yaml or ADMIN_PASSWORD env var."
+        )
+        return False
 
     user_ok = secrets.compare_digest(username.encode(), expected_user.encode())
     pass_ok  = secrets.compare_digest(password.encode(), expected_pass.encode())

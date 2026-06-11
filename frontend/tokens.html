@@ -147,6 +147,10 @@
             <option value="8760">1 year</option>
           </select>
         </div>
+        <div class="field">
+          <label>Daily query limit <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+          <input id="tok-limit" type="number" min="1" placeholder="platform default" style="width:140px">
+        </div>
         <button class="btn-primary" id="btn-create" onclick="createToken()" style="align-self:flex-end">Generate</button>
       </div>
       <div id="new-token-banner">
@@ -388,6 +392,7 @@ function renderTokens(tokens) {
       <td style="color:#777">${_dt(t.created_at)}</td>
       <td style="color:#777">${_dt(t.expires_at)}</td>
       <td style="color:#777">${_dt(t.last_used_at)}</td>
+      <td>${_budget(t)}</td>
       <td>${!t.revoked && new Date(t.expires_at) > new Date()
         ? `<button class="btn-danger" onclick="revokeToken('${t.token}',this)">Revoke</button>` : ''}</td>
     </tr>`).join('');
@@ -395,30 +400,47 @@ function renderTokens(tokens) {
     <div class="tbl-wrap"><table>
       <thead><tr>
         <th>Description</th><th>Prefix</th><th>Status</th>
-        <th>Created</th><th>Expires</th><th>Last Used</th><th></th>
+        <th>Created</th><th>Expires</th><th>Last Used</th><th>Today</th><th></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
+}
+
+function _budget(t) {
+  if (t.daily_query_limit == null) return '<span style="color:var(--text-muted);font-size:.78rem">unlimited</span>';
+  const used = t.queries_used_today || 0;
+  const pct  = Math.min(100, Math.round(used / t.daily_query_limit * 100));
+  const color = pct >= 90 ? 'var(--danger)' : pct >= 70 ? '#e0a84f' : 'var(--success)';
+  return `<span style="color:${color};font-size:.8rem;font-weight:600">${used}</span>`
+       + `<span style="color:var(--text-muted);font-size:.78rem"> / ${t.daily_query_limit}</span>`;
 }
 
 async function createToken() {
   const btn = document.getElementById('btn-create');
   const err = document.getElementById('create-err');
   err.textContent = ''; btn.disabled = true;
-  const desc = document.getElementById('tok-desc').value.trim() || 'API Token';
-  const ttl  = parseInt(document.getElementById('tok-ttl').value, 10);
+  const desc  = document.getElementById('tok-desc').value.trim() || 'API Token';
+  const ttl   = parseInt(document.getElementById('tok-ttl').value, 10);
+  const rawLim = document.getElementById('tok-limit').value.trim();
+  const limit  = rawLim ? parseInt(rawLim, 10) : null;
   try {
     const res = await fetch(`${API}/auth/token/generate`, {
       method: 'POST', headers: _hdr(),
-      body: JSON.stringify({ description: desc, ttl_hours: ttl }),
+      body: JSON.stringify({ description: desc, ttl_hours: ttl, daily_query_limit: limit }),
     });
     if (res.status === 401) { _clearSession(); showLogin(); return; }
     if (!res.ok) { err.textContent = (await res.json().catch(()=>({}))).detail || `Error ${res.status}`; return; }
     const data = await res.json();
     document.getElementById('new-token-val').textContent = data.token;
     document.getElementById('copy-hint').textContent = 'Click to copy';
+    const limitLabel = data.daily_query_limit != null
+      ? `Daily limit: <strong>${data.daily_query_limit} queries</strong>`
+      : 'Daily limit: <strong>unlimited</strong>';
+    document.getElementById('new-token-banner').querySelector('p').innerHTML =
+      `Copy this token now — it will not be shown again. &nbsp;·&nbsp; ${limitLabel}`;
     document.getElementById('new-token-banner').style.display = 'block';
     document.getElementById('tok-desc').value = '';
+    document.getElementById('tok-limit').value = '';
     await loadTokens();
   } catch(e) { err.textContent = 'Network error.'; }
   finally { btn.disabled = false; }

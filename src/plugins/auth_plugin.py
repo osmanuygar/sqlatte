@@ -3,11 +3,15 @@ SQLatte Authentication Plugin - Enhanced Version (Backward Compatible)
 With all standard widget features + config-based restrictions
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, Dict, Any, List
 import asyncio
+import re
+import threading
+import time as _time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 from src.plugins.base_plugin import BasePlugin
@@ -15,19 +19,116 @@ from src.plugins.session_manager import auth_session_manager
 from src.core.conversation_manager import conversation_manager
 import time
 from src.core.provider_factory import ProviderFactory
+from src.core.error_utils import server_error
+
+# ── M-02: Input Validation ────────────────────────────────────────────────────
+
+_SAFE_HOST = re.compile(
+    r'^(?:'
+    r'(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]{1,63}'  # hostname
+    r'|'
+    r'(?:\d{1,3}\.){3}\d{1,3}'          # IPv4
+    r')$'
+)
+_ALLOWED_DB_TYPES = {"trino", "postgresql", "mysql", "bigquery"}
+_ALLOWED_SCHEMES  = {"http", "https"}
 
 
 class LoginRequest(BaseModel):
-    """Login request model - backward compatible with simplified option"""
+    """Login request model — with input validation."""
     username: str
     password: str
-    database_type: str  # 'trino', 'postgresql', 'mysql'
+    database_type: str
     host: str
     port: int
-    catalog: Optional[str] = None  # Trino
+    catalog: Optional[str] = None
     schema: Optional[str] = 'default'
-    database: Optional[str] = None  # PostgreSQL, MySQL
-    http_scheme: Optional[str] = 'https'  # Trino
+    database: Optional[str] = None
+    http_scheme: Optional[str] = 'https'
+
+    @field_validator("database_type")
+    @classmethod
+    def validate_db_type(cls, v: str) -> str:
+        if v not in _ALLOWED_DB_TYPES:
+            raise ValueError(f"database_type must be one of {sorted(_ALLOWED_DB_TYPES)}")
+        return v
+
+    @field_validator("http_scheme")
+    @classmethod
+    def validate_scheme(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _ALLOWED_SCHEMES:
+            raise ValueError("http_scheme must be 'http' or 'https'")
+        return v
+
+    @field_validator("port")
+    @classmethod
+    def validate_port(cls, v: int) -> int:
+        if not (1 <= v <= 65535):
+            raise ValueError("port must be between 1 and 65535")
+        return v
+
+    @field_validator("host")
+    @classmethod
+    def validate_host(cls, v: str) -> str:
+        if not v or len(v) > 253 or not _SAFE_HOST.match(v):
+            raise ValueError("host contains invalid characters or format")
+        return v
+
+    @field_validator("username", "password")
+    @classmethod
+    def validate_nonempty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Field must not be empty")
+        return v
+
+
+# ── M-03: Login Brute-Force Protection ───────────────────────────────────────
+# Tracks failed login attempts per IP. After MAX_ATTEMPTS failures within
+# WINDOW_SECONDS the IP is locked for LOCKOUT_SECONDS.
+
+_LOGIN_MAX_ATTEMPTS  = 10       # failures before lockout
+_LOGIN_WINDOW_SEC    = 300      # rolling window (5 min)
+_LOGIN_LOCKOUT_SEC   = 600      # lockout duration (10 min)
+
+_login_attempts: Dict[str, list] = defaultdict(list)   # ip → [timestamp, ...]
+_login_lockouts: Dict[str, float] = {}                  # ip → unlock_at
+_login_lock = threading.Lock()
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    return forwarded.split(",")[0].strip() if forwarded else (request.client.host or "unknown")
+
+
+def _check_login_allowed(ip: str) -> None:
+    """Raise HTTP 429 if the IP is locked out, otherwise update attempt window."""
+    now = _time.time()
+    with _login_lock:
+        unlock_at = _login_lockouts.get(ip, 0)
+        if unlock_at > now:
+            remaining = int(unlock_at - now)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many failed login attempts. Try again in {remaining}s.",
+                headers={"Retry-After": str(remaining)},
+            )
+        # Purge stale timestamps
+        _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _LOGIN_WINDOW_SEC]
+
+
+def _record_failed_login(ip: str) -> None:
+    now = _time.time()
+    with _login_lock:
+        _login_attempts[ip].append(now)
+        if len(_login_attempts[ip]) >= _LOGIN_MAX_ATTEMPTS:
+            _login_lockouts[ip] = now + _LOGIN_LOCKOUT_SEC
+            _login_attempts[ip].clear()
+
+
+def _clear_login_attempts(ip: str) -> None:
+    with _login_lock:
+        _login_attempts.pop(ip, None)
+        _login_lockouts.pop(ip, None)
 
 
 class ValidateSessionRequest(BaseModel):
@@ -111,14 +212,20 @@ class AuthPlugin(BasePlugin):
             })
 
         @app.post("/auth/login")
-        async def login(request: LoginRequest):
+        async def login(request: LoginRequest, http_request: Request):
             """
-            Login endpoint - Validates credentials and creates session
+            Login endpoint — validates credentials and creates a session.
 
-            ENHANCED: Optionally validates against allowed catalogs/schemas
+            M-02: Input is validated by LoginRequest Pydantic validators.
+            M-03: Brute-force protection — IP locked after repeated failures.
             """
+            ip = _client_ip(http_request)
+
+            # M-03: Reject locked-out IPs before touching the DB
+            _check_login_allowed(ip)
+
             try:
-                # Validate restrictions if configured
+                # Catalog/schema allowlist check
                 if self.allowed_catalogs and request.catalog not in self.allowed_catalogs:
                     raise HTTPException(
                         status_code=400,
@@ -144,6 +251,7 @@ class AuthPlugin(BasePlugin):
                 )
 
                 if not is_valid:
+                    _record_failed_login(ip)   # M-03: count the failure
                     raise HTTPException(
                         status_code=401,
                         detail="Invalid credentials or connection failed"
@@ -158,6 +266,9 @@ class AuthPlugin(BasePlugin):
                     }
                 )
 
+                # M-03: Successful login — reset the failure counter for this IP
+                _clear_login_attempts(ip)
+
                 return {
                     "success": True,
                     "session_id": session_id,
@@ -167,7 +278,6 @@ class AuthPlugin(BasePlugin):
                         "database_type": request.database_type,
                         "host": request.host
                     },
-                    # NEW: Include user_info for frontend
                     "user_info": {
                         "username": request.username,
                         "catalog": request.catalog,
@@ -181,10 +291,7 @@ class AuthPlugin(BasePlugin):
                 print(f"❌ Login error: {e}")
                 import traceback
                 traceback.print_exc()
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Login failed: {str(e)}"
-                )
+                raise server_error(e)
 
         @app.post("/auth/logout")
         async def logout(session_id: str = Header(..., alias="X-Session-ID")):
@@ -283,10 +390,7 @@ class AuthPlugin(BasePlugin):
                 print(f"❌ Error loading tables: {e}")
                 import traceback
                 traceback.print_exc()
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to load tables: {str(e)}"
-                )
+                raise server_error(e)
 
         @app.get("/auth/schema/{table_name}")
         async def get_schema(
@@ -377,10 +481,7 @@ class AuthPlugin(BasePlugin):
                 raise
             except Exception as e:
                 print(f"❌ Error loading schemas: {e}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to load schemas: {str(e)}"
-                )
+                raise server_error(e)
 
         @app.post("/auth/query")
         async def execute_query(
@@ -527,10 +628,7 @@ class AuthPlugin(BasePlugin):
                 print(f"❌ Auth query error: {e}")
                 import traceback
                 traceback.print_exc()
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Query execution failed: {str(e)}"
-                )
+                raise server_error(e)
 
         @app.get("/auth/conversation/history")
         async def get_conversation_history(
@@ -588,22 +686,37 @@ class AuthPlugin(BasePlugin):
                 ttl_hours = int(request.get("ttl_hours", 24))
                 description = request.get("description", "MCP Token")
 
+                raw_limit = request.get("daily_query_limit")
+                daily_query_limit = int(raw_limit) if raw_limit not in (None, "", 0, "0") else None
+
                 token = config_db.create_api_token(
                     username=session.username,
                     db_config=session.db_config,
                     ttl_hours=ttl_hours,
-                    description=description
+                    description=description,
+                    daily_query_limit=daily_query_limit,
                 )
+
+                platform_default = config_db.get_default_token_limit()
+                if daily_query_limit is None:
+                    effective_limit = platform_default
+                elif platform_default is not None:
+                    effective_limit = min(daily_query_limit, platform_default)
+                else:
+                    effective_limit = daily_query_limit
+
+                limit_str = f"{effective_limit} queries/day" if effective_limit is not None else "unlimited"
                 return {
                     "success": True,
                     "token": token,
                     "ttl_hours": ttl_hours,
                     "description": description,
-                    "message": f"Token valid for {ttl_hours} hours. Set SQLATTE_TOKEN in your MCP config.",
+                    "daily_query_limit": effective_limit,
+                    "message": f"Token valid for {ttl_hours} hours, {limit_str}. Set SQLATTE_TOKEN in your MCP config.",
                 }
             except Exception as e:
                 print(f"❌ Token generate error: {e}")
-                raise HTTPException(500, f"Token generation failed: {e}")
+                raise server_error(e)
 
         @app.post("/auth/token/validate")
         async def validate_api_token(request: dict):
@@ -618,6 +731,12 @@ class AuthPlugin(BasePlugin):
                 result = config_db.validate_api_token(token)
                 if not result:
                     raise HTTPException(401, "Invalid, expired, or revoked token")
+                if result.get("_error") == "budget_exceeded":
+                    raise HTTPException(
+                        429,
+                        f"Daily query budget of {result['daily_limit']} queries exceeded. "
+                        f"Resets at midnight UTC."
+                    )
 
                 new_session_id = self.session_manager.create_session(
                     username=result["username"],
@@ -628,7 +747,7 @@ class AuthPlugin(BasePlugin):
                 raise
             except Exception as e:
                 print(f"❌ Token validate error: {e}")
-                raise HTTPException(500, f"Token validation failed: {e}")
+                raise server_error(e)
 
         @app.post("/auth/token/revoke")
         async def revoke_api_token(
@@ -654,7 +773,7 @@ class AuthPlugin(BasePlugin):
             except HTTPException:
                 raise
             except Exception as e:
-                raise HTTPException(500, f"Token revoke failed: {e}")
+                raise server_error(e)
 
         @app.get("/auth/tokens")
         async def list_api_tokens(
@@ -671,8 +790,77 @@ class AuthPlugin(BasePlugin):
                 tokens = config_db.list_api_tokens(session.username)
                 return {"tokens": tokens, "username": session.username}
             except Exception as e:
-                raise HTTPException(500, f"Failed to list tokens: {e}")
+                raise server_error(e)
 
+        # ── Auto-session endpoint ──────────────────────────────────────────────
+        # Creates a server-credential-backed short-lived session for embedded
+        # widgets (e.g. sqlatte-badge.js) that have no user credentials.
+        # Disabled unless plugins.auth.auto_session.enabled = true in config.
+
+        _auto_cfg = self.config.get("auto_session", {})
+        _auto_enabled = _auto_cfg.get("enabled", False)
+
+        @app.post("/auth/auto-session")
+        async def create_auto_session(http_request: Request):
+            """
+            Create a server-credential-backed auto session for embedded widgets.
+            The server reads its configured database credentials (e.g. BigQuery
+            service account) and returns a short-lived session_id.
+
+            Requires plugins.auth.auto_session.enabled = true in config.yaml.
+            """
+            if not _auto_enabled:
+                raise HTTPException(403, "Auto-session is not enabled")
+
+            # Optional Origin check
+            allowed_origins = _auto_cfg.get("allowed_origins", [])
+            if allowed_origins:
+                origin = http_request.headers.get("origin", "")
+                if origin not in allowed_origins:
+                    raise HTTPException(403, f"Origin '{origin}' not allowed for auto-session")
+
+            try:
+                from src.core.config_manager_enhanced import config_manager
+                full_config = config_manager.get_config()
+
+                # Build session db_config from the server's database section
+                db_section = full_config.get("database", {})
+                provider = db_section.get("provider", "")
+                if not provider:
+                    raise HTTPException(500, "No database provider configured on server")
+
+                provider_cfg = db_section.get(provider, {})
+                if not provider_cfg:
+                    raise HTTPException(500, f"No config found for provider '{provider}'")
+
+                db_config = {
+                    "provider": provider,
+                    provider: provider_cfg,
+                }
+
+                ttl_hours = _auto_cfg.get("ttl_hours", 1)
+                ttl_minutes = int(ttl_hours * 60)
+                label = _auto_cfg.get("label", "auto-session")
+
+                session_id = self.session_manager.create_session(
+                    username=label,
+                    db_config=db_config,
+                    ttl_minutes=ttl_minutes,
+                )
+
+                return {
+                    "success": True,
+                    "session_id": session_id,
+                    "ttl_minutes": ttl_minutes,
+                }
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"❌ Auto-session error: {e}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(500, f"Auto-session creation failed: {str(e)}")
 
     def _build_db_config(self, request: LoginRequest) -> Dict[str, Any]:
         """Build database config from login request"""

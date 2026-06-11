@@ -557,7 +557,7 @@ function renderDataTable(data) {
     let html = '<table class="table table-hover table-sm">';
 
     // Header
-    html += '<thead class="table-light"><tr>';
+    html += '<thead><tr>';
     columns.forEach(col => {
         html += `<th>${escapeHtml(formatOperationName(col))}</th>`;
     });

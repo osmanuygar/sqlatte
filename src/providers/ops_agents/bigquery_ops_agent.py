@@ -998,6 +998,12 @@ class BigQueryOpsAgent(BaseOpsAgent):
         """
         Diagnose worker skew and bottlenecks for a specific job
         """
+        from src.core.sql_validator import validate_job_id
+        try:
+            job_id = validate_job_id(job_id)
+        except ValueError as exc:
+            return OperationResult(success=False, operation="analyze_data_skew", data=[], error=str(exc))
+
         sql = f"""
             SELECT
                 stage_id,
@@ -1236,26 +1242,31 @@ class BigQueryOpsAgent(BaseOpsAgent):
         """
         Who accessed which table recently
         """
-        # Parse table name
+        from src.core.sql_validator import validate_identifier
         parts = table_name.split('.')
-        table_id = parts[-1]
-        dataset_id = parts[0] if len(parts) == 2 else None
+        try:
+            table_id = validate_identifier(parts[-1])
+            dataset_id = validate_identifier(parts[0]) if len(parts) == 2 else None
+        except ValueError as exc:
+            return OperationResult(success=False, operation="get_recent_table_users", data=[], error=str(exc))
+
+        days = max(1, min(int(days), 365))
 
         extra_filter = ""
         if dataset_id:
             extra_filter = f"AND ref.dataset_id = '{dataset_id}'"
 
         sql = f"""
-            SELECT DISTINCT 
-                user_email, 
-                creation_time, 
+            SELECT DISTINCT
+                user_email,
+                creation_time,
                 SUBSTR(query, 1, 100) AS query_preview
             FROM `{self.project_id}.region-{self.region}.INFORMATION_SCHEMA.JOBS_BY_PROJECT`,
             UNNEST(referenced_tables) AS ref
-            WHERE ref.table_id = '{table_id}' 
+            WHERE ref.table_id = '{table_id}'
                 {extra_filter}
                 AND creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
-            ORDER BY creation_time DESC 
+            ORDER BY creation_time DESC
             LIMIT 50
         """
 

@@ -7,6 +7,7 @@ Provides REST endpoints for operational playbook execution
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+from src.core.error_utils import server_error
 
 router = APIRouter(prefix="/ops-agent", tags=["BigQuery Ops"])
 
@@ -104,7 +105,7 @@ async def switch_project(request: OpsSwitchProjectRequest):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 # ═══════════════════════════════════════════════════
