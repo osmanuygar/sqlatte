@@ -6,8 +6,11 @@ import time
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
 from src.core.rate_limiter import RateLimitMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -62,6 +65,7 @@ from src.api import scheduled_routes
 # Plugin system
 from src.plugins.base_plugin import plugin_manager
 from src.plugins.auth_plugin import create_auth_plugin
+from src.core.error_utils import server_error
 
 # Load configuration from file
 CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
@@ -183,6 +187,43 @@ app.add_middleware(
 
 # Rate limiting (reads config at runtime — enable via rate_limiting.enabled: true)
 app.add_middleware(RateLimitMiddleware)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add hardening headers to every HTTP response."""
+
+    async def dispatch(
+        self,
+        request: StarletteRequest,
+        call_next,
+    ) -> StarletteResponse:
+        response = await call_next(request)
+        # Prevent MIME-type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Deny framing (clickjacking protection)
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        # Legacy XSS filter
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Strict referrer policy
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Basic CSP — allow same-origin resources + CDN scripts used by the UI
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
+            "font-src 'self' fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'self';"
+        )
+        # Permissions Policy — disable unused browser features
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=()"
+        )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Mount static files (CSS, JS)
 STATIC_DIR = os.path.join(PROJECT_ROOT, 'frontend', 'static')
@@ -519,12 +560,11 @@ async def health_check():
 
 @app.get("/config")
 async def get_config():
-    """Get current configuration (sanitized)"""
+    """Return minimal public config — provider names only, no connection details."""
     return {
         "llm_provider": config['llm']['provider'],
         "db_provider": config['database']['provider'],
         "llm_model": llm_provider.get_model_name(),
-        "db_info": db_provider.get_connection_info()
     }
 
 
@@ -765,8 +805,8 @@ async def schedules_admin_page():
 
 
 @app.post("/reload-providers")
-async def trigger_reload_providers():
-    """Reload providers after configuration change"""
+async def trigger_reload_providers(admin_user: str = Depends(require_admin)):
+    """Reload providers after configuration change (admin only)."""
     try:
         reload_providers()
 
@@ -777,7 +817,7 @@ async def trigger_reload_providers():
             "db_provider": db_provider.get_connection_info()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e)
 
 
 @app.get("/tables")
@@ -792,7 +832,7 @@ async def list_tables():
         )
         return {"tables": tables}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise server_error(e)
 
 
 @app.get("/schema/{table_name}")
@@ -807,7 +847,7 @@ async def get_schema(table_name: str):
         )
         return {"table": table_name, "schema": schema}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise server_error(e)
 
 
 @app.post("/schema/multiple")
@@ -837,15 +877,26 @@ async def get_multiple_schemas(request: dict):
             "combined_schema": combined_schema.strip()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise server_error(e)
 
 
 @app.post("/query")
-async def process_query(request: QueryRequest):
+async def process_query(request: QueryRequest, http_request: Request):
     """
     ASYNC query processor - NON-BLOCKING!
     Multiple requests can run in parallel
     """
+    # KRT-01: When query.require_session is enabled in config, enforce X-Session-ID auth.
+    # This closes the unauthenticated /query path without breaking existing demo deployments.
+    cfg_query = config_manager.get_config().get("query", {})
+    if cfg_query.get("require_session", False):
+        session_header = http_request.headers.get("X-Session-ID", "")
+        if not session_header:
+            raise HTTPException(status_code=401, detail="X-Session-ID header required")
+        from src.plugins.session_manager import auth_session_manager
+        if not auth_session_manager.get_session(session_header):
+            raise HTTPException(status_code=401, detail="Invalid or expired session")
+
     try:
         start_time = time.time()
 
@@ -972,7 +1023,7 @@ async def process_query(request: QueryRequest):
             user_id=None  # ← YENİ
         )
         print(f"❌ Query error: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise server_error(e)
 
 
 # ============================================

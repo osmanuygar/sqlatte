@@ -72,30 +72,34 @@ class SessionManager:
     def create_session(
             self,
             username: str,
-            db_config: Dict[str, Any]
+            db_config: Dict[str, Any],
+            ttl_minutes: Optional[int] = None,
     ) -> str:
         """
-        Create a new authentication session
+        Create a new authentication session.
 
         Args:
-            username: Username
-            db_config: Database configuration for this session
+            username:    Username / label for the session.
+            db_config:   Database configuration for this session.
+            ttl_minutes: Override TTL for this specific session.
+                         Defaults to the manager-wide session_ttl_minutes.
 
         Returns:
-            Session ID
+            Session ID string.
         """
         session_id = str(uuid.uuid4())
+        effective_ttl = ttl_minutes if ttl_minutes is not None else self.session_ttl_minutes
 
         with self._lock:
             session = AuthSession(
                 session_id=session_id,
                 username=username,
                 db_config=db_config,
-                ttl_minutes=self.session_ttl_minutes
+                ttl_minutes=effective_ttl,
             )
             self.sessions[session_id] = session
 
-        print(f"🆕 Session created: {username} ({session_id[:8]}...)")
+        print(f"🆕 Session created: {username} ({session_id[:8]}...) TTL={effective_ttl}min")
         return session_id
 
     def get_session(self, session_id: str) -> Optional[AuthSession]:

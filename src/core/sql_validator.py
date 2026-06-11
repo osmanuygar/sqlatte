@@ -6,6 +6,9 @@ import re
 
 _SAFE_ID = re.compile(r'^[a-zA-Z0-9_][a-zA-Z0-9_.]{0,127}$')
 
+# BigQuery job IDs: project:region.jobId — alphanum, underscores, hyphens, one colon, one dot
+_SAFE_JOB_ID = re.compile(r'^[a-zA-Z0-9_]([a-zA-Z0-9_\-:.]{0,255})$')
+
 
 def validate_identifier(name: str) -> str:
     """Validate a SQL identifier (table/schema name) to prevent injection.
@@ -17,10 +20,51 @@ def validate_identifier(name: str) -> str:
         raise ValueError(f"Invalid identifier: {name!r}")
     return name
 
+
+def validate_job_id(job_id: str) -> str:
+    """Validate a BigQuery job ID before embedding in SQL strings.
+
+    Allows alphanumerics, underscores, hyphens, colons and dots — the only
+    characters that appear in legitimate BigQuery job IDs.
+    Raises ValueError for anything outside this set.
+    """
+    if not _SAFE_JOB_ID.match(job_id):
+        raise ValueError(f"Invalid job_id: {job_id!r}")
+    return job_id
+
 _DANGEROUS = re.compile(
     r'\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|GRANT|REVOKE|'
     r'EXEC|EXECUTE|CALL|MERGE|REPLACE|LOAD|COPY|IMPORT|ATTACH|DETACH|'
     r'RENAME|LOCK|UNLOCK|SET|INTO)\b',
+    re.IGNORECASE,
+)
+
+# Dangerous built-in functions that must never appear in queries, even in SELECT.
+# Covers PostgreSQL file/system access, MySQL file ops, timing/DoS functions,
+# and common data-exfil helpers.
+_DANGEROUS_FUNCS = re.compile(
+    r'\b('
+    # PostgreSQL file/OS access
+    r'pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|'
+    r'pg_ls_logdir|pg_ls_waldir|pg_ls_archive_statusdir|'
+    r'pg_ls_tmpdir|pg_ls_logicalmapdir|pg_ls_logicalsnapdir|'
+    # PostgreSQL code execution / config manipulation
+    r'pg_reload_conf|pg_rotate_logfile|pg_terminate_backend|'
+    r'pg_cancel_backend|pg_start_backup|pg_stop_backup|'
+    # PostgreSQL timing / DoS
+    r'pg_sleep|pg_sleep_for|pg_sleep_until|'
+    # PostgreSQL large objects (arbitrary read/write)
+    r'lo_import|lo_export|lo_creat|lo_create|lo_unlink|'
+    # MySQL file access
+    r'load_file|outfile|dumpfile|'
+    # Oracle / MSSQL dangerous built-ins
+    r'utl_file|utl_http|utl_smtp|utl_tcp|'
+    r'xp_cmdshell|xp_regread|sp_execute|'
+    # Generic injection helpers
+    r'sys\.exec|sys\.fileio|'
+    # BigQuery abuse
+    r'EXTERNAL_QUERY'
+    r')\s*\(',
     re.IGNORECASE,
 )
 
@@ -42,7 +86,11 @@ def is_select_only(sql: str) -> bool:
     first_word = clean.split()[0].upper()
     if first_word not in ('SELECT', 'WITH'):
         return False
-    return not bool(_DANGEROUS.search(clean))
+    if _DANGEROUS.search(clean):
+        return False
+    if _DANGEROUS_FUNCS.search(clean):
+        return False
+    return True
 
 
 def violation_reason(sql: str) -> str:
@@ -56,6 +104,9 @@ def violation_reason(sql: str) -> str:
     m = _DANGEROUS.search(clean)
     if m:
         return f"Query contains forbidden keyword '{m.group().upper()}'"
+    m2 = _DANGEROUS_FUNCS.search(clean)
+    if m2:
+        return f"Query contains forbidden function '{m2.group().rstrip('(').strip()}'"
     return "Query is not a read-only SELECT statement"
 
 

@@ -8,6 +8,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from src.core.error_utils import server_error
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,7 @@ async def generate_dashboard(request: DashboardGenerateRequest):
         logger.info(f"📊 Dashboard query executed: {len(data)} rows, {len(columns)} columns")
     except Exception as e:
         logger.error(f"❌ Dashboard query execution failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Query execution failed: {str(e)}")
+        raise server_error(e)
 
     if not columns:
         raise HTTPException(status_code=400, detail="Query returned no columns")
@@ -235,7 +236,7 @@ async def refresh_dashboard(dashboard_id: str):
         columns, data = db.execute_query(sql)
         logger.info(f"🔄 Dashboard refresh: {len(data)} rows")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Query refresh failed: {str(e)}")
+        raise server_error(e)
 
     # Insights
     insights = []

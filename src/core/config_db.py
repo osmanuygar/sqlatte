@@ -141,9 +141,23 @@ class ConfigDB:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 expires_at TIMESTAMP NOT NULL,
                 last_used_at TIMESTAMP,
-                revoked BOOLEAN DEFAULT FALSE
+                revoked BOOLEAN DEFAULT FALSE,
+                daily_query_limit INTEGER DEFAULT NULL,
+                queries_used_today INTEGER NOT NULL DEFAULT 0,
+                usage_reset_date DATE DEFAULT CURRENT_DATE
             )
         """)
+
+        # Migrate existing tables: add budget columns if missing
+        if self.db_type == "postgresql":
+            for col_def in [
+                "daily_query_limit INTEGER DEFAULT NULL",
+                "queries_used_today INTEGER NOT NULL DEFAULT 0",
+                "usage_reset_date DATE DEFAULT CURRENT_DATE",
+            ]:
+                cursor.execute(
+                    f"ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS {col_def}"
+                )
 
         self.conn.commit()
         cursor.close()
@@ -742,14 +756,60 @@ class ConfigDB:
     # API Token Management
     # ============================================
 
+    def get_default_token_limit(self) -> Optional[int]:
+        """Return the platform-wide default daily query limit for new tokens (None = unlimited)."""
+        raw = self.get_config("tokens.default_daily_limit", default=None)
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return None
+
+    def set_default_token_limit(self, limit: Optional[int], changed_by: str = "admin") -> None:
+        """Set the platform-wide default daily query limit (None clears it → unlimited)."""
+        if limit is None:
+            self._set_config("tokens.default_daily_limit", "", "tokens", "int", False,
+                             "Default daily query limit per API token (empty = unlimited)")
+        else:
+            self._set_config("tokens.default_daily_limit", str(int(limit)), "tokens", "int", False,
+                             "Default daily query limit per API token (empty = unlimited)")
+
+    def admin_set_token_limit(self, token_id: int, limit: Optional[int]) -> bool:
+        """Override daily query limit on a specific token by DB id (admin only). None = unlimited."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE api_tokens SET daily_query_limit = %s WHERE id = %s",
+            (limit, token_id)
+        )
+        affected = cursor.rowcount
+        self.conn.commit()
+        cursor.close()
+        return affected > 0
+
     def create_api_token(
         self,
         username: str,
         db_config: Dict[str, Any],
         ttl_hours: int = 24,
-        description: str = "MCP Token"
+        description: str = "MCP Token",
+        daily_query_limit: Optional[int] = None,
     ) -> str:
-        """Create a persisted API token storing encrypted db_config."""
+        """Create a persisted API token storing encrypted db_config.
+
+        daily_query_limit: queries per day cap; None → inherit platform default.
+        If a platform default exists and the caller passes a higher value, the
+        platform default wins (user cannot exceed the admin-set ceiling).
+        """
+        platform_default = self.get_default_token_limit()
+
+        if daily_query_limit is None:
+            effective_limit = platform_default
+        elif platform_default is not None:
+            effective_limit = min(daily_query_limit, platform_default)
+        else:
+            effective_limit = daily_query_limit
+
         token = secrets.token_urlsafe(48)
         db_config_json = json.dumps(db_config)
         encrypted = self._encrypt(db_config_json)
@@ -758,22 +818,31 @@ class ConfigDB:
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            INSERT INTO api_tokens (token, username, db_config_encrypted, description, ttl_hours, expires_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO api_tokens
+                (token, username, db_config_encrypted, description, ttl_hours, expires_at, daily_query_limit)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
-            (token, username, encrypted, description, ttl_hours, expires_at)
+            (token, username, encrypted, description, ttl_hours, expires_at, effective_limit)
         )
         self.conn.commit()
         cursor.close()
-        print(f"🔑 API token created for {username} (TTL: {ttl_hours}h)")
+        limit_str = f"{effective_limit}/day" if effective_limit is not None else "unlimited"
+        print(f"🔑 API token created for {username} (TTL: {ttl_hours}h, limit: {limit_str})")
         return token
 
     def validate_api_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """Validate token and return {username, db_config} or None."""
+        """Validate token and return token data or None.
+
+        Returns:
+          None                             — invalid / expired / revoked
+          {"_error": "budget_exceeded", …} — token is valid but daily limit hit
+          {"username": …, "db_config": …}  — success
+        """
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            SELECT username, db_config_encrypted, expires_at, revoked
+            SELECT username, db_config_encrypted, expires_at, revoked,
+                   daily_query_limit, queries_used_today, usage_reset_date
             FROM api_tokens WHERE token = %s
             """,
             (token,)
@@ -784,6 +853,7 @@ class ConfigDB:
             return None
 
         username, encrypted, expires_at, revoked = row[0], row[1], row[2], row[3]
+        daily_limit, queries_used_today, usage_reset_date = row[4], row[5], row[6]
 
         if revoked:
             cursor.close()
@@ -793,8 +863,28 @@ class ConfigDB:
             cursor.close()
             return None
 
+        today = datetime.now().date()
+
+        # Reset daily counter when the calendar date has rolled over
+        if usage_reset_date != today:
+            cursor.execute(
+                "UPDATE api_tokens SET queries_used_today = 0, usage_reset_date = %s WHERE token = %s",
+                (today, token)
+            )
+            self.conn.commit()
+            queries_used_today = 0
+
+        # Enforce per-token daily budget
+        if daily_limit is not None and queries_used_today >= daily_limit:
+            cursor.close()
+            return {
+                "_error": "budget_exceeded",
+                "daily_limit": daily_limit,
+                "queries_used_today": queries_used_today,
+            }
+
         cursor.execute(
-            "UPDATE api_tokens SET last_used_at = %s WHERE token = %s",
+            "UPDATE api_tokens SET last_used_at = %s, queries_used_today = queries_used_today + 1 WHERE token = %s",
             (datetime.now(), token)
         )
         self.conn.commit()
@@ -820,7 +910,8 @@ class ConfigDB:
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            SELECT token, description, ttl_hours, created_at, expires_at, last_used_at
+            SELECT token, description, ttl_hours, created_at, expires_at, last_used_at,
+                   daily_query_limit, queries_used_today, usage_reset_date
             FROM api_tokens
             WHERE username = %s AND revoked = FALSE AND expires_at > %s
             ORDER BY created_at DESC
@@ -829,6 +920,7 @@ class ConfigDB:
         )
         rows = cursor.fetchall()
         cursor.close()
+        today = datetime.now().date()
         return [
             {
                 "token_prefix": row[0][:12] + "...",
@@ -838,6 +930,8 @@ class ConfigDB:
                 "created_at": row[3].isoformat() if row[3] else None,
                 "expires_at": row[4].isoformat() if row[4] else None,
                 "last_used_at": row[5].isoformat() if row[5] else None,
+                "daily_query_limit": row[6],
+                "queries_used_today": row[7] if row[8] == today else 0,
             }
             for row in rows
         ]
@@ -847,8 +941,8 @@ class ConfigDB:
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            SELECT token, username, description, ttl_hours, created_at, expires_at,
-                   last_used_at, revoked
+            SELECT id, token, username, description, ttl_hours, created_at, expires_at,
+                   last_used_at, revoked, daily_query_limit, queries_used_today, usage_reset_date
             FROM api_tokens
             ORDER BY created_at DESC
             """
@@ -856,28 +950,32 @@ class ConfigDB:
         rows = cursor.fetchall()
         cursor.close()
         now = datetime.now()
+        today = now.date()
         return [
             {
-                "token_prefix": row[0][:12] + "...",
-                "token": row[0],
-                "username": row[1],
-                "description": row[2],
-                "ttl_hours": row[3],
-                "created_at": row[4].isoformat() if row[4] else None,
-                "expires_at": row[5].isoformat() if row[5] else None,
-                "last_used_at": row[6].isoformat() if row[6] else None,
-                "revoked": bool(row[7]),
-                "expired": row[5] is not None and now > row[5],
+                "id": row[0],
+                "token_prefix": row[1][:12] + "...",
+                # Full token intentionally omitted — write-once, shown at creation only.
+                "username": row[2],
+                "description": row[3],
+                "ttl_hours": row[4],
+                "created_at": row[5].isoformat() if row[5] else None,
+                "expires_at": row[6].isoformat() if row[6] else None,
+                "last_used_at": row[7].isoformat() if row[7] else None,
+                "revoked": bool(row[8]),
+                "expired": row[6] is not None and now > row[6],
+                "daily_query_limit": row[9],
+                "queries_used_today": row[10] if row[11] == today else 0,
             }
             for row in rows
         ]
 
-    def admin_revoke_token(self, token: str) -> bool:
-        """Revoke any token regardless of owner (admin only)."""
+    def admin_revoke_token(self, token_id: int) -> bool:
+        """Revoke any token by its DB id (admin only). Accepts integer id, not the token value."""
         cursor = self.conn.cursor()
         cursor.execute(
-            "UPDATE api_tokens SET revoked = TRUE WHERE token = %s",
-            (token,)
+            "UPDATE api_tokens SET revoked = TRUE WHERE id = %s",
+            (token_id,)
         )
         affected = cursor.rowcount
         self.conn.commit()
