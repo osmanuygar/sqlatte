@@ -134,7 +134,9 @@ class LLMInsightsEngine:
 
             # Build prompt — use override if provided (e.g. ops_insights_generation from config)
             if prompt_override:
-                prompt = prompt_override.format(
+                import string as _string
+                # safe_substitute prevents attribute-access exploits like {x.__class__...}
+                prompt = _string.Template(prompt_override).safe_substitute(
                     user_question=context['question'],
                     data_preview=self._format_data_sample(context['columns'], context['data_sample']),
                     row_count=context['row_count'],

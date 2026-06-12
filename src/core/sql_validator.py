@@ -55,11 +55,18 @@ _DANGEROUS_FUNCS = re.compile(
     r'pg_sleep|pg_sleep_for|pg_sleep_until|'
     # PostgreSQL large objects (arbitrary read/write)
     r'lo_import|lo_export|lo_creat|lo_create|lo_unlink|'
+    # PostgreSQL cross-DB / exfil helpers
+    r'dblink|dblink_exec|dblink_connect|dblink_open|'
+    r'query_to_xml|query_to_xmlschema|cursor_to_xml|'
+    r'pg_copy_to|pg_copy_from|'
     # MySQL file access
     r'load_file|outfile|dumpfile|'
     # Oracle / MSSQL dangerous built-ins
     r'utl_file|utl_http|utl_smtp|utl_tcp|'
     r'xp_cmdshell|xp_regread|sp_execute|'
+    # HTTP/DNS exfil functions (various dialects)
+    r'http_get|http_post|http_put|http_delete|'
+    r'aws_commons|aws_s3|'
     # Generic injection helpers
     r'sys\.exec|sys\.fileio|'
     # BigQuery abuse
