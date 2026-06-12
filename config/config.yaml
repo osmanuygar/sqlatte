@@ -47,6 +47,19 @@ plugins:
     session_ttl_minutes: 480
     max_workers: 40
 
+    # Auto-session: server-credential-backed short-lived sessions for embedded widgets.
+    # The /auth/auto-session endpoint creates a session using the server's configured DB
+    # credentials so unauthenticated widgets (e.g. sqlatte-badge.js) can reach governed
+    # endpoints (/auth/query, /auth/tables, /auth/schema/…) without user login.
+    auto_session:
+      enabled: true            # Set true to activate the endpoint
+      ttl_hours: 1              # Session lifetime (shorter than regular 8-hour sessions)
+      label: "auto-session"     # Username label for audit logs
+      # allowed_origins: []     # Uncomment & fill to restrict by Origin header
+
+    # Database Provider Configuration
+    # Users will NOT see this - it's server-side only    
+    
     db_provider: "trino"
     db_host: "${TRINO_HOST}"
     db_port: 443
@@ -148,7 +161,10 @@ query:
   default_limit: 100
   max_limit: 1000
   timeout: 300
-
+  # KRT-01: Require X-Session-ID on the legacy /query endpoint.
+  # When true, unauthenticated callers receive HTTP 401.
+  # The auth-widget (/auth/query) and badge auto-session are unaffected.
+  require_session: true
 # ============================================
 # Scheduler & Email
 # ============================================
@@ -260,7 +276,7 @@ insights:
   include_statistical: true
 
 rate_limiting:
-  enabled: false
+  enabled: true
   strategy: sliding_window
   key_type: session_id
   requests_per_window: 30
