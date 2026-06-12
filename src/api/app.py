@@ -31,7 +31,7 @@ from src.core.config_manager_enhanced import config_manager
 from src.core.conversation_manager import conversation_manager
 from src.core.query_history import query_history
 from src.api.admin_routes_enhanced import router as admin_router
-from src.api.admin_auth import require_admin
+from src.api.admin_auth import require_admin, require_admin_api
 from src.api.demo_routes import router as demo_router
 from src.api.analytics_routes import router as analytics_router
 from src.core.analytics_db_postgres import analytics_db
@@ -144,7 +144,6 @@ def reload_providers():
         },
         "database": {
             "provider": current_config['database']['provider'],
-            "info": db_provider.get_connection_info()
         }
     }
 
@@ -170,17 +169,38 @@ def initialize_plugins(app: FastAPI):
 
 
 # Initialize FastAPI
+# ORT-06: Disable interactive docs in production to avoid exposing the full attack surface.
+# Set app.expose_docs: true in config.yaml (or EXPOSE_DOCS=1 env) only for dev/staging.
+_expose_docs = (
+    config.get("app", {}).get("expose_docs", False)
+    or os.environ.get("EXPOSE_DOCS", "").lower() in ("1", "true", "yes")
+)
 app = FastAPI(
     title=config['app']['name'],
     version=config['app']['version'],
-    description="☕ Serving perfect SQL queries with async processing"
+    description="☕ Serving perfect SQL queries with async processing",
+    docs_url="/docs" if _expose_docs else None,
+    redoc_url="/redoc" if _expose_docs else None,
+    openapi_url="/openapi.json" if _expose_docs else None,
 )
 
 # CORS
+_cors_origins = config['cors']['allow_origins']
+_cors_credentials = config['cors']['allow_credentials']
+# YUK-02: wildcard origin + credentials is exploitable (attacker site can read credentialed responses).
+# Enforce: if credentials=true then origin must be explicit; otherwise disable credentials.
+if _cors_credentials and (not _cors_origins or _cors_origins == ["*"] or "*" in _cors_origins):
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "SECURITY: allow_credentials=true with wildcard CORS origin is unsafe. "
+        "Forcing allow_credentials=false. Set explicit allow_origins in config.yaml to enable credentials."
+    )
+    _cors_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config['cors']['allow_origins'],
-    allow_credentials=config['cors']['allow_credentials'],
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_credentials,
     allow_methods=config['cors']['allow_methods'],
     allow_headers=config['cors']['allow_headers'],
 )
@@ -234,15 +254,20 @@ if os.path.exists(STATIC_DIR):
 initialize_plugins(app)
 
 # Include routers
+# YUK-05: management-plane API routers require admin session.
+# require_admin_api returns 401 JSON (not a 307 HTML redirect) so fetch() callers
+# get a parseable error instead of an HTML login page.
+_admin_api_dep = [Depends(require_admin_api)]
+
 app.include_router(admin_router)
 app.include_router(demo_router)
 app.include_router(analytics_router)
 app.include_router(scheduled_routes.router)
 app.include_router(dashboard_router)
-app.include_router(semantic_router)
-app.include_router(ops_agent_routes.router)
-app.include_router(alarm_routes.router)
-app.include_router(audit_router)
+app.include_router(semantic_router,         dependencies=_admin_api_dep)
+app.include_router(ops_agent_routes.router, dependencies=_admin_api_dep)
+app.include_router(alarm_routes.router,     dependencies=_admin_api_dep)
+app.include_router(audit_router,            dependencies=_admin_api_dep)
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
@@ -533,28 +558,17 @@ async def config_admin_page():
 
 @app.get("/health")
 async def health_check():
-    """Health check for all providers"""
+    """Minimal health check — provider names and up/down status only (no connection details)."""
     return {
         "status": "healthy",
-        "app": config['app']['name'],
-        "version": config['app']['version'],
         "llm": {
             "provider": config['llm']['provider'],
-            "model": llm_provider.get_model_name(),
             "healthy": llm_provider.health_check()
         },
         "database": {
             "provider": config['database']['provider'],
-            "info": db_provider.get_connection_info(),
             "healthy": db_provider.health_check()
         },
-        "conversations": conversation_manager.get_stats(),
-        "query_history": query_history.get_stats(),
-        "insights_engine": "active",
-        "thread_pool": {
-            "workers": 20,
-            "active": MAIN_EXECUTOR._threads.__len__() if hasattr(MAIN_EXECUTOR, '_threads') else 0
-        }
     }
 
 
@@ -814,7 +828,7 @@ async def trigger_reload_providers(admin_user: str = Depends(require_admin)):
             "success": True,
             "message": "Providers reloaded successfully",
             "llm_provider": llm_provider.get_model_name(),
-            "db_provider": db_provider.get_connection_info()
+            "db_provider": config['database']['provider'],
         }
     except Exception as e:
         raise server_error(e)
@@ -1265,8 +1279,8 @@ async def dashboard_view_page():
         return HTMLResponse(content="<h1>Dashboard page not found</h1>", status_code=404)
 
 @app.get("/ops-agent", response_class=HTMLResponse)
-async def ops_agent_page():
-    """BigQuery Ops Console"""
+async def ops_agent_page(admin_user: str = Depends(require_admin)):
+    """BigQuery Ops Console — requires admin session."""
     ops_path = os.path.join(PROJECT_ROOT, 'frontend', 'ops-agents.html')
     try:
         with open(ops_path, 'r', encoding='utf-8') as f:

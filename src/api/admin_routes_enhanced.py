@@ -11,7 +11,17 @@ from src.api.admin_auth import (
     create_session,
     destroy_session,
     validate_session,
+    _admin_client_ip,
+    _check_admin_login_allowed,
+    _record_admin_failed_login,
+    _clear_admin_login_attempts,
 )
+
+
+def _secure_cookies() -> bool:
+    """Return True when the server is running behind HTTPS or explicitly configured for it."""
+    cfg = config_manager.get_config()
+    return cfg.get("admin", {}).get("secure_cookies", os.environ.get("HTTPS", "").lower() in ("1", "true", "yes"))
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -115,20 +125,24 @@ async def login_post(
     Form POST → credentials doğrula → cookie set et → redirect.
     JavaScript fetch ile de çağrılabilir (JSON body değil Form data).
     """
+    ip = _admin_client_ip(request)
+    _check_admin_login_allowed(ip)
+
     if verify_credentials(username, password):
+        _clear_admin_login_attempts(ip)
         token = create_session(username)
         response = RedirectResponse(next, status_code=302)
         response.set_cookie(
             key="sqlatte_admin",
             value=token,
-            httponly=True,       # JS erişemez
-            secure=False,        # Production'da True yap (HTTPS)
-            samesite="lax",
+            httponly=True,
+            secure=_secure_cookies(),
+            samesite="strict",
             max_age=_get_session_ttl_seconds()
         )
         return response
 
-    # Hatalı credentials → login sayfasına hata ile dön
+    _record_admin_failed_login(ip)
     return RedirectResponse("/admin/login?error=1", status_code=302)
 
 
@@ -139,23 +153,28 @@ async def login_json(request: Request):
     Body: { "username": "...", "password": "..." }
     Response: { "success": true/false }
     """
+    ip = _admin_client_ip(request)
+    _check_admin_login_allowed(ip)
+
     body = await request.json()
     username = body.get("username", "")
     password = body.get("password", "")
 
     if verify_credentials(username, password):
+        _clear_admin_login_attempts(ip)
         token = create_session(username)
         response = JSONResponse({"success": True})
         response.set_cookie(
             key="sqlatte_admin",
             value=token,
             httponly=True,
-            secure=False,        # Production'da True yap (HTTPS)
-            samesite="lax",
+            secure=_secure_cookies(),
+            samesite="strict",
             max_age=_get_session_ttl_seconds()
         )
         return response
 
+    _record_admin_failed_login(ip)
     return JSONResponse(
         {"success": False, "detail": "Invalid credentials"},
         status_code=401

@@ -743,14 +743,16 @@ class ConfigDB:
         return self.cipher.encrypt(value.encode()).decode()
 
     def _decrypt(self, value: str) -> str:
-        """Decrypt sensitive value"""
+        """Decrypt sensitive value. Raises RuntimeError on failure instead of leaking ciphertext."""
         if not value:
             return value
         try:
             return self.cipher.decrypt(value.encode()).decode()
         except Exception as e:
-            print(f"⚠️  Decryption failed: {e}")
-            return value
+            raise RuntimeError(
+                "Decryption failed — the encryption key may have changed or the value is corrupt. "
+                "Set a stable ENCRYPTION_KEY and re-save affected config values."
+            ) from e
 
     # ============================================
     # API Token Management
@@ -924,7 +926,6 @@ class ConfigDB:
         return [
             {
                 "token_prefix": row[0][:12] + "...",
-                "token": row[0],
                 "description": row[1],
                 "ttl_hours": row[2],
                 "created_at": row[3].isoformat() if row[3] else None,

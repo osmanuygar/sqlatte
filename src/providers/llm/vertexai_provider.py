@@ -46,21 +46,39 @@ class VertexAIProvider(LLMProvider):
                 vertexai.init(project=self.project_id, location=self.location)
 
             elif self.credentials_json:
-                # Method 2: Use JSON content directly
+                # Method 2: Use JSON content directly — prefer in-memory if supported
                 import json
+                import os
+                import stat
                 import tempfile
 
-                # Create temporary credentials file
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                    if isinstance(self.credentials_json, str):
-                        f.write(self.credentials_json)
-                    else:
-                        json.dump(self.credentials_json, f)
-                    temp_path = f.name
-
-                import os
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_path
-                vertexai.init(project=self.project_id, location=self.location)
+                cred_data = (
+                    self.credentials_json
+                    if isinstance(self.credentials_json, str)
+                    else json.dumps(self.credentials_json)
+                )
+                try:
+                    from google.oauth2 import service_account
+                    info = json.loads(cred_data)
+                    sa_creds = service_account.Credentials.from_service_account_info(
+                        info,
+                        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                    )
+                    vertexai.init(project=self.project_id, location=self.location, credentials=sa_creds)
+                except Exception:
+                    # Fallback: write to a restricted temp file and clean up afterwards
+                    fd, temp_path = tempfile.mkstemp(suffix='.json')
+                    try:
+                        os.chmod(temp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600 — owner only
+                        with os.fdopen(fd, 'w') as f:
+                            f.write(cred_data)
+                        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_path
+                        vertexai.init(project=self.project_id, location=self.location)
+                    finally:
+                        try:
+                            os.unlink(temp_path)
+                        except OSError:
+                            pass
 
             else:
                 # Method 3: Use default credentials (ADC - Application Default Credentials)

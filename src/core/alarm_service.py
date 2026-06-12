@@ -447,6 +447,25 @@ class AlarmService:
             logger.warning("Jira config incomplete – skipping ticket creation")
             return None
 
+        # ORT-10: Validate Jira URL to prevent SSRF — must be https and a non-private host.
+        try:
+            import urllib.parse, ipaddress as _ip
+            parsed = urllib.parse.urlparse(url)
+            if parsed.scheme != "https":
+                logger.error("Jira URL must use https — skipping to prevent plaintext token exposure")
+                return None
+            host = parsed.hostname or ""
+            try:
+                addr = _ip.ip_address(host)
+                if addr.is_private or addr.is_loopback or addr.is_link_local:
+                    logger.error("Jira URL points to a private/loopback address — skipping (SSRF guard)")
+                    return None
+            except ValueError:
+                pass  # hostname, not a bare IP — format already validated by config
+        except Exception as _url_exc:
+            logger.error("Jira URL validation failed: %s", _url_exc)
+            return None
+
         project_label = alarm.project_id or "default"
         threshold = alarm.condition.threshold
 
@@ -551,8 +570,9 @@ class AlarmService:
             body = e.read().decode(errors="replace")
             error_msg = f"HTTP {e.code}: {body[:300]}"
             logger.error(
-                f"Failed to create Jira ticket for '{alarm.name}': {e} | "
-                f"status={e.code} url={e.url} response_body={body}"
+                "Failed to create Jira ticket for '%s': status=%s response_body=%s",
+                alarm.name, e.code, body[:300]
+                # url intentionally omitted — may contain auth tokens in redirects
             )
             return None, error_msg
         except Exception as e:

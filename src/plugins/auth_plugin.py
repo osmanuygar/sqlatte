@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, Dict, Any, List
 import asyncio
+import ipaddress
 import re
 import threading
 import time as _time
@@ -72,6 +73,15 @@ class LoginRequest(BaseModel):
     def validate_host(cls, v: str) -> str:
         if not v or len(v) > 253 or not _SAFE_HOST.match(v):
             raise ValueError("host contains invalid characters or format")
+        # Block SSRF via private/loopback/link-local IP addresses
+        try:
+            addr = ipaddress.ip_address(v)
+            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+                raise ValueError("host resolves to a reserved or private address")
+        except ValueError as exc:
+            if "reserved" in str(exc) or "private" in str(exc):
+                raise
+            # v is a hostname (not a bare IP) — format already validated above
         return v
 
     @field_validator("username", "password")

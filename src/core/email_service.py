@@ -86,9 +86,11 @@ class EmailService:
                     part = MIMEBase('application', 'octet-stream')
                     part.set_payload(attachment['content'])
                     encoders.encode_base64(part)
+                    # Use keyword form so email library quotes the value and prevents header injection
                     part.add_header(
                         'Content-Disposition',
-                        f'attachment; filename={attachment["filename"]}'
+                        'attachment',
+                        filename=str(attachment["filename"])
                     )
                     msg.attach(part)
 
