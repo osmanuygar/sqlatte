@@ -41,11 +41,11 @@ async function loadAgentStatus() {
         const statusHtml = `
             <div class="status-item">
                 <small>Project</small>
-                <div><strong>${data.project || 'N/A'}</strong></div>
+                <div><strong>${escapeHtml(data.project || 'N/A')}</strong></div>
             </div>
             <div class="status-item">
                 <small>Region</small>
-                <div><strong>${data.region || 'N/A'}</strong></div>
+                <div><strong>${escapeHtml(data.region || 'N/A')}</strong></div>
             </div>
             <div class="status-item">
                 <small>Status</small>
@@ -58,11 +58,11 @@ async function loadAgentStatus() {
             ${data.datasets_accessible ? `
             <div class="status-item">
                 <small>Datasets</small>
-                <div><strong>${data.datasets_accessible}</strong></div>
+                <div><strong>${escapeHtml(String(data.datasets_accessible))}</strong></div>
             </div>
             ` : ''}
             <div class="status-item">
-                <small style="color: #c9b9a8;">${data.message}</small>
+                <small style="color: #c9b9a8;">${escapeHtml(data.message || '')}</small>
             </div>
         `;
 
@@ -109,21 +109,23 @@ function renderProjectDropdown(projects) {
     const active = projects.find(p => p.active) || projects[0];
     activeLabel.textContent = `${active.project_id}  (${active.region})`;
 
-    menu.innerHTML = projects.map(p => `
+    menu.innerHTML = projects.map(p => {
+        const safeId = JSON.stringify(String(p.project_id)).replace(/"/g, '&quot;');
+        return `
         <li>
             <a class="dropdown-item ${p.active ? 'active' : ''}"
                href="#"
-               onclick="switchProject('${p.project_id}'); return false;"
+               onclick="switchProject(${safeId}); return false;"
                style="
                    color: ${p.active ? 'var(--bg)' : 'var(--text)'};
                    background: ${p.active ? 'var(--caramel)' : 'transparent'};
                    padding: 0.5rem 1rem;
                ">
-                <strong>${p.project_id}</strong>
-                <small class="d-block" style="opacity: 0.75;">${p.region}</small>
+                <strong>${escapeHtml(p.project_id)}</strong>
+                <small class="d-block" style="opacity: 0.75;">${escapeHtml(p.region)}</small>
             </a>
-        </li>
-    `).join('');
+        </li>`;
+    }).join('');
 }
 
 async function switchProject(projectId) {
@@ -178,7 +180,7 @@ async function loadOperations() {
             document.getElementById('operations-list').innerHTML = `
                 <div class="p-4 text-center text-muted">
                     <p>No operations available</p>
-                    <small>${data.message || 'Ops agent not configured'}</small>
+                    <small>${escapeHtml(data.message || 'Ops agent not configured')}</small>
                 </div>
             `;
             return;
@@ -204,24 +206,25 @@ async function loadOperations() {
 
             html += `
                 <div class="list-group-item category-header">
-                    <strong>${getCategoryIcon(category)} ${category.toUpperCase()}</strong>
+                    <strong>${getCategoryIcon(category)} ${escapeHtml(category.toUpperCase())}</strong>
                 </div>
             `;
 
             grouped[category].forEach(op => {
+                const safeOpName = JSON.stringify(String(op.name)).replace(/"/g, '&quot;');
                 html += `
                     <a href="#"
                        class="list-group-item list-group-item-action operation-item"
-                       onclick="selectOperation('${op.name}'); return false;"
-                       data-operation="${op.name}">
+                       onclick="selectOperation(${safeOpName}); return false;"
+                       data-operation="${escapeHtml(op.name)}">
                         <div class="d-flex justify-content-between align-items-start">
                             <div style="flex: 1;">
                                 <div style="font-size: 0.9rem; font-weight: 500; color: #f5f5f5;">
-                                    ${formatOperationName(op.name)}
+                                    ${escapeHtml(formatOperationName(op.name))}
                                 </div>
-                                <small style="color: #b0b0b0;">${op.description}</small>
+                                <small style="color: #b0b0b0;">${escapeHtml(op.description)}</small>
                             </div>
-                            <small style="color: #888;">~${op.estimated_duration_sec}s</small>
+                            <small style="color: #888;">~${escapeHtml(String(op.estimated_duration_sec))}s</small>
                         </div>
                     </a>
                 `;
@@ -235,7 +238,7 @@ async function loadOperations() {
         document.getElementById('operations-list').innerHTML = `
             <div class="p-4 text-center text-danger">
                 <p>Failed to load operations</p>
-                <small>${error.message}</small>
+                <small>${escapeHtml(error.message)}</small>
             </div>
         `;
         console.error('Failed to load operations:', error);
@@ -312,18 +315,18 @@ function renderParamsForm(params) {
 
         html += `
             <div class="col-md-6">
-                <label for="param-${param.name}" class="form-label">
-                    ${formatOperationName(param.name)}
+                <label for="param-${escapeHtml(param.name)}" class="form-label">
+                    ${escapeHtml(formatOperationName(param.name))}
                     ${param.required ? '<span class="text-danger">*</span>' : ''}
                 </label>
                 <input
                     type="${param.type === 'int' ? 'number' : 'text'}"
                     class="form-control"
-                    id="param-${param.name}"
-                    value="${defaultVal}"
+                    id="param-${escapeHtml(param.name)}"
+                    value="${escapeHtml(String(defaultVal))}"
                     ${required}
-                    placeholder="${param.type}">
-                <small class="text-muted">${param.type}${param.default !== undefined ? ` (default: ${param.default})` : ''}</small>
+                    placeholder="${escapeHtml(param.type)}">
+                <small class="text-muted">${escapeHtml(param.type)}${param.default !== undefined ? ` (default: ${escapeHtml(String(param.default))})` : ''}</small>
             </div>
         `;
     });
@@ -390,7 +393,7 @@ async function executeOperation() {
             <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
-            <p class="mt-3" style="color: #c9b9a8;">Executing ${currentOperation.name}...</p>
+            <p class="mt-3" style="color: #c9b9a8;">Executing ${escapeHtml(currentOperation.name)}...</p>
         </div>
     `;
 
@@ -515,7 +518,7 @@ function renderResults(result) {
             const border = severityBorder[ins.severity] || severityBorder.info;
             return `
                 <div style="border-left: 3px solid ${border}; padding: 8px 12px; margin-bottom: 8px; background: rgba(255,255,255,0.04); border-radius: 4px;">
-                    <span style="margin-right: 6px;">${ins.icon || '💡'}</span>
+                    <span style="margin-right: 6px;">${escapeHtml(ins.icon || '💡')}</span>
                     <span style="font-size: 0.88rem;">${escapeHtml(ins.message)}</span>
                 </div>
             `;

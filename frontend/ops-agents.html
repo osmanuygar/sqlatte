@@ -997,6 +997,12 @@
     <!-- ALARMS + SCHEDULER JS                            -->
     <!-- ══════════════════════════════════════════════════ -->
     <script>
+    function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = (s == null) ? '' : String(s);
+        return d.innerHTML;
+    }
+
     let _projects = [];
 
     // ── view switching ─────────────────────────────────
@@ -1042,7 +1048,7 @@
             if (!sel) return;
             const cur = sel.value;
             sel.innerHTML = '<option value="">— Default (active project) —</option>' +
-                _projects.map(p => `<option value="${p.project_id}">${p.project_id}${p.active?' ✓':''}</option>`).join('');
+                _projects.map(p => `<option value="${escapeHtml(p.project_id)}">${escapeHtml(p.project_id)}${p.active?' ✓':''}</option>`).join('');
             if (cur) sel.value = cur;
         } catch(e) { console.warn('Could not load projects:', e.message); }
     }
@@ -1054,7 +1060,8 @@
         try {
             const data = await apiGet('/ops-agent/alarms/jira-config');
             _jiraConfigured = data.enabled && data.configured;
-            _jiraBaseUrl    = (data.url || '').replace(/\/$/, '') + '/browse';
+            const rawUrl = (data.url || '').replace(/\/$/, '');
+            _jiraBaseUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl + '/browse' : '';
             const el = document.getElementById('jira-config-status');
             if (el) {
                 el.textContent = _jiraConfigured ? '✅ configured' : '⚠️ not configured';
@@ -1080,13 +1087,13 @@
             }
             el.innerHTML = data.alarms.map(a => renderAlarmCard(a)).join('');
         } catch(e) {
-            el.innerHTML = `<div style="color:var(--error);padding:16px;">Failed to load alarms: ${e.message}</div>`;
+            el.innerHTML = `<div style="color:var(--error);padding:16px;">Failed to load alarms: ${escapeHtml(e.message)}</div>`;
         }
     }
 
     function renderAlarmCard(a) {
         const opLabel = {gt:'>',gte:'≥',lt:'<',lte:'≤'}[a.condition?.operator] || '';
-        const proj = a.project_id || '<em style="color:var(--text-dim)">default</em>';
+        const proj = a.project_id ? escapeHtml(a.project_id) : '<em style="color:var(--text-dim)">default</em>';
         const lastTime = a.last_triggered ? new Date(a.last_triggered).toLocaleString() : '—';
         const enabledBadge = a.enabled
             ? '<span class="alarm-badge enabled">Enabled</span>'
@@ -1097,32 +1104,35 @@
             ? '<span class="alarm-badge ok ms-1">✅ OK</span>'
             : '<span class="alarm-badge disabled ms-1">Never run</span>';
         const statusClass = a.enabled ? (a.last_status === 'triggered' ? 'triggered' : a.last_status === 'ok' ? 'ok' : '') : 'disabled';
+        const safeId   = JSON.stringify(String(a.id)).replace(/"/g, '&quot;');
+        const safeName = JSON.stringify(String(a.name)).replace(/"/g, '&quot;');
+        const safeObj  = JSON.stringify(a).replace(/"/g, '&quot;');
         return `
         <div class="alarm-card ${statusClass}">
             <div class="d-flex justify-content-between align-items-start">
                 <div style="flex:1;min-width:0;">
-                    <div style="font-weight:600;color:var(--text-bright);font-size:15px;">${a.name}</div>
+                    <div style="font-weight:600;color:var(--text-bright);font-size:15px;">${escapeHtml(a.name)}</div>
                     <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
-                        ${a.operation} · last ${a.params?.days||1} day(s)
-                        · <strong style="color:var(--caramel);">${opLabel} ${a.condition?.threshold} TB</strong>
+                        ${escapeHtml(a.operation)} · last ${escapeHtml(a.params?.days||1)} day(s)
+                        · <strong style="color:var(--caramel);">${escapeHtml(opLabel)} ${escapeHtml(a.condition?.threshold)} TB</strong>
                     </div>
                     <div style="font-size:11px;color:var(--text-dim);margin-top:3px;">
-                        🗂 ${proj} &nbsp;|&nbsp; ⏰ ${a.schedule} &nbsp;|&nbsp;
+                        🗂 ${proj} &nbsp;|&nbsp; ⏰ ${escapeHtml(a.schedule)} &nbsp;|&nbsp;
                         ${[a.notifications?.email?'📧':'', a.notifications?.jira?'🎫':''].filter(Boolean).join(' ')||'—'}
                     </div>
                     <div style="margin-top:6px;">${enabledBadge}${statusBadge}</div>
                     <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Last trigger: ${lastTime}</div>
                 </div>
                 <div class="d-flex flex-column gap-1 ms-2" style="min-width:90px;align-items:flex-end;">
-                    <button onclick="testAlarm('${a.id}')"
+                    <button onclick="testAlarm(${safeId})"
                         style="background:rgba(212,165,116,.15);color:var(--caramel);border:1px solid var(--caramel);border-radius:6px;font-size:12px;padding:3px 10px;white-space:nowrap;cursor:pointer;">
                         ▶ Test
                     </button>
-                    <button onclick="editAlarm(${JSON.stringify(a).replace(/"/g,'&quot;')})"
+                    <button onclick="editAlarm(${safeObj})"
                         style="background:var(--card);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;font-size:12px;padding:3px 10px;cursor:pointer;">
                         ✏️ Edit
                     </button>
-                    <button onclick="deleteAlarm('${a.id}','${a.name.replace(/'/g,"\\'")}')"
+                    <button onclick="deleteAlarm(${safeId},${safeName})"
                         style="background:rgba(239,68,68,.1);color:var(--error);border:1px solid var(--error);border-radius:6px;font-size:12px;padding:3px 10px;cursor:pointer;">
                         🗑 Delete
                     </button>
@@ -1257,20 +1267,20 @@
                 const t     = new Date(h.triggered_at).toLocaleString();
                 const badges = [];
                 if (h.email_sent)  badges.push('📧');
-                if (h.jira_ticket) badges.push(`<a href="${_jiraBaseUrl}/${h.jira_ticket}" target="_blank"
-                    style="color:var(--caramel);text-decoration:none;">🎫 ${h.jira_ticket}</a>`);
+                if (h.jira_ticket) badges.push(`<a href="${_jiraBaseUrl}/${escapeHtml(h.jira_ticket)}" target="_blank" rel="noopener noreferrer"
+                    style="color:var(--caramel);text-decoration:none;">🎫 ${escapeHtml(h.jira_ticket)}</a>`);
                 const extra = badges.length ? ` <span style="font-size:11px;margin-left:6px;">${badges.join(' ')}</span>` : '';
                 return `<div class="history-row">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                         <div>
-                            <span style="font-weight:600;color:${color};">${icon} ${h.alarm_name}</span>${extra}
-                            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${h.message}</div>
+                            <span style="font-weight:600;color:${color};">${icon} ${escapeHtml(h.alarm_name)}</span>${extra}
+                            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${escapeHtml(h.message)}</div>
                         </div>
                         <div style="font-size:11px;color:var(--text-dim);white-space:nowrap;margin-left:12px;">${t}</div>
                     </div>
                 </div>`;
             }).join('');
-        } catch(e) { el.innerHTML = `<div style="color:var(--error);padding:12px;">Failed: ${e.message}</div>`; }
+        } catch(e) { el.innerHTML = `<div style="color:var(--error);padding:12px;">Failed: ${escapeHtml(e.message)}</div>`; }
     }
 
     // ── scheduler tab ──────────────────────────────────
@@ -1285,12 +1295,12 @@
                 return;
             }
             el.innerHTML = data.alarms.map(a => renderSchedulerRow(a)).join('');
-        } catch(e) { el.innerHTML = `<div style="color:var(--error);padding:16px;">Failed: ${e.message}</div>`; }
+        } catch(e) { el.innerHTML = `<div style="color:var(--error);padding:16px;">Failed: ${escapeHtml(e.message)}</div>`; }
     }
 
     function renderSchedulerRow(a) {
         const opLabel  = {gt:'>',gte:'≥',lt:'<',lte:'≤'}[a.condition?.operator] || '';
-        const project  = a.project_id || '<em style="color:var(--text-dim)">default</em>';
+        const project  = a.project_id ? escapeHtml(a.project_id) : '<em style="color:var(--text-dim)">default</em>';
         const nextRun  = a.next_run  ? new Date(a.next_run).toLocaleString()  : '—';
         const lastRun  = a.last_triggered ? new Date(a.last_triggered).toLocaleString() : 'Never';
         const status   = a.last_status === 'triggered' ? '<span style="color:var(--error);">⚠️ Triggered</span>'
@@ -1302,23 +1312,25 @@
         const enabledBadge = a.enabled
             ? '<span style="background:rgba(16,185,129,.15);color:var(--success);border:1px solid var(--success);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Enabled</span>'
             : '<span style="background:rgba(160,137,120,.1);color:var(--text-dim);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;">Disabled</span>';
+        const safeId   = JSON.stringify(String(a.id)).replace(/"/g, '&quot;');
+        const safeName = JSON.stringify(String(a.name)).replace(/"/g, '&quot;');
         return `
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:12px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
                 <div style="flex:1;min-width:220px;">
-                    <div style="font-weight:700;font-size:15px;color:var(--text-bright);margin-bottom:6px;">${a.name}</div>
+                    <div style="font-weight:700;font-size:15px;color:var(--text-bright);margin-bottom:6px;">${escapeHtml(a.name)}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${enabledBadge} ${schedBadge}</div>
                     <div style="font-size:12px;color:var(--text-muted);display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:4px;">
                         <span style="color:var(--text-dim);">Schedule</span>
-                        <span><code style="background:var(--card);padding:1px 6px;border-radius:4px;font-size:11px;">${a.schedule}</code></span>
+                        <span><code style="background:var(--card);padding:1px 6px;border-radius:4px;font-size:11px;">${escapeHtml(a.schedule)}</code></span>
                         <span style="color:var(--text-dim);">Project</span>  <span>${project}</span>
-                        <span style="color:var(--text-dim);">Threshold</span><span style="color:var(--caramel);">${opLabel} ${a.condition?.threshold} TB</span>
+                        <span style="color:var(--text-dim);">Threshold</span><span style="color:var(--caramel);">${escapeHtml(opLabel)} ${escapeHtml(a.condition?.threshold)} TB</span>
                         <span style="color:var(--text-dim);">Next Run</span> <span>${nextRun}</span>
                         <span style="color:var(--text-dim);">Last Run</span> <span>${lastRun} &nbsp;${status}</span>
                     </div>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;min-width:110px;align-items:flex-end;">
-                    <button onclick="runSchedulerAlarm('${a.id}','${a.name.replace(/'/g,"\\'")}',this)"
+                    <button onclick="runSchedulerAlarm(${safeId},${safeName},this)"
                         style="background:rgba(212,165,116,.15);color:var(--caramel);border:1px solid var(--caramel);border-radius:7px;font-size:12px;padding:5px 14px;cursor:pointer;width:100%;">
                         ▶ Run Now
                     </button>
