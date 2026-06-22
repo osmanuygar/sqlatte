@@ -169,6 +169,12 @@
 </div>
 
 <script>
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = (s == null) ? '' : String(s);
+  return d.innerHTML;
+}
+
 const API = '';
 let _sessionId = '';
 let _username  = '';
@@ -217,11 +223,11 @@ function buildLoginForm(cfg) {
         <label>Catalog</label>
         <select id="l-catalog" required onchange="onCatalogChange(this.value)">
           <option value="">Select catalog…</option>
-          ${catalogs.map(c => `<option value="${c}">${c}</option>`).join('')}
+          ${catalogs.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
         </select>
       </div>`;
   } else if (catalogs.length === 1) {
-    catalogHtml = `<input type="hidden" id="l-catalog" value="${catalogs[0]}">`;
+    catalogHtml = `<input type="hidden" id="l-catalog" value="${escapeHtml(catalogs[0])}">`;
   }
 
   // Schema field
@@ -243,11 +249,11 @@ function buildLoginForm(cfg) {
         <label>${schemaLabel}</label>
         <select id="l-schema" required>
           <option value="">Select ${schemaLabel.toLowerCase()}…</option>
-          ${schemas.map(s => `<option value="${s}">${s}</option>`).join('')}
+          ${schemas.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
         </select>
       </div>`;
   } else if (schemas.length === 1) {
-    schemaHtml = `<input type="hidden" id="l-schema" value="${schemas[0]}">`;
+    schemaHtml = `<input type="hidden" id="l-schema" value="${escapeHtml(schemas[0])}">`;
   } else {
     schemaHtml = `
       <div class="field">
@@ -258,16 +264,16 @@ function buildLoginForm(cfg) {
 
   // Info panel
   const infoLines = [];
-  infoLines.push(`<strong>Database:</strong> ${provider} — ${cfg.db_host}:${cfg.db_port}`);
+  infoLines.push(`<strong>Database:</strong> ${escapeHtml(provider)} — ${escapeHtml(cfg.db_host)}:${escapeHtml(String(cfg.db_port))}`);
   if (catalogs.length > 0) {
-    infoLines.push(`<strong>Available catalogs:</strong> ${catalogs.join(', ')}`);
+    infoLines.push(`<strong>Available catalogs:</strong> ${escapeHtml(catalogs.join(', '))}`);
   }
   if (hasCsMap) {
     for (const [cat, schs] of Object.entries(csMap)) {
-      infoLines.push(`<strong>${cat}:</strong> ${schs.join(', ')}`);
+      infoLines.push(`<strong>${escapeHtml(cat)}:</strong> ${escapeHtml(schs.join(', '))}`);
     }
   } else if (schemas.length > 0) {
-    infoLines.push(`<strong>Available schemas:</strong> ${schemas.join(', ')}`);
+    infoLines.push(`<strong>Available schemas:</strong> ${escapeHtml(schemas.join(', '))}`);
   }
 
   document.getElementById('login-form-body').innerHTML = `
@@ -311,7 +317,7 @@ function onCatalogChange(cat) {
     schemaEl.innerHTML = '<option value="">No schemas available</option>';
     return;
   }
-  schemaEl.innerHTML = options.map(s => `<option value="${s}">${s}</option>`).join('');
+  schemaEl.innerHTML = options.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
   if (options.length === 1) schemaEl.value = options[0];
 }
 
@@ -384,18 +390,21 @@ function renderTokens(tokens) {
       '<div class="empty">No tokens yet. Create one above.</div>';
     return;
   }
-  const rows = tokens.map(t => `
+  const rows = tokens.map(t => {
+    const safeToken = JSON.stringify(String(t.token)).replace(/"/g, '&quot;');
+    return `
     <tr>
-      <td>${t.description || '<em style="color:#555">—</em>'}</td>
-      <td><code style="font-size:.78rem;color:#888">${t.token_prefix}</code></td>
+      <td>${t.description ? escapeHtml(t.description) : '<em style="color:#555">—</em>'}</td>
+      <td><code style="font-size:.78rem;color:#888">${escapeHtml(t.token_prefix)}</code></td>
       <td>${_status(t)}</td>
       <td style="color:#777">${_dt(t.created_at)}</td>
       <td style="color:#777">${_dt(t.expires_at)}</td>
       <td style="color:#777">${_dt(t.last_used_at)}</td>
       <td>${_budget(t)}</td>
       <td>${!t.revoked && new Date(t.expires_at) > new Date()
-        ? `<button class="btn-danger" onclick="revokeToken('${t.token}',this)">Revoke</button>` : ''}</td>
-    </tr>`).join('');
+        ? `<button class="btn-danger" onclick="revokeToken(${safeToken},this)">Revoke</button>` : ''}</td>
+    </tr>`;
+  }).join('');
   document.getElementById('tok-list').innerHTML = `
     <div class="tbl-wrap"><table>
       <thead><tr>
@@ -411,8 +420,8 @@ function _budget(t) {
   const used = t.queries_used_today || 0;
   const pct  = Math.min(100, Math.round(used / t.daily_query_limit * 100));
   const color = pct >= 90 ? 'var(--danger)' : pct >= 70 ? '#e0a84f' : 'var(--success)';
-  return `<span style="color:${color};font-size:.8rem;font-weight:600">${used}</span>`
-       + `<span style="color:var(--text-muted);font-size:.78rem"> / ${t.daily_query_limit}</span>`;
+  return `<span style="color:${color};font-size:.8rem;font-weight:600">${escapeHtml(String(used))}</span>`
+       + `<span style="color:var(--text-muted);font-size:.78rem"> / ${escapeHtml(String(t.daily_query_limit))}</span>`;
 }
 
 async function createToken() {
@@ -434,7 +443,7 @@ async function createToken() {
     document.getElementById('new-token-val').textContent = data.token;
     document.getElementById('copy-hint').textContent = 'Click to copy';
     const limitLabel = data.daily_query_limit != null
-      ? `Daily limit: <strong>${data.daily_query_limit} queries</strong>`
+      ? `Daily limit: <strong>${escapeHtml(String(data.daily_query_limit))} queries</strong>`
       : 'Daily limit: <strong>unlimited</strong>';
     document.getElementById('new-token-banner').querySelector('p').innerHTML =
       `Copy this token now — it will not be shown again. &nbsp;·&nbsp; ${limitLabel}`;

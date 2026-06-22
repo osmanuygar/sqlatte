@@ -292,8 +292,8 @@
                     <select id="chart-cfg-dimension"
                         style="width:100%; padding:9px 12px; background:#0a0a0a; color:#e0e0e0;
                                border:1px solid #444; border-radius:7px; font-size:13px;">
-                        ${dimensionCols.map(col => `<option value="${col}">${col}</option>`).join('')}
-                        ${numericCols.map(col => `<option value="${col}">${col} (numeric)</option>`).join('')}
+                        ${dimensionCols.map(col => `<option value="${escapeHtml(col)}">${escapeHtml(col)}</option>`).join('')}
+                        ${numericCols.map(col => `<option value="${escapeHtml(col)}">${escapeHtml(col)} (numeric)</option>`).join('')}
                     </select>
                 </div>
 
@@ -306,14 +306,14 @@
                         ${numericCols.length > 0
                             ? numericCols.map(col => `
                                 <label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; color:#e0e0e0; font-size:13px;">
-                                    <input type="checkbox" value="${col}" checked
+                                    <input type="checkbox" value="${escapeHtml(col)}" checked
                                         style="accent-color:#D4A574; width:15px; height:15px;" />
-                                    ${col}
+                                    ${escapeHtml(col)}
                                 </label>`).join('')
                             : `<label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; color:#e0e0e0; font-size:13px;">
-                                   <input type="checkbox" value="${columns[columns.length - 1]}" checked
+                                   <input type="checkbox" value="${escapeHtml(columns[columns.length - 1])}" checked
                                        style="accent-color:#D4A574; width:15px; height:15px;" />
-                                   ${columns[columns.length - 1]}
+                                   ${escapeHtml(columns[columns.length - 1])}
                                </label>`
                         }
                     </div>
@@ -419,9 +419,9 @@
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                     <div>
                         <h3 style="margin:0; color:#D4A574; font-size:16px;">
-                            📊 ${dimension} vs ${metrics.join(', ')}
+                            📊 ${escapeHtml(dimension)} vs ${escapeHtml(metrics.join(', '))}
                         </h3>
-                        <small style="color:#666; font-size:11px;">${data.length} rows • ${chartType} chart</small>
+                        <small style="color:#666; font-size:11px;">${data.length} rows • ${escapeHtml(chartType)} chart</small>
                     </div>
                     <div style="display:flex; gap:8px;">
                         <button onclick="SQLatteWidget._openConfigAgain('${resultId}')"
@@ -444,7 +444,7 @@
                         <span style="display:inline-flex; align-items:center; gap:5px; padding:4px 10px;
                                      background:#1a1a1a; border:1px solid #333; border-radius:20px; font-size:11px; color:#e0e0e0;">
                             <span style="width:10px;height:10px;border-radius:50%;background:${COLORS[i % COLORS.length]};display:inline-block;"></span>
-                            ${m}
+                            ${escapeHtml(m)}
                         </span>`).join('')}
                 </div>
             </div>
@@ -789,15 +789,15 @@
                     </div>
                     <div class="sqlatte-history-item-meta">
                         <span class="sqlatte-history-rows">${query.row_count} rows</span>
-                        <span class="sqlatte-history-tables">${query.tables.join(', ') || 'N/A'}</span>
+                        <span class="sqlatte-history-tables">${escapeHtml(query.tables.join(', ') || 'N/A')}</span>
                     </div>
                     <div class="sqlatte-history-item-actions">
                         <button onclick="SQLatteWidget.useQuery(${JSON.stringify(query).replace(/"/g, '&quot;')})" title="Use this query">▶️</button>
                         ${isFav
-                            ? `<button onclick="SQLatteWidget.removeFromFavorites('${query.id}')" title="Remove from favorites">💔</button>`
-                            : `<button onclick="SQLatteWidget.addToFavorites('${query.id}')" title="Add to favorites">⭐</button>`
+                            ? `<button onclick="SQLatteWidget.removeFromFavorites(${JSON.stringify(query.id).replace(/"/g, '&quot;')})" title="Remove from favorites">💔</button>`
+                            : `<button onclick="SQLatteWidget.addToFavorites(${JSON.stringify(query.id).replace(/"/g, '&quot;')})" title="Add to favorites">⭐</button>`
                         }
-                        <button onclick="SQLatteWidget.deleteFromHistory('${query.id}')" title="Delete">🗑️</button>
+                        <button onclick="SQLatteWidget.deleteFromHistory(${JSON.stringify(query.id).replace(/"/g, '&quot;')})" title="Delete">🗑️</button>
                     </div>
                 </div>
             `;
@@ -831,11 +831,11 @@
                         <span class="sqlatte-favorite-name" onclick="SQLatteWidget.useQuery(${JSON.stringify(fav).replace(/"/g, '&quot;')})">⭐ ${escapeHtml(fav.favorite_name || truncate(fav.question, 40))}</span>
                     </div>
                     <div class="sqlatte-favorite-item-meta">
-                        <span class="sqlatte-favorite-tables">${fav.tables.join(', ') || 'N/A'}</span>
+                        <span class="sqlatte-favorite-tables">${escapeHtml(fav.tables.join(', ') || 'N/A')}</span>
                     </div>
                     <div class="sqlatte-favorite-item-actions">
                         <button onclick="SQLatteWidget.useQuery(${JSON.stringify(fav).replace(/"/g, '&quot;')})" title="Use this query">▶️</button>
-                        <button onclick="SQLatteWidget.removeFromFavorites('${fav.id}')" title="Remove">💔</button>
+                        <button onclick="SQLatteWidget.removeFromFavorites(${JSON.stringify(fav.id).replace(/"/g, '&quot;')})" title="Remove">💔</button>
                     </div>
                 </div>
             `;
@@ -978,22 +978,22 @@
                             </span>
                         </div>
                         <div style="display: flex; gap: 5px;">
-                            <button onclick="SQLatteWidget.runScheduleNow('${schedule.id}')" title="Run Now" style="padding: 5px 8px; background: transparent; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 12px;">
+                            <button onclick="SQLatteWidget.runScheduleNow(${JSON.stringify(schedule.id).replace(/"/g,'&quot;')})" title="Run Now" style="padding: 5px 8px; background: transparent; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 12px;">
                                 ▶️
                             </button>
-                            <button onclick="SQLatteWidget.toggleSchedule('${schedule.id}')" title="${toggleTitle}" style="padding: 5px 8px; background: transparent; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 12px;">
+                            <button onclick="SQLatteWidget.toggleSchedule(${JSON.stringify(schedule.id).replace(/"/g,'&quot;')})" title="${escapeHtml(toggleTitle)}" style="padding: 5px 8px; background: transparent; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 12px;">
                                 ${toggleIcon}
                             </button>
-                            <button onclick="SQLatteWidget.deleteSchedule('${schedule.id}', '${escapeHtml(schedule.name).replace(/'/g, "\\'")}');" title="Delete" style="padding: 5px 8px; background: transparent; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 12px;">
+                            <button onclick="SQLatteWidget.deleteSchedule(${JSON.stringify(schedule.id).replace(/"/g,'&quot;')},${JSON.stringify(schedule.name).replace(/"/g,'&quot;')});" title="Delete" style="padding: 5px 8px; background: transparent; border: 1px solid #333; border-radius: 4px; color: #e0e0e0; cursor: pointer; font-size: 12px;">
                                 🗑️
                             </button>
                         </div>
                     </div>
 
                     <div style="font-size: 12px; color: #888; margin-bottom: 10px;">
-                        <div><strong style="color: #e0e0e0;">Frequency:</strong> ${schedule.frequency}</div>
-                        <div><strong style="color: #e0e0e0;">Recipients:</strong> ${schedule.email_recipients.slice(0, 2).join(', ')}${schedule.email_recipients.length > 2 ? '...' : ''}</div>
-                        <div><strong style="color: #e0e0e0;">Format:</strong> ${schedule.format.toUpperCase()}</div>
+                        <div><strong style="color: #e0e0e0;">Frequency:</strong> ${escapeHtml(schedule.frequency)}</div>
+                        <div><strong style="color: #e0e0e0;">Recipients:</strong> ${escapeHtml(schedule.email_recipients.slice(0, 2).join(', '))}${schedule.email_recipients.length > 2 ? '...' : ''}</div>
+                        <div><strong style="color: #e0e0e0;">Format:</strong> ${escapeHtml(schedule.format.toUpperCase())}</div>
                     </div>
 
                     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-size: 11px;">
@@ -1630,7 +1630,7 @@
         if (tables.length === 0) {
             select.innerHTML = '<option value="">No tables available</option>';
         } else {
-            select.innerHTML = tables.map(t => `<option value="${t}">${t}</option>`).join('');
+            select.innerHTML = tables.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
         }
     }
 
@@ -1704,49 +1704,61 @@
             return text;
         }
 
-        let html = text;
-
-        // 1. Code blocks (```language\ncode```) - Process FIRST
-        html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
-            return `<pre class="sqlatte-code-block"><code class="language-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`;
+        // Extract code blocks and inline code first so their content is isolated
+        const codeBlocks = [];
+        let html = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+            const idx = codeBlocks.length;
+            codeBlocks.push(`<pre class="sqlatte-code-block"><code class="language-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`);
+            return `\x1EBLOCK${idx}\x1E`;
         });
 
-        // 2. Inline code (`code`)
-        html = html.replace(/`([^`]+)`/g, '<code class="sqlatte-inline-code">$1</code>');
+        const inlineCodes = [];
+        html = html.replace(/`([^`]+)`/g, (match, code) => {
+            const idx = inlineCodes.length;
+            inlineCodes.push(`<code class="sqlatte-inline-code">${escapeHtml(code)}</code>`);
+            return `\x1EINLINE${idx}\x1E`;
+        });
 
-        // 3. Bold (**text** or __text__)
+        // Escape remaining HTML before applying markdown
+        html = escapeHtml(html);
+
+        // Bold / Italic (operate on already-escaped text — safe)
         html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
-
-        // 4. Italic (*text* or _text_) - Careful with asterisks
         html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
         html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
 
-        // 5. Links [text](url)
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="sqlatte-link">$1</a>');
+        // Links — only allow http/https/relative URLs
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
+            const safeUrl = /^https?:\/\//i.test(url) || url.startsWith('/') ? url : '#';
+            return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="sqlatte-link">${linkText}</a>`;
+        });
 
-        // 6. Headings
+        // Headings
         html = html.replace(/^### (.+)$/gm, '<h3 class="sqlatte-h3">$1</h3>');
         html = html.replace(/^## (.+)$/gm, '<h2 class="sqlatte-h2">$1</h2>');
         html = html.replace(/^# (.+)$/gm, '<h1 class="sqlatte-h1">$1</h1>');
 
-        // 7. Unordered lists (- item or * item)
+        // Lists
         html = html.replace(/^\s*[-*]\s+(.+)$/gm, '<li class="sqlatte-li">$1</li>');
         html = html.replace(/(<li class="sqlatte-li">.*?<\/li>\n?)+/g, '<ul class="sqlatte-ul">$&</ul>');
 
-        // 8. Blockquotes (> text)
-        html = html.replace(/^>\s+(.+)$/gm, '<blockquote class="sqlatte-blockquote">$1</blockquote>');
+        // Blockquotes — escapeHtml turns > into &gt;
+        html = html.replace(/^&gt;\s+(.+)$/gm, '<blockquote class="sqlatte-blockquote">$1</blockquote>');
 
-        // 9. Paragraphs - Only if not already formatted
+        // Paragraphs
         if (!html.includes('<table') && !html.includes('<pre')) {
             html = html.split('\n\n').map(para => {
                 para = para.trim();
                 if (!para) return '';
-                // Skip if already wrapped in HTML
                 if (para.startsWith('<')) return para;
                 return `<p class="sqlatte-paragraph">${para.replace(/\n/g, '<br>')}</p>`;
             }).filter(p => p).join('\n');
         }
+
+        // Restore extracted code
+        inlineCodes.forEach((code, idx) => { html = html.replace(`\x1EINLINE${idx}\x1E`, code); });
+        codeBlocks.forEach((block, idx) => { html = html.replace(`\x1EBLOCK${idx}\x1E`, block); });
 
         return html;
     }
@@ -1819,8 +1831,8 @@
         html += '<div class="sqlatte-insights-header">🧠 Hızlı Görüş</div>';
 
         insights.forEach(insight => {
-            const severityClass = `severity-${insight.severity || 'info'}`;
-            const icon = insight.icon || '•';
+            const severityClass = `severity-${escapeHtml(insight.severity || 'info')}`;
+            const icon = escapeHtml(insight.icon || '•');
             const message = escapeHtml(insight.message);
 
             html += `

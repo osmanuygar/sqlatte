@@ -376,6 +376,12 @@
     </button>
 
     <script>
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = (s == null) ? '' : String(s);
+            return d.innerHTML;
+        }
+
         // Global state
         let currentHours = 24;
         let charts = {};
@@ -682,10 +688,10 @@
             tbody.innerHTML = data.map((user, index) => `
                 <tr>
                     <td><strong>#${index + 1}</strong></td>
-                    <td>${user.user_id}</td>
-                    <td>${user.query_count}</td>
-                    <td><span class="badge ${user.success_rate >= 90 ? 'badge-success' : user.success_rate >= 70 ? 'badge-warning' : 'badge-danger'}">${user.success_rate}%</span></td>
-                    <td>${user.avg_time_ms.toFixed(0)}ms</td>
+                    <td>${escapeHtml(user.user_id)}</td>
+                    <td>${escapeHtml(user.query_count)}</td>
+                    <td><span class="badge ${user.success_rate >= 90 ? 'badge-success' : user.success_rate >= 70 ? 'badge-warning' : 'badge-danger'}">${escapeHtml(user.success_rate)}%</span></td>
+                    <td>${escapeHtml(user.avg_time_ms.toFixed(0))}ms</td>
                 </tr>
             `).join('');
         }
@@ -707,8 +713,8 @@
 
             tbody.innerHTML = data.error_types.map(error => `
                 <tr>
-                    <td>${error.error || 'Unknown'}</td>
-                    <td>${error.count}</td>
+                    <td>${escapeHtml(error.error || 'Unknown')}</td>
+                    <td>${escapeHtml(error.count)}</td>
                     <td>${((error.count / total) * 100).toFixed(1)}%</td>
                 </tr>
             `).join('');
@@ -730,8 +736,8 @@
             tbody.innerHTML = tables.map((item, index) => `
                 <tr>
                     <td><strong>#${index + 1}</strong></td>
-                    <td>${item.table}</td>
-                    <td>${item.count}</td>
+                    <td>${escapeHtml(item.table)}</td>
+                    <td>${escapeHtml(item.count)}</td>
                     <td>${((item.count / total) * 100).toFixed(1)}%</td>
                 </tr>
             `).join('');
@@ -758,7 +764,7 @@
         // Show error message
         function showError(message) {
             const metricsGrid = document.getElementById('metrics-grid');
-            metricsGrid.innerHTML = `<div class="error">${message}</div>`;
+            metricsGrid.innerHTML = `<div class="error">${escapeHtml(message)}</div>`;
         }
 
         // ========================================
