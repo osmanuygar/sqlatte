@@ -49,6 +49,8 @@ Authentication — choose ONE method:
 import os
 import asyncio
 import json
+import fnmatch
+import hashlib
 import httpx
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -68,6 +70,7 @@ TRINO_SCHEMA  = os.environ.get("TRINO_SCHEMA", "default")
 TRINO_SCHEME  = os.environ.get("TRINO_HTTP_SCHEME", "https")
 
 _session_id: str | None = None
+_mask_rules: list | None = None  # cached per session
 
 # ── SQLatte API helpers ────────────────────────────────────────────────────────
 async def _login_with_token() -> str:
@@ -99,13 +102,49 @@ async def _login_with_password() -> str:
 
 
 async def _get_session() -> str:
-    global _session_id
+    global _session_id, _mask_rules
     if not _session_id:
         if SQLATTE_TOKEN:
             _session_id = await _login_with_token()
         else:
             _session_id = await _login_with_password()
+        _mask_rules = None  # invalidate cache on new session
     return _session_id
+
+
+async def _get_mask_rules() -> list:
+    global _mask_rules
+    if _mask_rules is None:
+        try:
+            result = await _api("get", "/auth/mcp-mask-rules")
+            _mask_rules = result.get("rules", [])
+        except Exception:
+            _mask_rules = []
+    return _mask_rules
+
+
+def _apply_mask(value: str, strategy: str) -> str:
+    if strategy == "hash":
+        return hashlib.sha256(str(value).encode()).hexdigest()[:16]
+    if strategy == "partial":
+        s = str(value)
+        if "@" in s:
+            local, domain = s.split("@", 1)
+            return local[0] + "**@" + domain
+        if len(s) <= 4:
+            return "****"
+        return s[0] + "*" * (len(s) - 2) + s[-1]
+    return "[REDACTED]"
+
+
+def _mask_value_for_column(col: str, value, rules: list):
+    col_lower = col.lower()
+    for rule in rules:
+        if fnmatch.fnmatch(col_lower, rule["field_pattern"]):
+            if value is None or value == "":
+                return value
+            return _apply_mask(value, rule["strategy"])
+    return value
 
 
 async def _api(method: str, path: str, **kwargs) -> dict:
@@ -199,7 +238,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 "table_schema":  table_schema,
                 "bypass_intent": True,
             })
-            return [types.TextContent(type="text", text=_format_query_result(result))]
+            mask_rules = await _get_mask_rules()
+            return [types.TextContent(type="text", text=_format_query_result(result, mask_rules))]
 
         elif name == "list_tables":
             result = await _api("get", "/auth/tables")
@@ -221,7 +261,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         return [types.TextContent(type="text", text=f"Error: {e}")]
 
 
-def _format_query_result(result: dict) -> str:
+def _format_query_result(result: dict, mask_rules: list = None) -> str:
+    rules = mask_rules or []
     parts = []
 
     sql = result.get("sql") or result.get("generated_sql")
@@ -234,7 +275,10 @@ def _format_query_result(result: dict) -> str:
     if data and columns:
         header = " | ".join(columns)
         sep = " | ".join(["---"] * len(columns))
-        rows = "\n".join(" | ".join(str(v) for v in row) for row in data[:50])
+        rows = "\n".join(
+            " | ".join(str(_mask_value_for_column(columns[i], v, rules)) for i, v in enumerate(row))
+            for row in data[:50]
+        )
         parts.append(f"**Results ({len(data)} rows):**\n{header}\n{sep}\n{rows}")
         if len(data) > 50:
             parts.append(f"_(showing 50 of {len(data)} rows)_")
@@ -242,7 +286,10 @@ def _format_query_result(result: dict) -> str:
         cols = list(data[0].keys())
         header = " | ".join(cols)
         sep = " | ".join(["---"] * len(cols))
-        rows = "\n".join(" | ".join(str(r.get(c, "")) for c in cols) for r in data[:50])
+        rows = "\n".join(
+            " | ".join(str(_mask_value_for_column(c, r.get(c, ""), rules)) for c in cols)
+            for r in data[:50]
+        )
         parts.append(f"**Results ({len(data)} rows):**\n{header}\n{sep}\n{rows}")
 
     summary = result.get("summary") or result.get("message")

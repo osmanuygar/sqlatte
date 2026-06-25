@@ -159,6 +159,20 @@ class ConfigDB:
                     f"ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS {col_def}"
                 )
 
+        # MCP field masking rules
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mcp_mask_rules (
+                id SERIAL PRIMARY KEY,
+                field_pattern VARCHAR(255) NOT NULL,
+                strategy VARCHAR(20) NOT NULL DEFAULT 'hash',
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_by VARCHAR(100) DEFAULT 'admin'
+            )
+        """)
+
         self.conn.commit()
         cursor.close()
 
@@ -978,6 +992,78 @@ class ConfigDB:
             "UPDATE api_tokens SET revoked = TRUE WHERE id = %s",
             (token_id,)
         )
+        affected = cursor.rowcount
+        self.conn.commit()
+        cursor.close()
+        return affected > 0
+
+    # ── MCP Mask Rules ────────────────────────────────────────────────────────
+
+    def list_mask_rules(self) -> List[Dict[str, Any]]:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT id, field_pattern, strategy, enabled, description, created_at, updated_at, created_by "
+            "FROM mcp_mask_rules ORDER BY id"
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        keys = ["id", "field_pattern", "strategy", "enabled", "description", "created_at", "updated_at", "created_by"]
+        return [dict(zip(keys, r)) for r in rows]
+
+    def create_mask_rule(self, field_pattern: str, strategy: str, description: str = "", created_by: str = "admin") -> Dict[str, Any]:
+        if strategy not in ("hash", "partial", "redact"):
+            raise ValueError(f"Invalid strategy: {strategy}")
+        cursor = self.conn.cursor()
+        if self.db_type == "postgresql":
+            cursor.execute(
+                "INSERT INTO mcp_mask_rules (field_pattern, strategy, description, created_by) "
+                "VALUES (%s, %s, %s, %s) RETURNING id",
+                (field_pattern.lower().strip(), strategy, description, created_by)
+            )
+            row_id = cursor.fetchone()[0]
+        else:
+            cursor.execute(
+                "INSERT INTO mcp_mask_rules (field_pattern, strategy, description, created_by) VALUES (?,?,?,?)",
+                (field_pattern.lower().strip(), strategy, description, created_by)
+            )
+            row_id = cursor.lastrowid
+        self.conn.commit()
+        cursor.close()
+        return {"id": row_id, "field_pattern": field_pattern, "strategy": strategy, "enabled": True, "description": description}
+
+    def update_mask_rule(self, rule_id: int, field_pattern: str = None, strategy: str = None,
+                         enabled: bool = None, description: str = None) -> bool:
+        fields, values = [], []
+        if field_pattern is not None:
+            fields.append("field_pattern = %s" if self.db_type == "postgresql" else "field_pattern = ?")
+            values.append(field_pattern.lower().strip())
+        if strategy is not None:
+            if strategy not in ("hash", "partial", "redact"):
+                raise ValueError(f"Invalid strategy: {strategy}")
+            fields.append("strategy = %s" if self.db_type == "postgresql" else "strategy = ?")
+            values.append(strategy)
+        if enabled is not None:
+            fields.append("enabled = %s" if self.db_type == "postgresql" else "enabled = ?")
+            values.append(enabled)
+        if description is not None:
+            fields.append("description = %s" if self.db_type == "postgresql" else "description = ?")
+            values.append(description)
+        if not fields:
+            return False
+        fields.append("updated_at = CURRENT_TIMESTAMP")
+        ph = "%s" if self.db_type == "postgresql" else "?"
+        values.append(rule_id)
+        cursor = self.conn.cursor()
+        cursor.execute(f"UPDATE mcp_mask_rules SET {', '.join(fields)} WHERE id = {ph}", values)
+        affected = cursor.rowcount
+        self.conn.commit()
+        cursor.close()
+        return affected > 0
+
+    def delete_mask_rule(self, rule_id: int) -> bool:
+        ph = "%s" if self.db_type == "postgresql" else "?"
+        cursor = self.conn.cursor()
+        cursor.execute(f"DELETE FROM mcp_mask_rules WHERE id = {ph}", (rule_id,))
         affected = cursor.rowcount
         self.conn.commit()
         cursor.close()

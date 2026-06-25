@@ -739,6 +739,10 @@
                 <span>🔑</span>
                 API Tokens
             </div>
+            <div class="tab" onclick="switchTab('mcp-masking'); loadMaskRules();">
+                <span>🎭</span>
+                MCP Masking
+            </div>
         </div>
 
         <!-- TAB: Providers (LLM & Database) -->
@@ -4080,6 +4084,181 @@
             </div>
         </div>`;
     document.querySelector('.tabs').parentElement.appendChild(div);
+})();
+</script>
+
+<!-- TAB: MCP Masking -->
+<div id="tab-mcp-masking" class="tab-content">
+    <div class="config-card" style="margin-bottom:16px;">
+        <h2><span>🎭</span> MCP Field Masking</h2>
+        <p style="color:#a0a0a0;font-size:13px;margin-bottom:20px;">
+            Fields matching a pattern will be masked before results are sent to Claude via MCP.
+            Supports wildcards — e.g. <code>*email*</code>, <code>*phone</code>, <code>ssn</code>.
+        </p>
+
+        <!-- Add rule form -->
+        <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:16px;margin-bottom:20px;">
+            <h3 style="font-size:14px;margin-bottom:12px;color:#ccc;">Add New Rule</h3>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                <div>
+                    <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Field Pattern</label>
+                    <input id="mask-pattern" type="text" placeholder="e.g. email, *_email, phone"
+                        style="background:#111;border:1px solid #444;color:#e0e0e0;border-radius:6px;padding:7px 12px;font-size:13px;width:220px;">
+                </div>
+                <div>
+                    <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Strategy</label>
+                    <select id="mask-strategy"
+                        style="background:#111;border:1px solid #444;color:#e0e0e0;border-radius:6px;padding:7px 12px;font-size:13px;">
+                        <option value="hash">Hash (SHA256 16-char)</option>
+                        <option value="partial">Partial (j**@domain)</option>
+                        <option value="redact">Redact ([REDACTED])</option>
+                    </select>
+                </div>
+                <div style="flex:1;min-width:180px;">
+                    <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Description (optional)</label>
+                    <input id="mask-description" type="text" placeholder="Why this field is masked"
+                        style="background:#111;border:1px solid #444;color:#e0e0e0;border-radius:6px;padding:7px 12px;font-size:13px;width:100%;">
+                </div>
+                <button onclick="addMaskRule()"
+                    style="background:#6B4423;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;cursor:pointer;white-space:nowrap;">
+                    + Add Rule
+                </button>
+            </div>
+            <div id="mask-add-msg" style="margin-top:8px;font-size:12px;display:none;"></div>
+        </div>
+
+        <!-- Rules table -->
+        <div style="overflow-x:auto;background:#1e1e1e;border:1px solid #333;border-radius:8px;">
+            <table style="width:100%;border-collapse:collapse;font-size:.85rem;">
+                <thead>
+                    <tr style="border-bottom:1px solid #333;">
+                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Field Pattern</th>
+                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Strategy</th>
+                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Description</th>
+                        <th style="padding:10px 14px;text-align:center;color:#888;font-weight:500;">Enabled</th>
+                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Created</th>
+                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;"></th>
+                    </tr>
+                </thead>
+                <tbody id="mask-rules-body">
+                    <tr><td colspan="6" style="color:#888;text-align:center;padding:32px;">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const STRATEGIES = { hash: 'Hash', partial: 'Partial', redact: 'Redact' };
+    const STRATEGY_COLORS = { hash: '#4a9eff', partial: '#f0a030', redact: '#e05050' };
+
+    window.loadMaskRules = async function() {
+        const tbody = document.getElementById('mask-rules-body');
+        tbody.innerHTML = '<tr><td colspan="6" style="color:#888;text-align:center;padding:24px;">Loading…</td></tr>';
+        try {
+            const res = await fetch('/admin/mcp-mask-rules', { credentials: 'include' });
+            const data = await res.json();
+            renderMaskRules(data.rules || []);
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="6" style="color:#e05050;text-align:center;padding:24px;">Failed to load rules.</td></tr>';
+        }
+    };
+
+    function renderMaskRules(rules) {
+        const tbody = document.getElementById('mask-rules-body');
+        if (!rules.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="color:#666;text-align:center;padding:32px;">No masking rules yet. Add one above.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rules.map(r => {
+            const color = STRATEGY_COLORS[r.strategy] || '#888';
+            const created = r.created_at ? r.created_at.slice(0, 10) : '';
+            return `<tr style="border-bottom:1px solid #2a2a2a;">
+                <td style="padding:10px 14px;font-family:monospace;color:#e0e0e0;">${escHtml(r.field_pattern)}</td>
+                <td style="padding:10px 14px;">
+                    <span style="background:${color}22;color:${color};border:1px solid ${color}44;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:600;">
+                        ${STRATEGIES[r.strategy] || r.strategy}
+                    </span>
+                </td>
+                <td style="padding:10px 14px;color:#a0a0a0;font-size:12px;">${escHtml(r.description || '')}</td>
+                <td style="padding:10px 14px;text-align:center;">
+                    <label style="position:relative;display:inline-block;width:36px;height:20px;">
+                        <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleMaskRule(${r.id}, this.checked)"
+                            style="opacity:0;width:0;height:0;">
+                        <span style="position:absolute;inset:0;background:${r.enabled ? '#6B4423' : '#333'};border-radius:20px;cursor:pointer;transition:.2s;"></span>
+                        <span style="position:absolute;left:${r.enabled ? '18px' : '2px'};top:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:.2s;pointer-events:none;"></span>
+                    </label>
+                </td>
+                <td style="padding:10px 14px;color:#666;font-size:12px;">${created}</td>
+                <td style="padding:10px 14px;">
+                    <button onclick="deleteMaskRule(${r.id})"
+                        style="background:transparent;border:1px solid #555;color:#e05050;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer;">
+                        Delete
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    window.addMaskRule = async function() {
+        const pattern = document.getElementById('mask-pattern').value.trim();
+        const strategy = document.getElementById('mask-strategy').value;
+        const description = document.getElementById('mask-description').value.trim();
+        const msg = document.getElementById('mask-add-msg');
+
+        if (!pattern) {
+            msg.style.display = 'block';
+            msg.style.color = '#e05050';
+            msg.textContent = 'Field pattern is required.';
+            return;
+        }
+        try {
+            const res = await fetch('/admin/mcp-mask-rules', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ field_pattern: pattern, strategy, description }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                msg.style.display = 'block';
+                msg.style.color = '#4a9eff';
+                msg.textContent = 'Rule added.';
+                document.getElementById('mask-pattern').value = '';
+                document.getElementById('mask-description').value = '';
+                await loadMaskRules();
+            } else {
+                msg.style.display = 'block';
+                msg.style.color = '#e05050';
+                msg.textContent = data.detail || 'Failed to add rule.';
+            }
+        } catch (e) {
+            msg.style.display = 'block';
+            msg.style.color = '#e05050';
+            msg.textContent = 'Request failed.';
+        }
+    };
+
+    window.toggleMaskRule = async function(id, enabled) {
+        await fetch(`/admin/mcp-mask-rules/${id}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        await loadMaskRules();
+    };
+
+    window.deleteMaskRule = async function(id) {
+        if (!confirm('Delete this masking rule?')) return;
+        await fetch(`/admin/mcp-mask-rules/${id}`, { method: 'DELETE', credentials: 'include' });
+        await loadMaskRules();
+    };
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
 })();
 </script>
 </body>
