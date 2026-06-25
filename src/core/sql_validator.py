@@ -118,14 +118,72 @@ def violation_reason(sql: str) -> str:
 
 
 def risk_score(sql: str) -> int:
-    """Return an integer risk score 0–100. 0 = safe SELECT, 100 = maximum risk."""
+    """Return an integer risk score 0–100.
+
+    Scoring is additive and capped at 100.  Lower is safer.
+
+    Base score by statement type
+    ─────────────────────────────
+      Empty / unparseable query          →  50  (error, not max-risk)
+      Non-SELECT / non-WITH statement    →  70  (always blocked by is_select_only)
+      SELECT / WITH                      →   0  (read-only baseline)
+
+    Penalty: forbidden write-keywords (each +25, cap at +50)
+      Matches from _DANGEROUS (INSERT, DROP, DELETE …)
+
+    Penalty: forbidden dangerous functions (each +40, cap at +80)
+      Matches from _DANGEROUS_FUNCS (pg_read_file, dblink, xp_cmdshell …)
+      These are weighted higher because they can exfiltrate data even inside SELECT.
+
+    Penalty: SELECT-level risk signals (only applied to SELECT/WITH)
+      SELECT *  wildcard                →  +5
+      No LIMIT / FETCH clause           →  +5
+      UNION / INTERSECT / EXCEPT        → +10
+      Subquery depth  (nested SELECTs)  →  +5 per level, max +15
+      Cross-join or implicit comma-join → +10
+
+    Final score is clamped to [0, 100].
+    """
     clean = _strip_sql(sql)
     if not clean:
-        return 100
+        return 50
+
     first_word = clean.split()[0].upper()
     if first_word not in ('SELECT', 'WITH'):
-        return 75
-    matches = _DANGEROUS.findall(clean)
-    if matches:
-        return min(100, 25 * len(matches))
-    return 0
+        score = 70
+        kw_matches = _DANGEROUS.findall(clean)
+        score += min(50, 25 * len(kw_matches))
+        func_matches = _DANGEROUS_FUNCS.findall(clean)
+        score += min(80, 40 * len(func_matches))
+        return min(100, score)
+
+    # ── SELECT / WITH baseline ────────────────────────────────────────────────
+    score = 0
+
+    kw_matches = _DANGEROUS.findall(clean)
+    score += min(50, 25 * len(kw_matches))
+
+    func_matches = _DANGEROUS_FUNCS.findall(clean)
+    score += min(80, 40 * len(func_matches))
+
+    # SELECT * wildcard
+    if re.search(r'SELECT\s+\*', clean, re.IGNORECASE):
+        score += 5
+
+    # No LIMIT / FETCH NEXT — unbounded result set
+    if not re.search(r'\b(LIMIT|FETCH\s+(?:NEXT|FIRST))\b', clean, re.IGNORECASE):
+        score += 5
+
+    # Set operations that can hide injected rows
+    if re.search(r'\b(UNION|INTERSECT|EXCEPT)\b', clean, re.IGNORECASE):
+        score += 10
+
+    # Subquery depth: count nested SELECT occurrences beyond the first
+    nested = len(re.findall(r'\bSELECT\b', clean, re.IGNORECASE)) - 1
+    score += min(15, 5 * max(0, nested))
+
+    # Cross-join or implicit comma join: FROM a, b
+    if re.search(r'\bCROSS\s+JOIN\b', clean, re.IGNORECASE) or re.search(r'FROM\s+\w[\w.]*\s*,', clean, re.IGNORECASE):
+        score += 10
+
+    return min(100, score)
