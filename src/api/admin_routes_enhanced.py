@@ -1150,6 +1150,80 @@ async def set_token_policy(
         raise server_error(e)
 
 
+# ── MCP Mask Rules ────────────────────────────────────────────────────────────
+
+@router.get("/mcp-mask-rules")
+async def list_mask_rules(admin_user: str = Depends(require_admin)):
+    from src.core.config_db import get_config_db
+    rules = get_config_db().list_mask_rules()
+    for r in rules:
+        for k in ("created_at", "updated_at"):
+            if r.get(k):
+                r[k] = r[k].isoformat() if hasattr(r[k], "isoformat") else str(r[k])
+    return {"rules": rules}
+
+
+class MaskRuleCreateRequest(BaseModel):
+    field_pattern: str
+    strategy: str = "hash"
+    description: Optional[str] = ""
+
+
+@router.post("/mcp-mask-rules")
+async def create_mask_rule(request: MaskRuleCreateRequest, admin_user: str = Depends(require_admin)):
+    from src.core.config_db import get_config_db
+    try:
+        rule = get_config_db().create_mask_rule(
+            field_pattern=request.field_pattern,
+            strategy=request.strategy,
+            description=request.description or "",
+            created_by=admin_user,
+        )
+        return {"success": True, "rule": rule}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise server_error(e)
+
+
+class MaskRuleUpdateRequest(BaseModel):
+    field_pattern: Optional[str] = None
+    strategy: Optional[str] = None
+    enabled: Optional[bool] = None
+    description: Optional[str] = None
+
+
+@router.put("/mcp-mask-rules/{rule_id}")
+async def update_mask_rule(rule_id: int, request: MaskRuleUpdateRequest, admin_user: str = Depends(require_admin)):
+    from src.core.config_db import get_config_db
+    try:
+        ok = get_config_db().update_mask_rule(
+            rule_id=rule_id,
+            field_pattern=request.field_pattern,
+            strategy=request.strategy,
+            enabled=request.enabled,
+            description=request.description,
+        )
+        if not ok:
+            raise HTTPException(404, "Rule not found")
+        return {"success": True}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise server_error(e)
+
+
+@router.delete("/mcp-mask-rules/{rule_id}")
+async def delete_mask_rule(rule_id: int, admin_user: str = Depends(require_admin)):
+    from src.core.config_db import get_config_db
+    ok = get_config_db().delete_mask_rule(rule_id)
+    if not ok:
+        raise HTTPException(404, "Rule not found")
+    return {"success": True}
+
+
 @router.post("/token/set-limit")
 async def admin_set_token_limit(
     request: Request,

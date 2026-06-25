@@ -134,6 +134,18 @@ Token TTL is configurable (24h default). Each user generates their own token —
 
 Available tools: **`ask_database`** (natural language → SQL → results), **`list_tables`**, **`get_schema`**.
 
+### Field Masking
+
+Sensitive columns can be masked before results reach the AI agent. Rules are managed in the Admin Panel under **MCP Masking** — no code or restart required. Three strategies:
+
+| Strategy | Example output |
+|---|---|
+| `hash` | `a3f8bc2d1e4f9a07` (SHA-256, 16-char — groupable) |
+| `partial` | `j**@company.com` |
+| `redact` | `[REDACTED]` |
+
+Field patterns support wildcards (`*email*`, `*_phone`). Rules can be toggled on/off individually.
+
 ---
 
 ## 🚀 Features
@@ -241,6 +253,7 @@ Access at `/admin`:
 10. **History** — Configuration change log
 11. **Snapshots** — Backup and restore
 12. **Audit Logs** — LLM call history with token usage, filterable by widget source
+13. **MCP Masking** — Field-level masking rules for MCP responses (hash / partial / redact, wildcard patterns, per-rule toggle)
 
 **Hot Reload** — all changes apply immediately without restart.
 

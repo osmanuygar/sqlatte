@@ -493,6 +493,20 @@ class AuthPlugin(BasePlugin):
                 print(f"❌ Error loading schemas: {e}")
                 raise server_error(e)
 
+        @app.get("/auth/mcp-mask-rules")
+        async def get_mcp_mask_rules(session_id: str = Header(..., alias="X-Session-ID")):
+            """Return enabled MCP field masking rules (readable by any valid session)."""
+            session = self.session_manager.get_session(session_id)
+            if not session:
+                raise HTTPException(401, "Session expired or invalid")
+            from src.core.config_db import get_config_db
+            rules = get_config_db().list_mask_rules()
+            active = [
+                {"field_pattern": r["field_pattern"], "strategy": r["strategy"]}
+                for r in rules if r["enabled"]
+            ]
+            return {"rules": active}
+
         @app.post("/auth/query")
         async def execute_query(
                 request: dict,
