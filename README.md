@@ -81,6 +81,31 @@ SQLatte is a native MCP server. Any MCP-compatible client — Claude Desktop, Cl
 pip install mcp httpx
 ```
 
+### Network Mode — SSE (No local Python required)
+
+Enable in `config.yaml` to serve MCP over HTTP. Users connect with just a URL — no local script or Python installation needed.
+
+```yaml
+mcp:
+  sse:
+    enabled: true
+```
+
+```json
+{
+  "mcpServers": {
+    "sqlatte": {
+      "url": "http://your-sqlatte-server:8000/mcp/sse",
+      "headers": { "x-mcp-token": "<token>" }
+    }
+  }
+}
+```
+
+Multiple users connect to the same server concurrently — each connection is isolated by token.
+
+### Local Mode — stdio (Default)
+
 ### Option A — API Token (Recommended)
 
 Keeps real database credentials out of MCP config. Generate a token from the SQLatte UI; it stores the connection details server-side.
