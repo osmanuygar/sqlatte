@@ -186,6 +186,16 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 "table_schema": table_schema,
                 "bypass_intent": True,
             })
+            # Fetch fresh mask rules on every query — local PG, ~1ms, negligible vs LLM+DB
+            try:
+                from src.core.config_db import get_config_db
+                fresh_rules = [
+                    {"field_pattern": r["field_pattern"], "strategy": r["strategy"]}
+                    for r in get_config_db().list_mask_rules() if r["enabled"]
+                ]
+                _ctx_mask_rules.set(fresh_rules)
+            except Exception:
+                pass
             return [types.TextContent(type="text", text=_format_result(result))]
 
         elif name == "list_tables":

@@ -271,9 +271,12 @@ app.include_router(audit_router,            dependencies=_admin_api_dep)
 
 # MCP SSE server — enabled via config: mcp.sse.enabled = true
 if config.get("mcp", {}).get("sse", {}).get("enabled", False):
-    from src.api.mcp_sse import mcp_app
-    app.mount("/mcp", mcp_app)
-    print("✅ MCP SSE server enabled at /mcp/sse")
+    try:
+        from src.api.mcp_sse import mcp_app
+        app.mount("/mcp", mcp_app)
+        print("✅ MCP SSE server enabled at /mcp/sse")
+    except Exception as _mcp_err:
+        print(f"⚠️  MCP SSE server failed to load: {_mcp_err} — continuing without it")
 # ============================================
 # REQUEST/RESPONSE MODELS
 # ============================================
