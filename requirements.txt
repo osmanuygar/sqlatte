@@ -1,6 +1,9 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.29.0
 
+# MCP (Model Context Protocol) SSE server
+mcp>=1.20.0
+
 # LLM Providers
 anthropic>=0.27.0
 google-generativeai>=0.3.0
@@ -11,6 +14,7 @@ trino==0.328.0
 psycopg2-binary>=2.9.9        # PostgreSQL
 mysql-connector-python>=8.2.0  # MySQL
 cryptography>=43.0.0           # CVE fixes from <42 series
+sqlglot>=25.0.0                # SQL parsing for MCP mask-rule column resolution
 
 # Core
 pydantic>=2.0.0

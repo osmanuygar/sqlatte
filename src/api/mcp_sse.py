@@ -22,6 +22,8 @@ import hashlib
 import logging
 
 import httpx
+import sqlglot
+from sqlglot import exp
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
 from mcp.server.transport_security import TransportSecuritySettings
@@ -37,6 +39,15 @@ logger = logging.getLogger(__name__)
 _ctx_session_id: contextvars.ContextVar[str] = contextvars.ContextVar("mcp_session_id")
 _ctx_self_url: contextvars.ContextVar[str] = contextvars.ContextVar("mcp_self_url")
 _ctx_mask_rules: contextvars.ContextVar[list] = contextvars.ContextVar("mcp_mask_rules", default=[])
+_ctx_sql_dialect: contextvars.ContextVar[str] = contextvars.ContextVar("mcp_sql_dialect", default="")
+
+# DB provider name (config.yaml `database.provider`) → sqlglot dialect name
+_PROVIDER_TO_DIALECT = {
+    "bigquery": "bigquery",
+    "mysql": "mysql",
+    "postgresql": "postgres",
+    "trino": "trino",
+}
 
 # ── MCP server instance (shared, stateless — state lives in contextvars) ──────
 server = Server("sqlatte")
@@ -78,13 +89,48 @@ def _apply_mask(value: str, strategy: str) -> str:
     return "[REDACTED]"
 
 
-def _mask_col(col: str, value, rules: list):
+def _resolve_source_columns(sql: str) -> dict:
+    """Map each output column (alias) to the real source column(s) it derives from.
+
+    The LLM is free to alias a sensitive column to any name (e.g.
+    `SELECT email AS contact_info`), which would let it slip past mask
+    rules that only look at the displayed column name. Parsing the SQL
+    lets us match rules against the underlying column instead of
+    whatever name the query happened to give it.
+
+    Best-effort: on any parse failure (unsupported dialect quirk, etc.)
+    returns {} and callers fall back to matching on the display name,
+    same as before this existed.
+    """
+    try:
+        dialect = _ctx_sql_dialect.get() or None
+        parsed = sqlglot.parse_one(sql, dialect=dialect)
+        select = parsed if isinstance(parsed, exp.Select) else parsed.find(exp.Select)
+        if select is None:
+            return {}
+        mapping = {}
+        for projection in select.expressions:
+            alias = (projection.alias_or_name or "").lower()
+            cols = [c.name.lower() for c in projection.find_all(exp.Column)]
+            if alias and cols:
+                mapping[alias] = cols
+        return mapping
+    except Exception:
+        return {}
+
+
+def _mask_col(col: str, value, rules: list, source_map: dict):
+    if value is None or value == "":
+        return value
     col_lower = col.lower()
+    # Match against every real source column feeding this output (covers
+    # simple aliasing and multi-column expressions like CONCAT(a, b));
+    # fall back to the display name itself if we couldn't resolve it.
+    candidates = source_map.get(col_lower) or [col_lower]
     for rule in rules:
-        if fnmatch.fnmatch(col_lower, rule["field_pattern"]):
-            if value is None or value == "":
-                return value
-            return _apply_mask(value, rule["strategy"])
+        for candidate in candidates:
+            if fnmatch.fnmatch(candidate, rule["field_pattern"]):
+                return _apply_mask(value, rule["strategy"])
     return value
 
 
@@ -98,6 +144,8 @@ def _format_result(result: dict) -> str:
     if sql:
         parts.append(f"**Generated SQL:**\n```sql\n{sql}\n```")
 
+    source_map = _resolve_source_columns(sql) if sql else {}
+
     data = result.get("data") or result.get("results")
     columns = result.get("columns")
 
@@ -105,7 +153,7 @@ def _format_result(result: dict) -> str:
         header = " | ".join(columns)
         sep = " | ".join(["---"] * len(columns))
         rows = "\n".join(
-            " | ".join(str(_mask_col(columns[i], v, rules)) for i, v in enumerate(row))
+            " | ".join(str(_mask_col(columns[i], v, rules, source_map)) for i, v in enumerate(row))
             for row in data[:50]
         )
         parts.append(f"**Results ({len(data)} rows):**\n{header}\n{sep}\n{rows}")
@@ -116,7 +164,7 @@ def _format_result(result: dict) -> str:
         header = " | ".join(cols)
         sep = " | ".join(["---"] * len(cols))
         rows = "\n".join(
-            " | ".join(str(_mask_col(c, r.get(c, ""), rules)) for c in cols)
+            " | ".join(str(_mask_col(c, r.get(c, ""), rules, source_map)) for c in cols)
             for r in data[:50]
         )
         parts.append(f"**Results ({len(data)} rows):**\n{header}\n{sep}\n{rows}")
@@ -254,6 +302,8 @@ async def handle_sse(request: Request) -> Response:
             username=result["username"],
             db_config=result["db_config"],
         )
+        provider = result["db_config"].get("provider", "")
+        sql_dialect = _PROVIDER_TO_DIALECT.get(provider, "")
     except Exception as e:
         logger.error(f"MCP SSE auth error: {e}")
         return Response("Authentication error", status_code=500)
@@ -274,6 +324,7 @@ async def handle_sse(request: Request) -> Response:
     _ctx_session_id.set(session_id)
     _ctx_self_url.set(self_url)
     _ctx_mask_rules.set(rules)
+    _ctx_sql_dialect.set(sql_dialect)
 
     logger.info(f"MCP SSE connection: user={result['username']} session={session_id[:8]}...")
 
