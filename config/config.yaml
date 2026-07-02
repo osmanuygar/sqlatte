@@ -149,6 +149,12 @@ database:
     timeout: 300
     max_results: 10000
 
+# MCP Server Settings
+mcp:
+  sse:
+    enabled: true   # set to true to expose /mcp/sse for network MCP clients
+                    # (no local Python needed — clients connect via URL + API token)
+
 # CORS Settings
 cors:
   allow_origins: ["*"]
