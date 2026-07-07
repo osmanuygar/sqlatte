@@ -1117,6 +1117,16 @@ class AuthPlugin(BasePlugin):
                         execution_ms=_execution_ms,
                     )
 
+                from src.core.security_alerts import check_and_alert
+                check_and_alert(
+                    sql=sql_query,
+                    risk_score=_risk,
+                    username=user_id,
+                    session_id=session_id or "",
+                    catalog=_catalog,
+                    widget_type=_widget,
+                )
+
                 row_cap = None
                 if bypass_intent:
                     mcp_cfg = llm_config.get("mcp", {})

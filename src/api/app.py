@@ -230,7 +230,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
+            "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com; "
             "font-src 'self' fonts.gstatic.com; "
             "img-src 'self' data:; "
             "connect-src 'self'; "
