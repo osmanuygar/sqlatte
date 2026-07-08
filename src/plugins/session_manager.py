@@ -17,7 +17,8 @@ class AuthSession:
             session_id: str,
             username: str,
             db_config: Dict[str, Any],
-            ttl_minutes: int = 480  # 8 hours default
+            ttl_minutes: int = 480,  # 8 hours default
+            api_token: Optional[str] = None
     ):
         self.session_id = session_id
         self.username = username
@@ -26,6 +27,7 @@ class AuthSession:
         self.last_activity = datetime.now()
         self.ttl_minutes = ttl_minutes
         self.conversation_id = None  # Link to conversation manager session
+        self.api_token = api_token  # Originating API token, if this session was created from one
 
     def is_expired(self) -> bool:
         """Check if session has expired"""
@@ -74,6 +76,7 @@ class SessionManager:
             username: str,
             db_config: Dict[str, Any],
             ttl_minutes: Optional[int] = None,
+            api_token: Optional[str] = None,
     ) -> str:
         """
         Create a new authentication session.
@@ -83,6 +86,8 @@ class SessionManager:
             db_config:   Database configuration for this session.
             ttl_minutes: Override TTL for this specific session.
                          Defaults to the manager-wide session_ttl_minutes.
+            api_token:   The API token this session was created from, if any.
+                         Used to enforce per-query daily budgets on /auth/query.
 
         Returns:
             Session ID string.
@@ -96,6 +101,7 @@ class SessionManager:
                 username=username,
                 db_config=db_config,
                 ttl_minutes=effective_ttl,
+                api_token=api_token,
             )
             self.sessions[session_id] = session
 

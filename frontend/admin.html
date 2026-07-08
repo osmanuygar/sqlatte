@@ -33,6 +33,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
             box-shadow: 0 4px 20px rgba(107, 68, 35, 0.3);
         }
 
@@ -50,13 +52,95 @@
             flex-wrap: wrap;
         }
 
-        /* Tabs */
-        .tabs {
+        /* Sidebar nav + main content */
+        .admin-body {
             display: flex;
+            gap: 24px;
+            align-items: flex-start;
+        }
+
+        .sidebar {
+            width: 220px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            position: sticky;
+            top: 20px;
+        }
+
+        .sidebar-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #707070;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            padding: 0 8px 6px;
+        }
+
+        .config-toolbar {
+            display: flex;
+            gap: 6px;
+            padding: 0 8px 10px;
+        }
+
+        .config-toolbar button {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 6px 4px;
+            background: transparent;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            color: #707070;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .config-toolbar button:hover {
+            background: #1a1a1a;
+            color: #c0c0c0;
+            border-color: #444;
+        }
+
+        .sidebar .tab {
+            width: 100%;
+            white-space: normal;
+        }
+
+        .main-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        @media (max-width: 900px) {
+            .admin-body { flex-direction: column; }
+            .sidebar { width: 100%; position: static; flex-direction: row; flex-wrap: wrap; }
+        }
+
+        /* Header status pills */
+        .header-status {
+            display: flex;
+            flex-wrap: wrap;
             gap: 8px;
-            margin-bottom: 24px;
-            overflow-x: auto;
-            padding-bottom: 8px;
+            align-items: center;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: rgba(255,255,255,0.14);
+            border-radius: 999px;
+            font-size: 12px;
+            color: #fff;
+            white-space: nowrap;
         }
 
         .tab {
@@ -661,19 +745,8 @@
                 <span>⚙️</span>
                 SQLatte Complete Admin Panel
             </h1>
+            <div class="header-status" id="system-info-list">Loading…</div>
             <div class="admin-actions">
-                <button class="btn btn-warning" onclick="hotReload()">
-                    <span>🔥</span>
-                    Hot Reload
-                </button>
-                <button class="btn btn-secondary" onclick="loadConfig()">
-                    <span>🔄</span>
-                    Refresh
-                </button>
-                <button class="btn btn-danger" onclick="resetConfig()">
-                    <span>↩️</span>
-                    Reset
-                </button>
                 <button class="btn btn-primary" onclick="window.location.href='/'">
                     <span>☕</span>
                     Back to App
@@ -681,69 +754,82 @@
             </div>
         </div>
 
-        <!-- System Info Panel -->
-        <div class="info-panel" id="system-info">
-            <h3>📊 System Status</h3>
-            <ul id="system-info-list">
-                <li>Loading...</li>
-            </ul>
-        </div>
+        <div class="admin-body">
+        <!-- Sidebar Nav -->
+        <nav class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Configuration</div>
+                <div class="config-toolbar">
+                    <button onclick="hotReload()" title="Reload providers with current config">🔥 Reload</button>
+                    <button onclick="loadConfig()" title="Refresh form from server">🔄 Refresh</button>
+                    <button onclick="resetConfig()" title="Clear runtime overrides, revert to config.yaml">↩️ Reset</button>
+                </div>
+                <div class="tab active" onclick="switchTab('providers')">
+                    <span>🔌</span>
+                    Providers
+                </div>
+                <div class="tab" onclick="switchTab('prompts')">
+                    <span>📝</span>
+                    Prompts
+                </div>
+                <div class="tab" onclick="switchTab('email')">
+                    <span>📧</span>
+                    Email & SMTP
+                </div>
+                <div class="tab" onclick="switchTab('scheduler')">
+                    <span>📅</span>
+                    Scheduler
+                </div>
+                <div class="tab" onclick="switchTab('insights')">
+                    <span>💡</span>
+                    Insights
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Data & Ops</div>
+                <div class="tab" onclick="switchTab('ops-agent')">
+                    <span>🔧</span>
+                    Ops Agent
+                </div>
+                <div class="tab" onclick="switchTab('export')">
+                    <span>📊</span>
+                    Export
+                </div>
+                <div class="tab" onclick="switchTab('history')">
+                    <span>📜</span>
+                    History
+                </div>
+                <div class="tab" onclick="switchTab('snapshots')">
+                    <span>📸</span>
+                    Snapshots
+                </div>
+                <div class="tab" onclick="switchTab('semantic')">
+                    <span>🧠</span>
+                    Semantic Layer
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Audit & Security</div>
+                <div class="tab" onclick="switchTab('audit'); loadAuditLogs();">
+                    <span>🔍</span>
+                    Audit Logs
+                </div>
+                <div class="tab" onclick="switchTab('audit-stats'); loadAuditStats();">
+                    <span>📈</span>
+                    Audit Statistics
+                </div>
+                <div class="tab" onclick="switchTab('api-tokens'); loadAdminTokens();">
+                    <span>🔑</span>
+                    API Tokens
+                </div>
+                <div class="tab" onclick="switchTab('mcp-masking'); loadMaskRules();">
+                    <span>🎭</span>
+                    MCP Masking
+                </div>
+            </div>
+        </nav>
 
-        <!-- Tabs -->
-        <div class="tabs">
-            <div class="tab active" onclick="switchTab('providers')">
-                <span>🔌</span>
-                Providers
-            </div>
-            <div class="tab" onclick="switchTab('prompts')">
-                <span>📝</span>
-                Prompts
-            </div>
-            <div class="tab" onclick="switchTab('email')">
-                <span>📧</span>
-                Email & SMTP
-            </div>
-            <div class="tab" onclick="switchTab('scheduler')">
-                <span>📅</span>
-                Scheduler
-            </div>
-            <div class="tab" onclick="switchTab('insights')">
-                <span>💡</span>
-                Insights
-            </div>
-            <div class="tab" onclick="switchTab('ops-agent')">
-                <span>🔧</span>
-                Ops Agent
-            </div>
-            <div class="tab" onclick="switchTab('export')">
-                <span>📊</span>
-                Export
-            </div>
-            <div class="tab" onclick="switchTab('history')">
-                <span>📜</span>
-                History
-            </div>
-            <div class="tab" onclick="switchTab('snapshots')">
-                <span>📸</span>
-                Snapshots
-            </div>
-            <div class="tab" onclick="switchTab('semantic')">
-                <span>🧠</span>
-                Semantic Layer
-            </div>
-            <div class="tab" onclick="switchTab('audit'); loadAuditLogs();">
-                <span>🔍</span>
-                Audit Logs
-            </div>
-            <div class="tab" onclick="switchTab('api-tokens'); loadAdminTokens();">
-                <span>🔑</span>
-                API Tokens
-            </div>
-            <div class="tab" onclick="switchTab('mcp-masking'); loadMaskRules();">
-                <span>🎭</span>
-                MCP Masking
-            </div>
-        </div>
+        <main class="main-content" id="main-content">
 
         <!-- TAB: Providers (LLM & Database) -->
         <div id="tab-providers" class="tab-content active">
@@ -2207,7 +2293,137 @@
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- TAB: Audit Statistics -->
+        <div id="tab-audit-stats" class="tab-content">
+            <div class="config-card" style="margin-bottom:16px;">
+                <h2><span>📈</span> Audit Statistics</h2>
+                <p style="color:#a0a0a0;font-size:13px;margin-bottom:16px;">
+                    Daily SQL-generation volume trends and the top users by query count.
+                </p>
+
+                <!-- Summary cards -->
+                <div id="audit-stats-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+                <!-- Filters -->
+                <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:20px;">
+                    <div>
+                        <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Period</label>
+                        <select id="audit-stats-days" style="background:#1a1a1a;border:1px solid #333;color:#e0e0e0;border-radius:6px;padding:6px 10px;font-size:13px;">
+                            <option value="7">Last 7d</option>
+                            <option value="14">Last 14d</option>
+                            <option value="30" selected>Last 30d</option>
+                            <option value="60">Last 60d</option>
+                            <option value="90">Last 90d</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Top</label>
+                        <select id="audit-stats-limit" style="background:#1a1a1a;border:1px solid #333;color:#e0e0e0;border-radius:6px;padding:6px 10px;font-size:13px;">
+                            <option value="5">Top 5</option>
+                            <option value="10" selected>Top 10</option>
+                            <option value="20">Top 20</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-secondary" onclick="loadAuditStats()" style="align-self:flex-end;">
+                        <span>🔄</span> Refresh
+                    </button>
+                    <span id="audit-stats-loading" style="display:none;color:#a0a0a0;font-size:13px;align-self:flex-end;">Loading…</span>
+                    <span id="audit-stats-error" style="display:none;color:#e57373;font-size:13px;align-self:flex-end;">Audit logging is disabled</span>
+                </div>
+
+                <!-- Daily trend chart -->
+                <div style="font-size:12px;color:#D4A574;font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Daily Query Volume</div>
+                <div id="audit-stats-trend-chart" style="display:flex;align-items:flex-end;gap:2px;height:140px;border-bottom:1px solid #2a2a2a;padding:0 0 4px;margin-bottom:6px;"></div>
+                <div id="audit-stats-trend-labels" style="display:flex;justify-content:space-between;font-size:10px;color:#707070;margin-bottom:24px;"></div>
+
+                <!-- Top users leaderboard -->
+                <div style="font-size:12px;color:#D4A574;font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Top Users</div>
+                <div style="overflow-x:auto;border:1px solid #2a2a2a;border-radius:8px;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead>
+                            <tr style="background:#111;">
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">#</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">User</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">Queries</th>
+                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">Success</th>
+                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">Total Tokens</th>
+                                <th style="padding:8px 12px;text-align:right;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;border-bottom:1px solid #2a2a2a;">Avg Tok/Query</th>
+                                <th style="padding:8px 12px;text-align:left;color:#707070;font-weight:600;text-transform:uppercase;font-size:11px;white-space:nowrap;border-bottom:1px solid #2a2a2a;">Last Active</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-stats-users-tbody">
+                            <tr><td colspan="7" style="text-align:center;padding:24px;color:#505050;">Click Refresh to load stats</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: MCP Masking -->
+        <div id="tab-mcp-masking" class="tab-content">
+            <div class="config-card" style="margin-bottom:16px;">
+                <h2><span>🎭</span> MCP Field Masking</h2>
+                <p style="color:#a0a0a0;font-size:13px;margin-bottom:20px;">
+                    Fields matching a pattern will be masked before results are sent to Claude via MCP.
+                    Supports wildcards — e.g. <code>*email*</code>, <code>*phone</code>, <code>ssn</code>.
+                </p>
+
+                <!-- Add rule form -->
+                <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:16px;margin-bottom:20px;">
+                    <h3 style="font-size:14px;margin-bottom:12px;color:#ccc;">Add New Rule</h3>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                        <div>
+                            <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Field Pattern</label>
+                            <input id="mask-pattern" type="text" placeholder="e.g. email, *_email, phone"
+                                style="background:#111;border:1px solid #444;color:#e0e0e0;border-radius:6px;padding:7px 12px;font-size:13px;width:220px;">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Strategy</label>
+                            <select id="mask-strategy"
+                                style="background:#111;border:1px solid #444;color:#e0e0e0;border-radius:6px;padding:7px 12px;font-size:13px;">
+                                <option value="hash">Hash (SHA256 16-char)</option>
+                                <option value="partial">Partial (j**@domain)</option>
+                                <option value="redact">Redact ([REDACTED])</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;min-width:180px;">
+                            <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Description (optional)</label>
+                            <input id="mask-description" type="text" placeholder="Why this field is masked"
+                                style="background:#111;border:1px solid #444;color:#e0e0e0;border-radius:6px;padding:7px 12px;font-size:13px;width:100%;">
+                        </div>
+                        <button onclick="addMaskRule()"
+                            style="background:#6B4423;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;cursor:pointer;white-space:nowrap;">
+                            + Add Rule
+                        </button>
+                    </div>
+                    <div id="mask-add-msg" style="margin-top:8px;font-size:12px;display:none;"></div>
+                </div>
+
+                <!-- Rules table -->
+                <div style="overflow-x:auto;background:#1e1e1e;border:1px solid #333;border-radius:8px;">
+                    <table style="width:100%;border-collapse:collapse;font-size:.85rem;">
+                        <thead>
+                            <tr style="border-bottom:1px solid #333;">
+                                <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Field Pattern</th>
+                                <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Strategy</th>
+                                <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Description</th>
+                                <th style="padding:10px 14px;text-align:center;color:#888;font-weight:500;">Enabled</th>
+                                <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Created</th>
+                                <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="mask-rules-body">
+                            <tr><td colspan="6" style="color:#888;text-align:center;padding:32px;">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        </main>
+        </div><!-- /admin-body -->
+    </div><!-- /admin-container -->
 
     <script>
         const API_BASE = window.location.origin;
@@ -2570,14 +2786,15 @@
             const dbEnabled = data.db_enabled || false;
             const hasOverrides = data.has_runtime_overrides || false;
 
+            const pill = (label, ok) => `<span class="status-pill" title="${label}: ${ok ? 'Enabled' : 'Disabled'}">${ok ? '✅' : '⚠️'} ${label}</span>`;
+            const model = config.llm?.[config.llm?.provider]?.model;
             document.getElementById('system-info-list').innerHTML = `
-                <li><strong>LLM Provider:</strong> <span>${config.llm?.provider || 'N/A'}</span></li>
-                <li><strong>LLM Model:</strong> <span>${config.llm?.[config.llm?.provider]?.model || 'N/A'}</span></li>
-                <li><strong>Database:</strong> <span>${config.database?.provider || 'N/A'}</span></li>
-                <li><strong>Email:</strong> <span class="status-badge ${config.email?.enabled ? 'status-success' : 'status-warning'}">${config.email?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
-                <li><strong>Scheduler:</strong> <span class="status-badge ${config.scheduler?.enabled ? 'status-success' : 'status-warning'}">${config.scheduler?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
-                <li><strong>Insights:</strong> <span class="status-badge ${config.insights?.enabled ? 'status-success' : 'status-warning'}">${config.insights?.enabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
-                <li><strong>DB Backend:</strong> <span class="status-badge ${dbEnabled ? 'status-success' : 'status-warning'}">${dbEnabled ? '✅ Enabled' : '⚠️ Disabled'}</span></li>
+                <span class="status-pill" title="LLM Provider / Model">🧠 ${config.llm?.provider || 'N/A'}${model ? ' · ' + model : ''}</span>
+                <span class="status-pill" title="Database Provider">🗄️ ${config.database?.provider || 'N/A'}</span>
+                ${pill('Email', config.email?.enabled)}
+                ${pill('Scheduler', config.scheduler?.enabled)}
+                ${pill('Insights', config.insights?.enabled)}
+                ${pill('DB Backend', dbEnabled)}
             `;
         }
 
@@ -3878,6 +4095,84 @@
 
         document.getElementById('audit-hours').addEventListener('change', ()=>loadAuditLogs(true));
 
+        // ── AUDIT STATISTICS ─────────────────────────────────────────────────────
+        async function loadAuditStats() {
+            const days  = document.getElementById('audit-stats-days').value;
+            const limit = document.getElementById('audit-stats-limit').value;
+            document.getElementById('audit-stats-loading').style.display = 'inline';
+            document.getElementById('audit-stats-error').style.display = 'none';
+            try {
+                const [trendRes, usersRes] = await Promise.all([
+                    fetch(`/api/audit/daily-trend?days=${days}`),
+                    fetch(`/api/audit/top-users?days=${days}&limit=${limit}`)
+                ]);
+                const trend = await trendRes.json();
+                const users = await usersRes.json();
+                if (trend.error || users.error) {
+                    document.getElementById('audit-stats-error').style.display = 'inline';
+                    document.getElementById('audit-stats-summary-cards').innerHTML = '';
+                    document.getElementById('audit-stats-trend-chart').innerHTML = '';
+                    document.getElementById('audit-stats-trend-labels').innerHTML = '';
+                    document.getElementById('audit-stats-users-tbody').innerHTML =
+                        '<tr><td colspan="7" style="text-align:center;padding:24px;color:#505050;">Audit logging is disabled</td></tr>';
+                    return;
+                }
+                _auditStatsRenderSummary(trend, users);
+                _auditStatsRenderTrend(trend.days || []);
+                _auditStatsRenderUsers(users.users || []);
+            } catch (e) { console.error('Audit stats error:', e); }
+            finally { document.getElementById('audit-stats-loading').style.display = 'none'; }
+        }
+
+        function _auditStatsRenderSummary(trend, users) {
+            document.getElementById('audit-stats-summary-cards').innerHTML = [
+                {label:'Total Queries',     value:_afmt(trend.total_query_count)},
+                {label:'Success Rate',      value:(trend.overall_success_rate ?? 0) + '%'},
+                {label:'Avg Queries / Day', value:_afmt(trend.avg_queries_per_day)},
+                {label:'Total Tokens',      value:_afmt(trend.total_tokens)},
+                {label:'Active Users',      value:_afmt(users.total_distinct_users)},
+            ].map(c=>`<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px 14px;"><div style="font-size:11px;color:#707070;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">${c.label}</div><div style="font-size:1.4rem;font-weight:700;color:#f0e8d8;">${c.value}</div></div>`).join('');
+        }
+
+        function _auditStatsRenderTrend(days) {
+            const chart  = document.getElementById('audit-stats-trend-chart');
+            const labels = document.getElementById('audit-stats-trend-labels');
+            if (!days.length) { chart.innerHTML = '<div style="color:#505050;font-size:12px;align-self:center;">No data</div>'; labels.innerHTML=''; return; }
+            const max = Math.max(1, ...days.map(d => d.query_count));
+            chart.innerHTML = days.map(d => {
+                const pct = Math.round(d.query_count / max * 100);
+                return `<div style="flex:1;display:flex;align-items:flex-end;justify-content:center;height:100%;" title="${d.date}: ${d.query_count} queries (${d.success_rate}% success)">
+                            <div style="width:100%;max-width:18px;background:#D4A574;border-radius:2px 2px 0 0;height:${pct}%;min-height:${d.query_count>0?'2px':'0'};"></div>
+                        </div>`;
+            }).join('');
+            const step = Math.max(1, Math.ceil(days.length / 6));
+            labels.innerHTML = days.map((d,i) => i % step === 0 ? `<span>${d.date.slice(5)}</span>` : '').join('');
+        }
+
+        function _auditStatsRenderUsers(users) {
+            const tbody = document.getElementById('audit-stats-users-tbody');
+            if (!users.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:#505050;">No data in this period</td></tr>'; return; }
+            const max = Math.max(...users.map(u => u.query_count));
+            tbody.innerHTML = users.map((u,i) => {
+                const pct = max>0 ? Math.round(u.query_count/max*100) : 0;
+                return `<tr style="border-bottom:1px solid #1e1e1e;" onmouseover="this.style.background='#161616'" onmouseout="this.style.background=''">
+                    <td style="padding:7px 12px;color:#707070;">${i+1}</td>
+                    <td style="padding:7px 12px;color:#c0c0c0;">${_aEsc(u.user_id)}</td>
+                    <td style="padding:7px 12px;">
+                        <div>${_afmt(u.query_count)}</div>
+                        <div style="height:3px;background:#D4A574;border-radius:2px;width:${pct}%;margin-top:2px;"></div>
+                    </td>
+                    <td style="padding:7px 12px;text-align:right;color:#c0c0c0;">${u.success_rate}%</td>
+                    <td style="padding:7px 12px;text-align:right;color:#f5ddb8;font-weight:600;">${_afmt(u.total_tokens)}</td>
+                    <td style="padding:7px 12px;text-align:right;color:#a0a0a0;">${_afmt(u.avg_tokens_per_query)}</td>
+                    <td style="padding:7px 12px;white-space:nowrap;color:#707070;">${_aTime(u.last_active)}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        document.getElementById('audit-stats-days').addEventListener('change', () => loadAuditStats());
+        document.getElementById('audit-stats-limit').addEventListener('change', () => loadAuditStats());
+
         // ── Admin API Tokens ──────────────────────────────────────────────────────
         async function loadAdminTokens() {
             document.getElementById('admin-tok-body').innerHTML =
@@ -4019,9 +4314,6 @@
 
     </script>
 
-<!-- TAB: API Tokens -->
-<template id="tpl-api-tokens">
-</template>
 <script>
 // Inject API Tokens tab content
 (function() {
@@ -4083,70 +4375,9 @@
                 </table>
             </div>
         </div>`;
-    document.querySelector('.tabs').parentElement.appendChild(div);
+    document.getElementById('main-content').appendChild(div);
 })();
 </script>
-
-<!-- TAB: MCP Masking -->
-<div id="tab-mcp-masking" class="tab-content">
-    <div class="config-card" style="margin-bottom:16px;">
-        <h2><span>🎭</span> MCP Field Masking</h2>
-        <p style="color:#a0a0a0;font-size:13px;margin-bottom:20px;">
-            Fields matching a pattern will be masked before results are sent to Claude via MCP.
-            Supports wildcards — e.g. <code>*email*</code>, <code>*phone</code>, <code>ssn</code>.
-        </p>
-
-        <!-- Add rule form -->
-        <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:16px;margin-bottom:20px;">
-            <h3 style="font-size:14px;margin-bottom:12px;color:#ccc;">Add New Rule</h3>
-            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-                <div>
-                    <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Field Pattern</label>
-                    <input id="mask-pattern" type="text" placeholder="e.g. email, *_email, phone"
-                        style="background:#111;border:1px solid #444;color:#e0e0e0;border-radius:6px;padding:7px 12px;font-size:13px;width:220px;">
-                </div>
-                <div>
-                    <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Strategy</label>
-                    <select id="mask-strategy"
-                        style="background:#111;border:1px solid #444;color:#e0e0e0;border-radius:6px;padding:7px 12px;font-size:13px;">
-                        <option value="hash">Hash (SHA256 16-char)</option>
-                        <option value="partial">Partial (j**@domain)</option>
-                        <option value="redact">Redact ([REDACTED])</option>
-                    </select>
-                </div>
-                <div style="flex:1;min-width:180px;">
-                    <label style="display:block;font-size:12px;color:#a0a0a0;margin-bottom:4px;">Description (optional)</label>
-                    <input id="mask-description" type="text" placeholder="Why this field is masked"
-                        style="background:#111;border:1px solid #444;color:#e0e0e0;border-radius:6px;padding:7px 12px;font-size:13px;width:100%;">
-                </div>
-                <button onclick="addMaskRule()"
-                    style="background:#6B4423;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;cursor:pointer;white-space:nowrap;">
-                    + Add Rule
-                </button>
-            </div>
-            <div id="mask-add-msg" style="margin-top:8px;font-size:12px;display:none;"></div>
-        </div>
-
-        <!-- Rules table -->
-        <div style="overflow-x:auto;background:#1e1e1e;border:1px solid #333;border-radius:8px;">
-            <table style="width:100%;border-collapse:collapse;font-size:.85rem;">
-                <thead>
-                    <tr style="border-bottom:1px solid #333;">
-                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Field Pattern</th>
-                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Strategy</th>
-                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Description</th>
-                        <th style="padding:10px 14px;text-align:center;color:#888;font-weight:500;">Enabled</th>
-                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;">Created</th>
-                        <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;"></th>
-                    </tr>
-                </thead>
-                <tbody id="mask-rules-body">
-                    <tr><td colspan="6" style="color:#888;text-align:center;padding:32px;">Loading…</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
 
 <script>
 (function() {

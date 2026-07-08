@@ -847,18 +847,20 @@ class ConfigDB:
         return token
 
     def validate_api_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """Validate token and return token data or None.
+        """Validate token and return credentials, or None if invalid/expired/revoked.
+
+        Does NOT touch the daily query budget — this only authenticates the
+        token itself, meant to be called once per session creation. Call
+        consume_token_query_budget() per actual SQL query execution instead.
 
         Returns:
           None                             — invalid / expired / revoked
-          {"_error": "budget_exceeded", …} — token is valid but daily limit hit
           {"username": …, "db_config": …}  — success
         """
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            SELECT username, db_config_encrypted, expires_at, revoked,
-                   daily_query_limit, queries_used_today, usage_reset_date
+            SELECT username, db_config_encrypted, expires_at, revoked
             FROM api_tokens WHERE token = %s
             """,
             (token,)
@@ -869,13 +871,52 @@ class ConfigDB:
             return None
 
         username, encrypted, expires_at, revoked = row[0], row[1], row[2], row[3]
-        daily_limit, queries_used_today, usage_reset_date = row[4], row[5], row[6]
 
         if revoked:
             cursor.close()
             return None
 
         if datetime.now() > expires_at:
+            cursor.close()
+            return None
+
+        cursor.execute(
+            "UPDATE api_tokens SET last_used_at = %s WHERE token = %s",
+            (datetime.now(), token)
+        )
+        self.conn.commit()
+        cursor.close()
+
+        db_config = json.loads(self._decrypt(encrypted))
+        return {"username": username, "db_config": db_config}
+
+    def consume_token_query_budget(self, token: str) -> Optional[Dict[str, Any]]:
+        """Check and consume one unit of a token's daily query budget.
+
+        Call this once per actual SQL query execution (not per session) so the
+        daily limit reflects real query volume rather than session count.
+
+        Returns:
+          None                             — token no longer valid (revoked/expired/missing)
+          {"_error": "budget_exceeded", …} — daily limit hit, query should be rejected
+          {"queries_used_today": …}        — success, budget consumed
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT expires_at, revoked, daily_query_limit, queries_used_today, usage_reset_date
+            FROM api_tokens WHERE token = %s
+            """,
+            (token,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            return None
+
+        expires_at, revoked, daily_limit, queries_used_today, usage_reset_date = row
+
+        if revoked or datetime.now() > expires_at:
             cursor.close()
             return None
 
@@ -906,8 +947,7 @@ class ConfigDB:
         self.conn.commit()
         cursor.close()
 
-        db_config = json.loads(self._decrypt(encrypted))
-        return {"username": username, "db_config": db_config}
+        return {"queries_used_today": queries_used_today + 1}
 
     def revoke_api_token(self, token: str, username: str) -> bool:
         """Revoke a token (only owner can revoke)."""

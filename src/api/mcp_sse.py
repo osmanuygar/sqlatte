@@ -292,15 +292,11 @@ async def handle_sse(request: Request) -> Response:
 
         if result is None:
             return Response("Invalid, expired, or revoked token", status_code=401)
-        if result.get("_error") == "budget_exceeded":
-            return Response(
-                f"Daily query budget of {result['daily_limit']} exceeded. Resets at midnight UTC.",
-                status_code=429,
-            )
 
         session_id = auth_session_manager.create_session(
             username=result["username"],
             db_config=result["db_config"],
+            api_token=token,
         )
         provider = result["db_config"].get("provider", "")
         sql_dialect = _PROVIDER_TO_DIALECT.get(provider, "")

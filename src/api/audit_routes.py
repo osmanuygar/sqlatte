@@ -63,3 +63,20 @@ async def export_audit_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/daily-trend")
+async def get_audit_daily_trend(days: int = Query(30, ge=1, le=180)):
+    if audit_log_db is None:
+        return {"error": "Audit logging is disabled", "days": []}
+    return audit_log_db.get_daily_trend(days=days)
+
+
+@router.get("/top-users")
+async def get_audit_top_users(
+    days: int = Query(30, ge=1, le=180),
+    limit: int = Query(10, ge=1, le=50),
+):
+    if audit_log_db is None:
+        return {"error": "Audit logging is disabled", "users": []}
+    return audit_log_db.get_top_users(days=days, limit=limit)
