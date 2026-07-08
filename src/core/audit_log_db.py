@@ -337,6 +337,123 @@ class AuditLogDB:
                 "by_operation": [],
             }
 
+    def get_daily_trend(self, days: int = 30) -> Dict:
+        """Daily SQL-generation volume trend, zero-filled for gap-free charting."""
+        today = datetime.now().date()
+        start_day = today - timedelta(days=days - 1)
+        cutoff = datetime.combine(start_day, datetime.min.time())
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT date_trunc('day', created_at)::date AS day,
+                               COUNT(*)                                    AS query_count,
+                               SUM(CASE WHEN success THEN 1 ELSE 0 END)    AS successful,
+                               COALESCE(SUM(total_tokens), 0)              AS total_tokens
+                        FROM audit_logs
+                        WHERE created_at >= %s AND operation_type = 'sql_generation'
+                        GROUP BY day ORDER BY day
+                    """, [cutoff])
+                    by_day = {r["day"]: dict(r) for r in cur.fetchall()}
+
+                    days_out = []
+                    total_query_count = 0
+                    total_successful = 0
+                    total_tokens = 0
+                    for i in range(days):
+                        d = start_day + timedelta(days=i)
+                        row = by_day.get(d)
+                        qc = int(row["query_count"]) if row else 0
+                        succ = int(row["successful"]) if row else 0
+                        tok = int(row["total_tokens"]) if row else 0
+                        days_out.append({
+                            "date": d.isoformat(),
+                            "query_count": qc,
+                            "successful": succ,
+                            "success_rate": round(succ / qc * 100, 1) if qc else 0.0,
+                            "total_tokens": tok,
+                        })
+                        total_query_count += qc
+                        total_successful += succ
+                        total_tokens += tok
+
+                    return {
+                        "period_days": days,
+                        "total_query_count": total_query_count,
+                        "total_successful": total_successful,
+                        "overall_success_rate": round(total_successful / total_query_count * 100, 1) if total_query_count else 0.0,
+                        "total_tokens": total_tokens,
+                        "avg_queries_per_day": round(total_query_count / days, 1) if days else 0.0,
+                        # Anonymous/default-widget rows (user_id IS NULL) are counted here but
+                        # excluded from get_top_users, so this total can exceed the sum of
+                        # per-user query counts there — that's expected, not a bug.
+                        "days": days_out,
+                    }
+        except Exception as e:
+            print(f"❌ AuditLogDB.get_daily_trend error: {e}")
+            import traceback; traceback.print_exc()
+            return {
+                "period_days": days, "total_query_count": 0, "total_successful": 0,
+                "overall_success_rate": 0.0, "total_tokens": 0, "avg_queries_per_day": 0.0,
+                "days": [],
+            }
+
+    def get_top_users(self, days: int = 30, limit: int = 10) -> Dict:
+        """Top-N users by SQL-generation query count over the given period."""
+        cutoff = datetime.now() - timedelta(days=days)
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT COUNT(DISTINCT user_id) AS n
+                        FROM audit_logs
+                        WHERE created_at >= %s AND operation_type = 'sql_generation' AND user_id IS NOT NULL
+                    """, [cutoff])
+                    total_distinct_users = int(cur.fetchone()["n"])
+
+                    cur.execute("""
+                        SELECT user_id,
+                               COUNT(*)                                    AS query_count,
+                               COALESCE(SUM(input_tokens), 0)              AS input_tokens,
+                               COALESCE(SUM(output_tokens), 0)             AS output_tokens,
+                               COALESCE(SUM(total_tokens), 0)              AS total_tokens,
+                               SUM(CASE WHEN success THEN 1 ELSE 0 END)    AS successful,
+                               MAX(created_at)                             AS last_active
+                        FROM audit_logs
+                        WHERE created_at >= %s AND operation_type = 'sql_generation' AND user_id IS NOT NULL
+                        GROUP BY user_id
+                        ORDER BY query_count DESC
+                        LIMIT %s
+                    """, [cutoff, limit])
+
+                    users = []
+                    for r in cur.fetchall():
+                        row = dict(r)
+                        qc = int(row["query_count"])
+                        succ = int(row["successful"])
+                        tot = int(row["total_tokens"])
+                        users.append({
+                            "user_id": row["user_id"],
+                            "query_count": qc,
+                            "input_tokens": int(row["input_tokens"]),
+                            "output_tokens": int(row["output_tokens"]),
+                            "total_tokens": tot,
+                            "successful": succ,
+                            "success_rate": round(succ / qc * 100, 1) if qc else 0.0,
+                            "avg_tokens_per_query": round(tot / qc, 1) if qc else 0.0,
+                            "last_active": row["last_active"].isoformat() if row["last_active"] else None,
+                        })
+
+                    return {
+                        "period_days": days,
+                        "total_distinct_users": total_distinct_users,
+                        "users": users,
+                    }
+        except Exception as e:
+            print(f"❌ AuditLogDB.get_top_users error: {e}")
+            import traceback; traceback.print_exc()
+            return {"period_days": days, "total_distinct_users": 0, "users": []}
+
     def export_csv(
         self,
         session_id: Optional[str] = None,

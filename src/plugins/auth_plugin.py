@@ -527,6 +527,19 @@ class AuthPlugin(BasePlugin):
                 if not session:
                     raise HTTPException(401, "Session expired or invalid")
 
+                # 1b. Enforce the token's daily query budget, if this session came from one
+                if session.api_token:
+                    from src.core.config_db import get_config_db
+                    budget = get_config_db().consume_token_query_budget(session.api_token)
+                    if budget is None:
+                        raise HTTPException(401, "API token expired or revoked")
+                    if budget.get("_error") == "budget_exceeded":
+                        raise HTTPException(
+                            429,
+                            f"Daily query budget of {budget['daily_limit']} queries exceeded. "
+                            f"Resets at midnight UTC."
+                        )
+
                 question = request.get('question', '')
                 table_schema = request.get('table_schema', '') or request.get('schema', '')
                 bypass_intent = bool(request.get('bypass_intent', False))
@@ -755,16 +768,11 @@ class AuthPlugin(BasePlugin):
                 result = config_db.validate_api_token(token)
                 if not result:
                     raise HTTPException(401, "Invalid, expired, or revoked token")
-                if result.get("_error") == "budget_exceeded":
-                    raise HTTPException(
-                        429,
-                        f"Daily query budget of {result['daily_limit']} queries exceeded. "
-                        f"Resets at midnight UTC."
-                    )
 
                 new_session_id = self.session_manager.create_session(
                     username=result["username"],
-                    db_config=result["db_config"]
+                    db_config=result["db_config"],
+                    api_token=token,
                 )
                 return {"success": True, "session_id": new_session_id, "username": result["username"]}
             except HTTPException:
