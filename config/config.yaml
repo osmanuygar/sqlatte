@@ -153,7 +153,16 @@ database:
 mcp:
   sse:
     enabled: true   # set to true to expose /mcp/sse for network MCP clients
-                    # (no local Python needed — clients connect via URL + API token)
+                     # (no local Python needed — clients connect via URL + API token)
+
+  # Security alerts: notify when an AI/MCP-generated query looks sensitive.
+  # Fires on either trigger — a risk_score above the threshold, or the query
+  # referencing a column matching an enabled MCP Masking field_pattern.
+  security_alerts:
+    enabled: false
+    risk_threshold: 74
+    apply_to: ["mcp"]
+    notify_emails: ["${SMTP_FROM_EMAIL}"]   # empty = log-only, no email attempted
 
 # CORS Settings
 cors:
