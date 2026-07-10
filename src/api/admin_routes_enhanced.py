@@ -1117,6 +1117,21 @@ async def admin_revoke_token(
         raise server_error(e)
 
 
+@router.delete("/token/{token_id}")
+async def admin_delete_token(token_id: int, admin_user: str = Depends(require_admin)):
+    """Permanently delete a revoked API token by its DB id (admin only)."""
+    try:
+        from src.core.config_db import get_config_db
+        ok = get_config_db().admin_delete_token(token_id)
+        if not ok:
+            raise HTTPException(404, "Token not found or not revoked")
+        return {"success": True, "message": "Token deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise server_error(e)
+
+
 @router.get("/token-policy")
 async def get_token_policy(admin_user: str = Depends(require_admin)):
     """Return the platform-wide token query budget policy."""
