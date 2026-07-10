@@ -1037,6 +1037,18 @@ class ConfigDB:
         cursor.close()
         return affected > 0
 
+    def admin_delete_token(self, token_id: int) -> bool:
+        """Permanently delete a token by its DB id (admin only). Only revoked tokens may be deleted."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "DELETE FROM api_tokens WHERE id = %s AND revoked = TRUE",
+            (token_id,)
+        )
+        affected = cursor.rowcount
+        self.conn.commit()
+        cursor.close()
+        return affected > 0
+
     # ── MCP Mask Rules ────────────────────────────────────────────────────────
 
     def list_mask_rules(self) -> List[Dict[str, Any]]:

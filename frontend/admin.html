@@ -4269,6 +4269,12 @@
                                        border-radius:5px;padding:4px 12px;cursor:pointer;font-size:.8rem">
                                 Revoke</button>`
                             : ''}
+                        ${t.revoked
+                            ? `<button onclick="adminDeleteToken(${t.id},this)"
+                                style="background:rgba(224,82,82,.12);color:#e05252;border:1px solid rgba(224,82,82,.3);
+                                       border-radius:5px;padding:4px 12px;cursor:pointer;font-size:.8rem">
+                                Delete</button>`
+                            : ''}
                     </td>
                 </tr>`).join('');
         }
@@ -4302,6 +4308,26 @@
                 if (!res.ok) {
                     const d = await res.json().catch(()=>({}));
                     alert(d.detail || 'Revoke failed');
+                    btn.disabled = false;
+                    return;
+                }
+                await loadAdminTokens();
+            } catch(e) {
+                alert('Network error.');
+                btn.disabled = false;
+            }
+        }
+
+        async function adminDeleteToken(tokenId, btn) {
+            if (!confirm('Permanently delete this revoked token? This cannot be undone.')) return;
+            btn.disabled = true;
+            try {
+                const res = await fetch(`/admin/token/${tokenId}`, {
+                    method: 'DELETE',
+                });
+                if (!res.ok) {
+                    const d = await res.json().catch(()=>({}));
+                    alert(d.detail || 'Delete failed');
                     btn.disabled = false;
                     return;
                 }
