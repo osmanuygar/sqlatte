@@ -395,17 +395,18 @@ def _process_query_sync(
                     "intent_info": intent_result
                 }
 
-            from src.core.sql_validator import is_select_only, violation_reason, risk_score
-            _sql_valid = is_select_only(sql_query)
-            _risk = risk_score(sql_query)
+            from src.core.sql_validator import is_select_only, violation_reason, risk_score, dialect_for_provider
+            _db_conf = current_config.get("database", {})
+            _prov = _db_conf.get("provider", "")
+            _dialect = dialect_for_provider(_prov)
+            _sql_valid = is_select_only(sql_query, dialect=_dialect)
+            _risk = risk_score(sql_query, dialect=_dialect)
             _u = getattr(llm_sql, "last_token_usage", {})
             _full_tables = [
                 line.replace("Table:", "").strip()
                 for line in schema_info.split("\n")
                 if line.startswith("Table:")
             ]
-            _db_conf = current_config.get("database", {})
-            _prov = _db_conf.get("provider", "")
             _catalog = (
                 _db_conf.get(_prov, {}).get("catalog")
                 or _db_conf.get(_prov, {}).get("project_id")
@@ -413,7 +414,7 @@ def _process_query_sync(
             )
 
             if not _sql_valid:
-                reason = violation_reason(sql_query)
+                reason = violation_reason(sql_query, dialect=_dialect)
                 print(f"🚫 Blocked non-SELECT query: {reason} | SQL: {sql_query[:120]}")
                 if audit_log_db:
                     audit_log_db.log(

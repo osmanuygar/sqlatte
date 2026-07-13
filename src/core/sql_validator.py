@@ -1,8 +1,38 @@
 """
 SQL query validator – enforces SELECT-only access.
-Strips string literals and comments before analysis to avoid false positives.
+
+Primary check is AST-based (sqlglot): the query is parsed into a real syntax
+tree, so keyword/function detection matches actual structure rather than raw
+text — immune to comment-splitting or string-escaping tricks that defeat
+regex matching. If sqlglot can't fully parse the query (unsupported dialect
+syntax, parse error), we fall back to the regex-based checks below rather
+than failing open.
 """
+import logging
 import re
+
+import sqlglot
+from sqlglot import exp
+
+# sqlglot logs a warning and silently degrades to a generic `Command` node for
+# syntax it doesn't recognize; we detect that ourselves and fall back, so the
+# log noise isn't useful here.
+logging.getLogger("sqlglot").setLevel(logging.ERROR)
+
+# Maps SQLatte's `database.provider` config value to a sqlglot dialect name,
+# so provider-specific syntax (BigQuery backticks/STRUCT, Trino, …) parses
+# correctly instead of spuriously falling back to the regex path.
+_PROVIDER_DIALECTS = {
+    "trino": "trino",
+    "postgresql": "postgres",
+    "mysql": "mysql",
+    "bigquery": "bigquery",
+}
+
+
+def dialect_for_provider(provider: str) -> str | None:
+    """Map a `database.provider` config value to a sqlglot dialect name."""
+    return _PROVIDER_DIALECTS.get((provider or "").lower())
 
 _SAFE_ID = re.compile(r'^[a-zA-Z0-9_][a-zA-Z0-9_.]{0,127}$')
 
@@ -85,7 +115,7 @@ def _strip_sql(sql: str) -> str:
     return sql.strip()
 
 
-def is_select_only(sql: str) -> bool:
+def _regex_is_select_only(sql: str) -> bool:
     """Return True only for read-only SELECT / WITH…SELECT queries."""
     clean = _strip_sql(sql)
     if not clean:
@@ -100,7 +130,7 @@ def is_select_only(sql: str) -> bool:
     return True
 
 
-def violation_reason(sql: str) -> str:
+def _regex_violation_reason(sql: str) -> str:
     """Human-readable reason a query was rejected."""
     clean = _strip_sql(sql)
     if not clean:
@@ -117,7 +147,7 @@ def violation_reason(sql: str) -> str:
     return "Query is not a read-only SELECT statement"
 
 
-def risk_score(sql: str) -> int:
+def _regex_risk_score(sql: str) -> int:
     """Return an integer risk score 0–100.
 
     Scoring is additive and capped at 100.  Lower is safer.
@@ -187,3 +217,135 @@ def risk_score(sql: str) -> int:
         score += 10
 
     return min(100, score)
+
+
+# ── AST-based checks (sqlglot) ──────────────────────────────────────────────
+#
+# Function names considered dangerous when they appear as an actual function
+# *call* in the parsed tree. This mirrors _DANGEROUS_FUNCS but only the true
+# function names (not clause keywords like MySQL's INTO OUTFILE, which never
+# parses as a Func call and is still caught by the regex fallback).
+_AST_DANGEROUS_FUNCS = {
+    "pg_read_file", "pg_read_binary_file", "pg_ls_dir", "pg_stat_file",
+    "pg_ls_logdir", "pg_ls_waldir", "pg_ls_archive_statusdir",
+    "pg_ls_tmpdir", "pg_ls_logicalmapdir", "pg_ls_logicalsnapdir",
+    "pg_reload_conf", "pg_rotate_logfile", "pg_terminate_backend",
+    "pg_cancel_backend", "pg_start_backup", "pg_stop_backup",
+    "pg_sleep", "pg_sleep_for", "pg_sleep_until",
+    "lo_import", "lo_export", "lo_creat", "lo_create", "lo_unlink",
+    "dblink", "dblink_exec", "dblink_connect", "dblink_open",
+    "query_to_xml", "query_to_xmlschema", "cursor_to_xml",
+    "pg_copy_to", "pg_copy_from",
+    "load_file",
+    "utl_file", "utl_http", "utl_smtp", "utl_tcp",
+    "xp_cmdshell", "xp_regread", "sp_execute",
+    "http_get", "http_post", "http_put", "http_delete",
+    "aws_commons", "aws_s3",
+    "external_query",
+}
+
+
+def _parse_statements(sql: str, dialect: str | None):
+    """Parse `sql` into sqlglot statements.
+
+    Returns None if sqlglot can't confidently parse it — either it raises, or
+    it degrades to an opaque `Command` node for syntax it doesn't recognize.
+    Both cases mean "the AST layer can't judge this"; callers must fall back
+    to the regex checks rather than treating an unparsed query as safe.
+    """
+    try:
+        stmts = sqlglot.parse(sql, read=dialect)
+    except Exception:
+        return None
+    if not stmts or any(s is None or isinstance(s, exp.Command) for s in stmts):
+        return None
+    return stmts
+
+
+def _ast_violation(stmts: list) -> str | None:
+    """Return a human-readable violation reason, or None if the parsed
+    statement(s) are a safe, single, read-only query."""
+    if len(stmts) != 1:
+        return "Multiple SQL statements are not permitted"
+
+    root = stmts[0]
+    if not isinstance(root, exp.Query):
+        return f"Query is a '{type(root).__name__.upper()}' statement — only SELECT statements are permitted"
+
+    for fn in root.find_all(exp.Func):
+        name = (fn.name or "").lower()
+        if name in _AST_DANGEROUS_FUNCS:
+            return f"Query contains forbidden function '{name}'"
+
+    return None
+
+
+def _ast_risk_score(root: exp.Query) -> int:
+    """Score a validated (safe-shaped) Query node using structural signals."""
+    score = 0
+
+    func_names = [(fn.name or "").lower() for fn in root.find_all(exp.Func)]
+    dangerous_hits = sum(1 for n in func_names if n in _AST_DANGEROUS_FUNCS)
+    score += min(80, 40 * dangerous_hits)
+
+    selects = list(root.find_all(exp.Select))
+
+    # SELECT * / t.* wildcard, at any level
+    has_star = any(
+        isinstance(e, exp.Star) or (isinstance(e, exp.Column) and isinstance(e.this, exp.Star))
+        for s in selects for e in s.expressions
+    )
+    if has_star:
+        score += 5
+
+    # No LIMIT on the final result set — unbounded rows returned to the caller
+    if not root.args.get("limit"):
+        score += 5
+
+    # Set operations that can hide injected rows
+    if isinstance(root, exp.SetOperation):
+        score += 10
+
+    # Subquery depth: nested SELECTs beyond the outermost one
+    nested = len(selects) - 1
+    score += min(15, 5 * max(0, nested))
+
+    # Cross-join or implicit comma-join (no ON/USING condition)
+    if any(j.kind == "CROSS" or (not j.args.get("on") and not j.args.get("using"))
+           for j in root.find_all(exp.Join)):
+        score += 10
+
+    return min(100, score)
+
+
+def is_select_only(sql: str, dialect: str | None = None) -> bool:
+    """Return True only for a single, read-only SELECT / WITH…SELECT query.
+
+    Tries the AST-based check first (see module docstring); falls back to
+    the regex-based check if sqlglot can't parse `sql`.
+    """
+    stmts = _parse_statements(sql, dialect)
+    if stmts is None:
+        return _regex_is_select_only(sql)
+    return _ast_violation(stmts) is None
+
+
+def violation_reason(sql: str, dialect: str | None = None) -> str:
+    """Human-readable reason a query was rejected."""
+    stmts = _parse_statements(sql, dialect)
+    if stmts is None:
+        return _regex_violation_reason(sql)
+    return _ast_violation(stmts) or "Query is not a read-only SELECT statement"
+
+
+def risk_score(sql: str, dialect: str | None = None) -> int:
+    """Return an integer risk score 0–100 (lower is safer).
+
+    Uses AST-derived structural signals when sqlglot can parse the query as a
+    single Query statement; otherwise falls back to the regex-based scoring
+    (see `_regex_risk_score` for the full scoring breakdown).
+    """
+    stmts = _parse_statements(sql, dialect)
+    if stmts is None or len(stmts) != 1 or not isinstance(stmts[0], exp.Query):
+        return _regex_risk_score(sql)
+    return _ast_risk_score(stmts[0])
