@@ -8,6 +8,7 @@ regex matching. If sqlglot can't fully parse the query (unsupported dialect
 syntax, parse error), we fall back to the regex-based checks below rather
 than failing open.
 """
+import functools
 import logging
 import re
 
@@ -245,6 +246,7 @@ _AST_DANGEROUS_FUNCS = {
 }
 
 
+@functools.lru_cache(maxsize=256)
 def _parse_statements(sql: str, dialect: str | None):
     """Parse `sql` into sqlglot statements.
 
@@ -252,6 +254,12 @@ def _parse_statements(sql: str, dialect: str | None):
     it degrades to an opaque `Command` node for syntax it doesn't recognize.
     Both cases mean "the AST layer can't judge this"; callers must fall back
     to the regex checks rather than treating an unparsed query as safe.
+
+    Cached: `is_select_only`, `risk_score`, and `violation_reason` are all
+    called with the same (sql, dialect) pair for a single query, so this
+    avoids re-parsing the same SQL up to three times per request. Callers
+    only read the returned tree (`find`/`find_all`/attribute access) and
+    never mutate it, so sharing the cached instance across calls is safe.
     """
     try:
         stmts = sqlglot.parse(sql, read=dialect)
@@ -271,6 +279,14 @@ def _ast_violation(stmts: list) -> str | None:
     root = stmts[0]
     if not isinstance(root, exp.Query):
         return f"Query is a '{type(root).__name__.upper()}' statement — only SELECT statements are permitted"
+
+    # A top-level SELECT/WITH can still smuggle a data-modifying statement via
+    # a writable CTE, e.g. `WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x`.
+    # Reject any mutating/DDL node anywhere in the tree, not just at the root.
+    mutation = root.find(exp.Insert, exp.Update, exp.Delete, exp.Merge,
+                          exp.Drop, exp.Create, exp.Alter, exp.TruncateTable, exp.Grant)
+    if mutation is not None:
+        return f"Query contains a nested '{type(mutation).__name__.upper()}' statement — only SELECT statements are permitted"
 
     for fn in root.find_all(exp.Func):
         name = (fn.name or "").lower()
