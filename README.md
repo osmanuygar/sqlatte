@@ -102,6 +102,27 @@ mcp:
 }
 ```
 
+**Claude Desktop** doesn't speak HTTP/SSE directly — bridge it with [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+
+```json
+{
+  "mcpServers": {
+    "sqlatte": {
+      "command": "npx",
+      "args": [
+        "mcp-remote@latest",
+        "http://your-sqlatte-server:8000/mcp/sse",
+        "--header",
+        "x-mcp-token: <token>",
+        "--allow-http"
+      ]
+    }
+  }
+}
+```
+
+`--allow-http` is only needed for plain HTTP endpoints — drop it once the server is behind TLS.
+
 Multiple users connect to the same server concurrently — each connection is isolated by token.
 
 ### Local Mode — stdio (Default)
