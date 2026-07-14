@@ -1062,16 +1062,17 @@ class AuthPlugin(BasePlugin):
                         "error": "Failed to generate SQL query. Please try rephrasing your question."
                     }
 
-                from src.core.sql_validator import is_select_only, violation_reason, risk_score
-                _sql_valid = is_select_only(sql_query)
-                _risk = risk_score(sql_query)
+                from src.core.sql_validator import is_select_only, violation_reason, risk_score, dialect_for_provider
+                _prov = db_config.get("provider", "")
+                _dialect = dialect_for_provider(_prov)
+                _sql_valid = is_select_only(sql_query, dialect=_dialect)
+                _risk = risk_score(sql_query, dialect=_dialect)
                 _u = getattr(llm_sql, "last_token_usage", {})
                 _full_tables = [
                     line.replace("Table:", "").strip()
                     for line in schema_info.split("\n")
                     if line.startswith("Table:")
                 ]
-                _prov = db_config.get("provider", "")
                 _catalog = (
                     db_config.get(_prov, {}).get("catalog")
                     or db_config.get(_prov, {}).get("project_id")
@@ -1080,7 +1081,7 @@ class AuthPlugin(BasePlugin):
                 _widget = "mcp" if bypass_intent else "auth"
 
                 if not _sql_valid:
-                    reason = violation_reason(sql_query)
+                    reason = violation_reason(sql_query, dialect=_dialect)
                     print(f"🚫 Blocked non-SELECT query (auth): {reason} | SQL: {sql_query[:120]}")
                     if audit_log_db and session_id:
                         audit_log_db.log(
