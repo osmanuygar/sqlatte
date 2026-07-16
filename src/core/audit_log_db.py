@@ -485,11 +485,15 @@ class AuditLogDB:
 # ── Singleton factory ─────────────────────────────────────────────────────────
 
 def create_audit_log_db() -> Optional[AuditLogDB]:
-    import os, yaml
+    """Create the audit log DB from config (if enabled).
+
+    Reads through config_manager rather than the raw YAML file, so a
+    config_db-backed (encrypted) `analytics.postgresql.password` is honored
+    just like it is for every other credential in the app.
+    """
     try:
-        PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-        with open(os.path.join(PROJECT_ROOT, "config", "config.yaml")) as f:
-            config = yaml.safe_load(f)
+        from src.core.config_manager_enhanced import config_manager
+        config = config_manager.get_config()
 
         analytics = config.get("analytics", {})
         if not analytics.get("enabled", False):

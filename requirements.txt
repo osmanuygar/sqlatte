@@ -31,3 +31,6 @@ asyncpg                        #Excel file generation
 google-cloud-bigquery>=3.11.0
 google-auth>=2.23.0
 
+# Testing
+pytest>=8.0.0
+

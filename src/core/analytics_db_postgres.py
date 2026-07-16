@@ -405,17 +405,15 @@ class AnalyticsDB:
 
 # Singleton instance - Create from config (optional)
 def create_analytics_db():
-    """Create analytics DB from config (if enabled)"""
-    import os
-    import yaml
+    """Create analytics DB from config (if enabled).
 
+    Reads through config_manager rather than the raw YAML file, so a
+    config_db-backed (encrypted) `analytics.postgresql.password` is honored
+    just like it is for every other credential in the app.
+    """
     try:
-        # Read config file
-        PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-        CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
-
-        with open(CONFIG_PATH, 'r') as f:
-            config = yaml.safe_load(f)
+        from src.core.config_manager_enhanced import config_manager
+        config = config_manager.get_config()
 
         # Check if analytics section exists
         if 'analytics' not in config:
@@ -464,9 +462,6 @@ def create_analytics_db():
 
         return AnalyticsDB(**db_config)
 
-    except FileNotFoundError:
-        print(f"⚠️  Config file not found, analytics disabled")
-        return None
     except Exception as e:
         print(f"⚠️  Analytics initialization failed: {e}")
         print(f"   Analytics will be disabled")

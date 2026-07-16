@@ -394,6 +394,11 @@ class ConfigDB:
 
                 print("   ✅ Prompts configuration bootstrapped")
         # ============================================
+        # Bootstrap Analytics Configurations
+        # ============================================
+        self._bootstrap_analytics_section(yaml_config)
+
+        # ============================================
         # Bootstrap Plugin Configurations
         # ============================================
         plugins_config = yaml_config.get('plugins', {})
@@ -407,6 +412,41 @@ class ConfigDB:
         cursor.close()
 
         print("✅ Bootstrap completed successfully")
+        return True
+
+    def _bootstrap_analytics_section(self, yaml_config: Dict[str, Any]) -> None:
+        """Write the `analytics.*` keys (config_type='analytics') from a
+        parsed config.yaml into this store. Shared by `bootstrap_from_yaml`
+        (first-run bootstrap) and `migrate_analytics_config` (backfill for
+        installs bootstrapped before analytics support existed)."""
+        analytics_config = yaml_config.get('analytics', {})
+        if not analytics_config:
+            return
+
+        self._set_config('analytics.enabled', str(analytics_config.get('enabled', False)), 'analytics', 'bool')
+        self._set_config('analytics.backend', analytics_config.get('backend', 'postgresql'), 'analytics')
+
+        pg_config = analytics_config.get('postgresql', {})
+        if pg_config:
+            self._set_config('analytics.postgresql.host', pg_config.get('host', 'localhost'), 'analytics')
+            self._set_config('analytics.postgresql.port', str(pg_config.get('port', 5432)), 'analytics', 'int')
+            self._set_config('analytics.postgresql.database', pg_config.get('database', 'sqlatte_analytics'), 'analytics')
+            self._set_config('analytics.postgresql.user', pg_config.get('user', 'postgres'), 'analytics')
+            self._set_config('analytics.postgresql.password', pg_config.get('password', ''), 'analytics', 'string', True)
+
+    def migrate_analytics_config(self, yaml_config: Dict[str, Any]) -> bool:
+        """Backfill `analytics.*` into this store for installs that were
+        already bootstrapped before analytics support was added to
+        `bootstrap_from_yaml` — that guard only runs once, on an empty store.
+
+        Idempotent: no-ops if `analytics.postgresql.host` is already present.
+        Returns True if it wrote new configs, False if there was nothing to do.
+        """
+        if self.get_config('analytics.postgresql.host') is not None:
+            return False
+
+        self._bootstrap_analytics_section(yaml_config)
+        self.conn.commit()
         return True
 
     def _set_config(self,
