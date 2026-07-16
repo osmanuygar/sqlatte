@@ -28,6 +28,13 @@ if PROJECT_ROOT not in sys.path:
 #from src.core.config_manager import config_manager
 from src.core.provider_factory import ProviderFactory
 from src.core.config_manager_enhanced import config_manager
+
+# Load configuration before importing any module that reads config_manager at
+# import time (analytics_db_postgres, audit_log_db, …) — otherwise those
+# singletons would initialize against an empty config.
+CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
+config = config_manager.load_from_file(CONFIG_PATH, enable_db=True)
+
 from src.core.conversation_manager import conversation_manager
 from src.core.query_history import query_history
 from src.api.admin_routes_enhanced import router as admin_router
@@ -66,10 +73,6 @@ from src.api import scheduled_routes
 from src.plugins.base_plugin import plugin_manager
 from src.plugins.auth_plugin import create_auth_plugin
 from src.core.error_utils import server_error
-
-# Load configuration from file
-CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'config.yaml')
-config = config_manager.load_from_file(CONFIG_PATH, enable_db=True)
 
 # ============================================
 # THREAD POOL FOR ASYNC OPERATIONS

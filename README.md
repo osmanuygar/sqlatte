@@ -431,6 +431,8 @@ plugins:
     allowed_db_types: ["trino"]
 ```
 
+> **Note — no PostgreSQL init script.** SQLatte doesn't ship an `init.sql` or migration step for `analytics.postgresql` / `config_db.postgresql`. Each module creates its own tables on first connect (`CREATE TABLE IF NOT EXISTS`), so just point it at an existing database — the user just needs `CREATE`/`CREATE TABLE` privileges on that database, no manual schema setup required. `docker-compose.yml` doesn't provision a Postgres container either; bring your own instance and pass its connection details in `config.yaml`.
+
 ### 3. Run
 
 ```bash
@@ -753,6 +755,21 @@ Multi-layer validation on every query:
 ### Credential Isolation
 
 Database credentials are stored server-side. MCP clients and embedded widgets authenticate with short-lived tokens — they never hold raw credentials. Revoking access means invalidating the token, not rotating passwords.
+
+### Encrypted Configuration Storage
+
+Enable `config_db` (see [Configuration](#2-configuration)) to move secrets out of the plaintext `config.yaml` file:
+
+```yaml
+config_db:
+  enabled: true
+  type: "postgresql"
+  encryption_key: "${CONFIG_DB_ENCRYPTION_KEY}"  # generate with Fernet.generate_key()
+```
+
+- Sensitive fields (`api_key`, `password`, `secret`, `token` — LLM keys, warehouse credentials, SMTP password, analytics/audit DB password) are encrypted with [Fernet](https://cryptography.io/en/latest/fernet/) before being written to Postgres.
+- The encryption key itself is meant to come from an environment variable, never committed to the file.
+- Once bootstrapped, values stored in `config_db` take priority over `config.yaml` — the file's copies can be blanked out or left stale, since the database is the live source of truth. Only the `config_db.postgresql` connection itself (and its encryption key) has to exist outside the database, as env vars.
 
 ### Rate Limiting
 

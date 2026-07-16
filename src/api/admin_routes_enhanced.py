@@ -718,6 +718,29 @@ async def reset_config(admin_user: str = Depends(require_admin)):
         raise server_error(e)
 
 
+@router.post("/config/migrate-analytics")
+async def migrate_analytics_config(admin_user: str = Depends(require_admin)):
+    """
+    Backfill analytics.postgresql.* (including the encrypted password) into
+    config_db for installs that were bootstrapped before analytics support
+    was added to bootstrap_from_yaml. Safe to call repeatedly — no-ops if
+    already migrated. Requires config_db to be enabled.
+    """
+    if not config_manager.config_db:
+        raise HTTPException(status_code=400, detail="config_db is not enabled — nothing to migrate into")
+
+    try:
+        migrated = config_manager.config_db.migrate_analytics_config(config_manager.config)
+        return {
+            "success": True,
+            "migrated": migrated,
+            "message": "Analytics config migrated into config_db" if migrated
+                       else "Already migrated — no changes made",
+        }
+    except Exception as e:
+        raise server_error(e)
+
+
 # ============================================
 # CONFIG HISTORY & SNAPSHOTS
 # ============================================
