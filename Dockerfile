@@ -22,5 +22,7 @@ USER sqlatte
 # Expose port
 EXPOSE 8000
 
-# Run application
-CMD ["python", "src/api/app.py"]
+# Run application (module mode, not a direct script path — otherwise `src.*`
+# absolute imports fail with "ModuleNotFoundError: No module named 'src'"
+# since the working directory wouldn't be on sys.path)
+CMD ["python", "-m", "src.api.app"]

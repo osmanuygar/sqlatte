@@ -1,0 +1,17 @@
+# Headless (clusterIP: None) — required by the StatefulSet's serviceName,
+# and doubles as the connection endpoint: with a single replica,
+# `postgres.sqlatte.svc.cluster.local` resolves straight to the pod's IP.
+# Use that as analytics.postgresql.host / config_db.postgresql.host in
+# config.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: sqlatte
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

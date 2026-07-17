@@ -483,6 +483,10 @@ docker run -d -p 8000:8000 \
   sqlatte
 ```
 
+### Kubernetes
+
+Manifests in `k8s/` deploy SQLatte plus an in-cluster Postgres (StatefulSet) for `analytics`/`config_db`. Single replica by design — see [`docs/kubernetes-deployment.md`](docs/kubernetes-deployment.md) for the architecture, deploy order, and why it doesn't scale past 1 replica yet.
+
 ---
 
 ## 🗄️ Supported Databases
