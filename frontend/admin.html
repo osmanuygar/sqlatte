@@ -2334,7 +2334,7 @@
 
                 <!-- Daily trend chart -->
                 <div style="font-size:12px;color:#D4A574;font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Daily Query Volume</div>
-                <div id="audit-stats-trend-chart" style="display:flex;align-items:flex-end;gap:2px;height:140px;border-bottom:1px solid #2a2a2a;padding:0 0 4px;margin-bottom:6px;"></div>
+                <div id="audit-stats-trend-chart" style="height:140px;border-bottom:1px solid #2a2a2a;padding:0 0 4px;margin-bottom:6px;"></div>
                 <div id="audit-stats-trend-labels" style="display:flex;justify-content:space-between;font-size:10px;color:#707070;margin-bottom:24px;"></div>
 
                 <!-- Top users leaderboard -->
@@ -4137,14 +4137,33 @@
         function _auditStatsRenderTrend(days) {
             const chart  = document.getElementById('audit-stats-trend-chart');
             const labels = document.getElementById('audit-stats-trend-labels');
-            if (!days.length) { chart.innerHTML = '<div style="color:#505050;font-size:12px;align-self:center;">No data</div>'; labels.innerHTML=''; return; }
+            if (!days.length) { chart.innerHTML = '<div style="color:#505050;font-size:12px;display:flex;align-items:center;height:100%;justify-content:center;">No data</div>'; labels.innerHTML=''; return; }
+            const W = Math.max(200, Math.round(chart.getBoundingClientRect().width) || 600);
+            const H = 140, padTop = 10, padBottom = 6;
+            const innerH = H - padTop - padBottom;
             const max = Math.max(1, ...days.map(d => d.query_count));
-            chart.innerHTML = days.map(d => {
-                const pct = Math.round(d.query_count / max * 100);
-                return `<div style="flex:1;display:flex;align-items:flex-end;justify-content:center;height:100%;" title="${d.date}: ${d.query_count} queries (${d.success_rate}% success)">
-                            <div style="width:100%;max-width:18px;background:#D4A574;border-radius:2px 2px 0 0;height:${pct}%;min-height:${d.query_count>0?'2px':'0'};"></div>
-                        </div>`;
-            }).join('');
+            const x = i => days.length > 1 ? Math.round(i / (days.length - 1) * (W - 12)) + 6 : W / 2;
+            const y = d => Math.round(padTop + innerH - (d.query_count / max) * innerH);
+            const pts = days.map((d,i) => ({ x: x(i), y: y(d), d }));
+            const linePath = pts.map((p,i) => `${i===0?'M':'L'}${p.x},${p.y}`).join(' ');
+            const areaPath = `${linePath} L${pts[pts.length-1].x},${H-padBottom} L${pts[0].x},${H-padBottom} Z`;
+            const markers = pts.map(p => `
+                <circle cx="${p.x}" cy="${p.y}" r="10" fill="transparent">
+                    <title>${p.d.date}: ${_afmt(p.d.query_count)} queries (${p.d.success_rate}% success)</title>
+                </circle>
+                <circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#D4A574" vector-effect="non-scaling-stroke" style="pointer-events:none;"></circle>`).join('');
+            chart.innerHTML = `
+                <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="display:block;overflow:visible;">
+                    <defs>
+                        <linearGradient id="auditTrendFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#D4A574" stop-opacity="0.25"/>
+                            <stop offset="100%" stop-color="#D4A574" stop-opacity="0"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="${areaPath}" fill="url(#auditTrendFill)" stroke="none"></path>
+                    <path d="${linePath}" fill="none" stroke="#D4A574" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
+                    ${markers}
+                </svg>`;
             const step = Math.max(1, Math.ceil(days.length / 6));
             labels.innerHTML = days.map((d,i) => i % step === 0 ? `<span>${d.date.slice(5)}</span>` : '').join('');
         }
