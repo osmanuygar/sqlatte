@@ -399,6 +399,16 @@ class ConfigDB:
         self._bootstrap_analytics_section(yaml_config)
 
         # ============================================
+        # Bootstrap LDAP Configuration
+        # ============================================
+        self._bootstrap_ldap_section(yaml_config)
+
+        # ============================================
+        # Bootstrap Assistant Login Gate Configuration
+        # ============================================
+        self._bootstrap_assistant_login_section(yaml_config)
+
+        # ============================================
         # Bootstrap Plugin Configurations
         # ============================================
         plugins_config = yaml_config.get('plugins', {})
@@ -446,6 +456,73 @@ class ConfigDB:
             return False
 
         self._bootstrap_analytics_section(yaml_config)
+        self.conn.commit()
+        return True
+
+    def _bootstrap_ldap_section(self, yaml_config: Dict[str, Any]) -> None:
+        """Write the `ldap.*` keys (config_type='ldap') from a parsed
+        config.yaml into this store. Shared by `bootstrap_from_yaml`
+        (first-run bootstrap) and `migrate_ldap_config` (backfill for
+        installs bootstrapped before LDAP support existed)."""
+        ldap_config = yaml_config.get('ldap', {})
+        if not ldap_config:
+            return
+
+        self._set_config('ldap.enabled', str(ldap_config.get('enabled', False)), 'ldap', 'bool')
+        self._set_config('ldap.server', ldap_config.get('server', ''), 'ldap')
+        self._set_config('ldap.use_ssl', str(ldap_config.get('use_ssl', True)), 'ldap', 'bool')
+        self._set_config('ldap.connect_timeout', str(ldap_config.get('connect_timeout', 5)), 'ldap', 'int')
+        # Direct-bind mode
+        self._set_config('ldap.user_dn_template', ldap_config.get('user_dn_template', ''), 'ldap')
+        # Search+bind mode
+        self._set_config('ldap.bind_dn', ldap_config.get('bind_dn', ''), 'ldap')
+        self._set_config('ldap.bind_password', ldap_config.get('bind_password', ''), 'ldap', 'string', True,
+                          'LDAP service account password (search+bind mode)')
+        self._set_config('ldap.base_dn', ldap_config.get('base_dn', ''), 'ldap')
+        self._set_config('ldap.user_search_filter', ldap_config.get('user_search_filter', ''), 'ldap')
+
+    def migrate_ldap_config(self, yaml_config: Dict[str, Any]) -> bool:
+        """Backfill `ldap.*` into this store for installs that were already
+        bootstrapped before LDAP support was added to `bootstrap_from_yaml`.
+
+        Idempotent: no-ops if `ldap.server` is already present.
+        Returns True if it wrote new configs, False if there was nothing to do.
+        """
+        if self.get_config('ldap.server') is not None:
+            return False
+
+        self._bootstrap_ldap_section(yaml_config)
+        self.conn.commit()
+        return True
+
+    def _bootstrap_assistant_login_section(self, yaml_config: Dict[str, Any]) -> None:
+        """Write the `plugins.assistant_login.*` keys (config_type='plugins')
+        from a parsed config.yaml into this store. Shared by
+        `bootstrap_from_yaml` and `migrate_assistant_login_config`.
+
+        Kept separate from the generic 'Bootstrap Plugin Configurations' loop
+        below, which writes single-level `plugin.<name>.<key>` (singular)
+        rows that don't correspond to any nested config path actually read
+        by get_config() — this section uses the real `plugins.` (plural)
+        prefix so it overlays correctly."""
+        cfg = yaml_config.get('plugins', {}).get('assistant_login', {})
+        if not cfg:
+            return
+
+        self._set_config('plugins.assistant_login.enabled', str(cfg.get('enabled', False)), 'plugins', 'bool')
+        self._set_config('plugins.assistant_login.ttl_hours', str(cfg.get('ttl_hours', 8)), 'plugins', 'int')
+
+    def migrate_assistant_login_config(self, yaml_config: Dict[str, Any]) -> bool:
+        """Backfill `plugins.assistant_login.*` into this store for installs
+        that were already bootstrapped before this feature existed.
+
+        Idempotent: no-ops if `plugins.assistant_login.enabled` is already present.
+        Returns True if it wrote new configs, False if there was nothing to do.
+        """
+        if self.get_config('plugins.assistant_login.enabled') is not None:
+            return False
+
+        self._bootstrap_assistant_login_section(yaml_config)
         self.conn.commit()
         return True
 

@@ -121,6 +121,13 @@ def verify_credentials(username: str, password: str) -> bool:
         )
         return False
 
+    # Optional LDAP check first. Falls through to the local password on any
+    # LDAP failure (bad credentials, misconfiguration, or an unreachable
+    # server) so a directory outage never locks admins out entirely.
+    from src.core.ldap_auth import authenticate as ldap_authenticate, is_enabled as ldap_enabled
+    if ldap_enabled() and ldap_authenticate(username, password):
+        return True
+
     expected_user = cfg.get("username", "admin")
     expected_pass = cfg.get("password", "")
 
