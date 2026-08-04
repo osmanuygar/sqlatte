@@ -279,6 +279,7 @@ Every LLM call is recorded for observability and cost tracking:
 - **SQL Injection Protection** — Multi-layer validation with risk scoring and admin override for high-risk queries
 - **Credential Isolation** — Database credentials stored server-side; MCP clients hold tokens, not passwords
 - **Session-Based Auth** — Token-based authentication for admin endpoints
+- **Optional LDAP / Active Directory Login** — Admin panel and the SQLatte Assistant can require LDAP auth instead of (or as a fallback to) local credentials
 - **Multi-Tenant Support** — Per-user database connections via auth plugin
 - **Catalog/Schema Restrictions** — Limit user access to specific databases
 - **Rate Limiting** — Configurable per-minute and per-hour request caps
@@ -300,6 +301,7 @@ Access at `/admin`:
 11. **Snapshots** — Backup and restore
 12. **Audit Logs** — LLM call history with token usage, filterable by widget source
 13. **MCP Masking** — Field-level masking rules for MCP responses (hash / partial / redact, wildcard patterns, per-rule toggle)
+14. **LDAP / SSO** — Configure LDAP/Active Directory auth for admin login and the Assistant login gate
 
 **Hot Reload** — all changes apply immediately without restart.
 
@@ -790,6 +792,28 @@ rate_limiting:
 - Catalog/schema restrictions per user
 - Session management with TTL
 - Thread-safe connection pooling
+
+### LDAP / Active Directory Login (Optional)
+
+Disabled by default. When enabled, LDAP is used for admin login (tried first, falling back to `admin.username`/`password` if the directory is unreachable) and, optionally, an LDAP login gate in front of the SQLatte Assistant — which otherwise has no login at all.
+
+```yaml
+ldap:
+  enabled: true
+  server: "ldaps://ldap.example.com:636"
+  use_ssl: true
+  # Direct bind (simplest — no service account needed):
+  user_dn_template: "DOMAIN\\{username}"          # Active Directory
+  # user_dn_template: "uid={username},ou=people,dc=example,dc=com"  # OpenLDAP
+  # Or search+bind with a service account — see config.yaml.example
+
+plugins:
+  assistant_login:
+    enabled: true   # require LDAP login before the Assistant can be used
+    ttl_hours: 8
+```
+
+Both sections are also editable from the Admin Panel's **LDAP / SSO** tab, with optional persistence to `config_db`.
 
 ---
 
