@@ -39,6 +39,33 @@ admin:
   password: "${ADMIN_PASSWORD}"
 
 # ============================================
+# LDAP AUTHENTICATION (optional)
+# ============================================
+# Disabled by default. When enabled, used by:
+#   - Admin login (tried first, falls back to admin.username/password above)
+#   - The SQLatte Assistant login gate (see plugins.assistant_login below)
+#
+# Pick ONE bind mode:
+#   1. Direct bind — set user_dn_template, no service account needed:
+#        user_dn_template: "uid={username},ou=people,dc=example,dc=com"
+#   2. Search+bind — set bind_dn/bind_password (service account) + base_dn:
+#        bind_dn: "cn=svc-sqlatte,dc=example,dc=com"
+#        bind_password: "${LDAP_BIND_PASSWORD}"
+#        base_dn: "dc=example,dc=com"
+#        user_search_filter: "(uid={username})"   # or "(sAMAccountName={username})" for AD
+ldap:
+  enabled: false
+  server: "${LDAP_SERVER:ldaps://ldap.example.com:636}"
+  use_ssl: true
+  connect_timeout: 5
+  # user_dn_template: "uid={username},ou=people,dc=example,dc=com"
+  # bind_dn: "${LDAP_BIND_DN}"
+  # bind_password: "${LDAP_BIND_PASSWORD}"
+  # base_dn: "${LDAP_BASE_DN}"
+  # user_search_filter: "(uid={username})"
+
+
+# ============================================
 # AUTHENTICATION PLUGIN
 # ============================================
 plugins:
@@ -72,7 +99,13 @@ plugins:
 
     allowed_db_types:
       - "trino"
-
+  # Optional LDAP login gate for the SQLatte Assistant (the legacy /query
+  # widget in frontend/index.html), which otherwise has no login at all.
+  # Requires ldap.enabled: true above. Enabling this also implies
+  # query.require_session — see src/api/app.py's /query handler.
+  assistant_login:
+    enabled: false
+    ttl_hours: 8   # session lifetime after a successful LDAP login
 # ============================================
 # LLM Provider
 # ============================================
