@@ -39,6 +39,7 @@ from src.core.conversation_manager import conversation_manager
 from src.core.query_history import query_history
 from src.api.admin_routes_enhanced import router as admin_router
 from src.api.admin_auth import require_admin, require_admin_api
+from src.api.assistant_auth import router as assistant_auth_router, is_gate_enabled as assistant_login_enabled
 from src.api.demo_routes import router as demo_router
 from src.api.analytics_routes import router as analytics_router
 from src.core.analytics_db_postgres import analytics_db
@@ -263,6 +264,7 @@ initialize_plugins(app)
 _admin_api_dep = [Depends(require_admin_api)]
 
 app.include_router(admin_router)
+app.include_router(assistant_auth_router)
 app.include_router(demo_router)
 app.include_router(analytics_router)
 app.include_router(scheduled_routes.router)
@@ -916,7 +918,9 @@ async def process_query(request: QueryRequest, http_request: Request):
     # KRT-01: When query.require_session is enabled in config, enforce X-Session-ID auth.
     # This closes the unauthenticated /query path without breaking existing demo deployments.
     cfg_query = config_manager.get_config().get("query", {})
-    if cfg_query.get("require_session", False):
+    # The optional LDAP assistant-login gate implies require_session — otherwise
+    # the login form would be cosmetic and /query would stay wide open.
+    if cfg_query.get("require_session", False) or assistant_login_enabled():
         session_header = http_request.headers.get("X-Session-ID", "")
         if not session_header:
             raise HTTPException(status_code=401, detail="X-Session-ID header required")

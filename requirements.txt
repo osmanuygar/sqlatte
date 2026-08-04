@@ -11,6 +11,7 @@ google-cloud-aiplatform>=1.38.0
 
 # Database
 trino==0.328.0
+ldap3>=2.9.1                   # Optional LDAP auth for admin/assistant login
 psycopg2-binary>=2.9.9        # PostgreSQL
 mysql-connector-python>=8.2.0  # MySQL
 cryptography>=43.0.0           # CVE fixes from <42 series

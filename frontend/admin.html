@@ -810,6 +810,10 @@
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-section-title">Audit & Security</div>
+                <div class="tab" onclick="switchTab('ldap')">
+                    <span>🪪</span>
+                    LDAP / SSO
+                </div>
                 <div class="tab" onclick="switchTab('audit'); loadAuditLogs();">
                     <span>🔍</span>
                     Audit Logs
@@ -2186,6 +2190,128 @@
             </div>
         </div>
 
+        <!-- TAB: LDAP / SSO -->
+        <div id="tab-ldap" class="tab-content">
+            <div class="config-card">
+                <h2>
+                    <span>🪪</span>
+                    LDAP Authentication
+                </h2>
+                <p style="color:#a0a0a0;font-size:13px;margin-bottom:16px;">
+                    Used by admin login (tried first, falls back to the local admin.username/password
+                    above) and the SQLatte Assistant login gate below. Disabled by default.
+                </p>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Enable LDAP</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="ldap-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>Server URL</label>
+                    <input type="text" id="ldap-server" placeholder="ldaps://ldap.example.com:636">
+                </div>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Use SSL</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="ldap-use-ssl" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>Connect Timeout (seconds)</label>
+                    <input type="number" id="ldap-connect-timeout" placeholder="5">
+                </div>
+
+                <div class="form-group">
+                    <label>User DN Template — direct bind mode</label>
+                    <input type="text" id="ldap-user-dn-template" placeholder="DOMAIN\{username}  or  uid={username},ou=people,dc=example,dc=com">
+                    <small>Simplest mode — no service account needed. Leave the fields below empty when using this.</small>
+                </div>
+
+                <details style="margin: 8px 0 16px;">
+                    <summary style="cursor:pointer; color:#a0a0a0; font-size:13px;">Search+bind mode (advanced — only if not using a DN template)</summary>
+                    <div style="margin-top:12px;">
+                        <div class="form-group">
+                            <label>Service Account Bind DN</label>
+                            <input type="text" id="ldap-bind-dn" placeholder="cn=svc-sqlatte,dc=example,dc=com">
+                        </div>
+                        <div class="form-group">
+                            <label>Service Account Password</label>
+                            <input type="password" id="ldap-bind-password" placeholder="app-password">
+                            <small>Leave empty to keep current</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Search Base DN</label>
+                            <input type="text" id="ldap-base-dn" placeholder="dc=example,dc=com">
+                        </div>
+                        <div class="form-group">
+                            <label>User Search Filter</label>
+                            <input type="text" id="ldap-user-search-filter" placeholder="(uid={username})  or  (sAMAccountName={username})">
+                        </div>
+                    </div>
+                </details>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="ldap-persist" checked>
+                    <label for="ldap-persist">💾 Save to Database</label>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button class="btn btn-secondary" onclick="migrateLdapToDb()" style="flex: 1;">
+                        <span>🔄</span>
+                        Migrate to Database
+                    </button>
+                    <button class="btn btn-success" onclick="updateLdap()" style="flex: 1;">
+                        <span>✓</span>
+                        Apply
+                    </button>
+                </div>
+
+                <div id="ldap-test-result" class="test-result"></div>
+            </div>
+
+            <div class="config-card">
+                <h2>
+                    <span>🤖</span>
+                    Assistant Login Gate
+                </h2>
+                <p style="color:#a0a0a0;font-size:13px;margin-bottom:16px;">
+                    Requires LDAP to be enabled above. When on, the SQLatte Assistant
+                    (frontend/index.html) shows an LDAP login form before it can be used —
+                    it otherwise has no login at all.
+                </p>
+
+                <div class="toggle-group">
+                    <label style="font-weight: 600;">Require Login for Assistant</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="assistant-login-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>Session Lifetime (hours)</label>
+                    <input type="number" id="assistant-login-ttl-hours" placeholder="8">
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="assistant-login-persist" checked>
+                    <label for="assistant-login-persist">💾 Save to Database</label>
+                </div>
+
+                <button class="btn btn-success" onclick="updateAssistantLogin()" style="width: 100%; margin-top: 16px;">
+                    <span>✓</span>
+                    Apply
+                </button>
+            </div>
+        </div>
+
         <!-- TAB: Audit Logs -->
         <div id="tab-audit" class="tab-content">
             <div class="config-card" style="margin-bottom:16px;">
@@ -2739,6 +2865,25 @@
             setMaskedField('email-password', smtpConfig.password);
 
             // ─────────────────────────────────────────────
+            // LDAP CONFIG
+            // ─────────────────────────────────────────────
+            const ldapConfig = config.ldap || {};
+            document.getElementById('ldap-enabled').checked = toBool(ldapConfig.enabled);
+            document.getElementById('ldap-server').value = ldapConfig.server || '';
+            document.getElementById('ldap-use-ssl').checked = toBool(ldapConfig.use_ssl !== false);
+            document.getElementById('ldap-connect-timeout').value = toInt(ldapConfig.connect_timeout, 5);
+            document.getElementById('ldap-user-dn-template').value = ldapConfig.user_dn_template || '';
+            document.getElementById('ldap-bind-dn').value = ldapConfig.bind_dn || '';
+            document.getElementById('ldap-base-dn').value = ldapConfig.base_dn || '';
+            document.getElementById('ldap-user-search-filter').value = ldapConfig.user_search_filter || '';
+            // 🔒 Service account password — masked helper
+            setMaskedField('ldap-bind-password', ldapConfig.bind_password);
+
+            const assistantLoginConfig = config.plugins?.assistant_login || {};
+            document.getElementById('assistant-login-enabled').checked = toBool(assistantLoginConfig.enabled);
+            document.getElementById('assistant-login-ttl-hours').value = toInt(assistantLoginConfig.ttl_hours, 8);
+
+            // ─────────────────────────────────────────────
             // SCHEDULER CONFIG
             // ─────────────────────────────────────────────
             const schedulerConfig = config.scheduler || {};
@@ -3171,6 +3316,88 @@
                 if (result.success) {
                     showToast(`✅ Email configuration updated${persist ? ' and saved' : ''}`, 'success');
                     loadConfig();
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // ============================================
+        // LDAP / SSO ACTIONS
+        // ============================================
+        async function migrateLdapToDb() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/migrate-ldap`, { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(result.migrated
+                        ? '✅ LDAP config migrated into the database'
+                        : 'ℹ️ Already migrated — nothing to do', 'success');
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function updateLdap() {
+            const bindPassword = document.getElementById('ldap-bind-password').value;
+            const config = {
+                enabled: document.getElementById('ldap-enabled').checked,
+                server: document.getElementById('ldap-server').value,
+                use_ssl: document.getElementById('ldap-use-ssl').checked,
+                connect_timeout: parseInt(document.getElementById('ldap-connect-timeout').value) || 5,
+                user_dn_template: document.getElementById('ldap-user-dn-template').value,
+                bind_dn: document.getElementById('ldap-bind-dn').value,
+                base_dn: document.getElementById('ldap-base-dn').value,
+                user_search_filter: document.getElementById('ldap-user-search-filter').value,
+                ...(bindPassword && { bind_password: bindPassword })
+            };
+
+            const persist = document.getElementById('ldap-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/ldap`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config: config, persist: persist })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`✅ LDAP configuration updated${persist ? ' and saved' : ''} — takes effect immediately.`, 'success');
+                    loadConfig();
+                } else {
+                    showToast(`❌ ${result.detail || 'Update failed'}`, 'error');
+                }
+            } catch (error) {
+                showToast(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function updateAssistantLogin() {
+            const config = {
+                enabled: document.getElementById('assistant-login-enabled').checked,
+                ttl_hours: parseInt(document.getElementById('assistant-login-ttl-hours').value) || 8
+            };
+
+            const persist = document.getElementById('assistant-login-persist').checked;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/config/assistant-login`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config: config, persist: persist })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`✅ Assistant login gate updated${persist ? ' and saved' : ''} — takes effect immediately.`, 'success');
+                    loadConfig();
+                } else {
+                    showToast(`❌ ${result.detail || 'Update failed'}`, 'error');
                 }
             } catch (error) {
                 showToast(`❌ Error: ${error.message}`, 'error');

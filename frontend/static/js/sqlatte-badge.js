@@ -542,6 +542,12 @@
     // Returns the session_id string on success, null if auto-session is disabled
     // (403) or unavailable.
     async function acquireAutoSession() {
+        // Never silently substitute a service-account session for a real LDAP
+        // login — that would defeat the login gate entirely.
+        if (await checkAssistantLoginGate()) {
+            return null;
+        }
+
         try {
             const response = await fetch(`${BADGE_CONFIG.apiBase}/auth/auto-session`, {
                 method: 'POST',
@@ -565,6 +571,107 @@
     // Returns fetch headers with X-Session-ID when a session is active.
     function getAuthHeaders() {
         return sessionId ? { 'X-Session-ID': sessionId } : {};
+    }
+
+    // Optional LDAP login gate for the SQLatte Assistant. Disabled unless the
+    // server has plugins.assistant_login.enabled + ldap.enabled configured —
+    // in that case this always resolves false and nothing below ever runs.
+    let assistantLoginGateEnabledPromise = null;
+
+    function checkAssistantLoginGate() {
+        if (!assistantLoginGateEnabledPromise) {
+            assistantLoginGateEnabledPromise = fetch(`${BADGE_CONFIG.apiBase}/auth/assistant/config`)
+                .then(r => r.ok ? r.json() : { enabled: false })
+                .then(d => !!d.enabled)
+                .catch(() => false);
+        }
+        return assistantLoginGateEnabledPromise;
+    }
+
+    // Shows a blocking LDAP login form. Resolves once a session has been
+    // acquired (and saved via saveSession), rejects if the user cancels.
+    function showAssistantLoginModal() {
+        return new Promise((resolve, reject) => {
+            const existing = document.getElementById('sqlatte-ldap-login-modal');
+            if (existing) existing.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = 'sqlatte-ldap-login-modal';
+            overlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 999999999;';
+
+            overlay.innerHTML = `
+                <div style="width: 340px; max-width: 90vw; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 28px;">
+                    <h3 style="margin: 0 0 6px; color: #D4A574; font-size: 18px;">☕ SQLatte Assistant</h3>
+                    <p style="margin: 0 0 18px; color: #888; font-size: 13px;">Sign in with your corporate account to continue.</p>
+                    <form id="sqlatte-ldap-login-form">
+                        <input id="sqlatte-ldap-username" type="text" placeholder="Username" autocomplete="username"
+                            style="width:100%; box-sizing:border-box; padding:10px 12px; margin-bottom:10px; background:#0a0a0a; color:#e0e0e0; border:1px solid #333; border-radius:8px;" />
+                        <input id="sqlatte-ldap-password" type="password" placeholder="Password" autocomplete="current-password"
+                            style="width:100%; box-sizing:border-box; padding:10px 12px; margin-bottom:14px; background:#0a0a0a; color:#e0e0e0; border:1px solid #333; border-radius:8px;" />
+                        <div id="sqlatte-ldap-login-error" style="display:none; color:#f87171; font-size:12px; margin-bottom:12px;"></div>
+                        <div style="display:flex; gap:10px;">
+                            <button type="button" id="sqlatte-ldap-cancel" style="flex:1; padding:10px; background:#2a2a2a; border:1px solid #333; border-radius:8px; color:#ccc; cursor:pointer;">Cancel</button>
+                            <button type="submit" id="sqlatte-ldap-submit" style="flex:1; padding:10px; background:linear-gradient(135deg, #D4A574 0%, #A67C52 100%); border:none; border-radius:8px; color:#fff; font-weight:600; cursor:pointer;">Sign in</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+
+            const form = overlay.querySelector('#sqlatte-ldap-login-form');
+            const errorBox = overlay.querySelector('#sqlatte-ldap-login-error');
+            const submitBtn = overlay.querySelector('#sqlatte-ldap-submit');
+            const usernameInput = overlay.querySelector('#sqlatte-ldap-username');
+            const passwordInput = overlay.querySelector('#sqlatte-ldap-password');
+
+            setTimeout(() => usernameInput.focus(), 50);
+
+            function cleanup() {
+                overlay.remove();
+            }
+
+            overlay.querySelector('#sqlatte-ldap-cancel').onclick = () => {
+                cleanup();
+                reject(new Error('cancelled'));
+            };
+
+            form.onsubmit = async (e) => {
+                e.preventDefault();
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value;
+                if (!username || !password) return;
+
+                errorBox.style.display = 'none';
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Signing in...';
+
+                try {
+                    const response = await fetch(`${BADGE_CONFIG.apiBase}/auth/assistant/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    const data = await response.json().catch(() => ({}));
+
+                    if (response.ok && data.session_id) {
+                        saveSession(data.session_id);
+                        cleanup();
+                        resolve(data.session_id);
+                        return;
+                    }
+
+                    errorBox.textContent = data.detail || 'Invalid credentials. Please try again.';
+                    errorBox.style.display = 'block';
+                } catch (err) {
+                    errorBox.textContent = 'Could not reach the server. Please try again.';
+                    errorBox.style.display = 'block';
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Sign in';
+                }
+            };
+        });
     }
 
     /**
@@ -1322,6 +1429,7 @@
         if (document.getElementById('sqlatte-widget')) return;
 
         getOrCreateSession();
+        checkAssistantLoginGate(); // warm the cache; toggleModal awaits it on first click
 
         const widget = document.createElement('div');
         widget.id = 'sqlatte-widget';
@@ -1505,15 +1613,30 @@
         return modal;
     }
 
-    function toggleModal() {
+    async function toggleModal() {
         if (isModalOpen) {
             closeModal();
-        } else {
-            openModal();
+            return;
         }
+        await openModal();
     }
 
-    function openModal() {
+    // The gated entry point — this is what window.SQLatteWidget.open, the
+    // openByDefault auto-open, and toggleModal() all funnel through, so the
+    // LDAP login gate can't be bypassed by any of them.
+    async function openModal() {
+        const gateEnabled = await checkAssistantLoginGate();
+        if (gateEnabled && !sessionId) {
+            try {
+                await showAssistantLoginModal();
+            } catch (e) {
+                return; // user cancelled the login prompt
+            }
+        }
+        _openModalInternal();
+    }
+
+    function _openModalInternal() {
         const modal = document.getElementById('sqlatte-modal');
         if (modal) {
             if (BADGE_CONFIG.fullscreen) {

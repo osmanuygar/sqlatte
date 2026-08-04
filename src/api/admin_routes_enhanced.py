@@ -57,6 +57,18 @@ class EmailConfigRequest(BaseModel):
     persist: bool = False
 
 
+class LdapConfigRequest(BaseModel):
+    """Request model for LDAP config updates"""
+    config: Dict[str, Any]
+    persist: bool = False
+
+
+class AssistantLoginConfigRequest(BaseModel):
+    """Request model for the SQLatte Assistant LDAP login gate"""
+    config: Dict[str, Any]
+    persist: bool = False
+
+
 class TestConnectionRequest(BaseModel):
     """Request model for testing provider connections"""
     provider_type: str  # 'llm' or 'database'
@@ -433,6 +445,76 @@ async def update_email_config(request: EmailConfigRequest, http_request: Request
         raise server_error(e)
 
 
+@router.put("/config/ldap")
+async def update_ldap_config(request: LdapConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
+    """
+    Update LDAP configuration — used by admin login (tried first, falls back
+    to admin.username/password) and the SQLatte Assistant login gate.
+
+    Example:
+    ```json
+    {
+        "config": {
+            "enabled": true,
+            "server": "ldaps://ldap.example.com:636",
+            "use_ssl": true,
+            "connect_timeout": 5,
+            "user_dn_template": "DOMAIN\\\\{username}"
+        },
+        "persist": true
+    }
+    ```
+    """
+    try:
+        user = http_request.headers.get('X-User', 'api')
+
+        updated_config = config_manager.update_ldap_config(
+            ldap_config=request.config,
+            persist=request.persist,
+            user=user
+        )
+
+        return {
+            "success": True,
+            "message": "LDAP configuration updated",
+            "config": config_manager.get_safe_config().get('ldap', {})
+        }
+    except Exception as e:
+        raise server_error(e)
+
+
+@router.put("/config/assistant-login")
+async def update_assistant_login_config(request: AssistantLoginConfigRequest, http_request: Request, admin_user: str = Depends(require_admin)):
+    """
+    Update the SQLatte Assistant's optional LDAP login gate.
+    Requires ldap.enabled: true to actually take effect.
+
+    Example:
+    ```json
+    {
+        "config": { "enabled": true, "ttl_hours": 8 },
+        "persist": true
+    }
+    ```
+    """
+    try:
+        user = http_request.headers.get('X-User', 'api')
+
+        updated_config = config_manager.update_assistant_login_config(
+            assistant_login_config=request.config,
+            persist=request.persist,
+            user=user
+        )
+
+        return {
+            "success": True,
+            "message": "Assistant login gate configuration updated",
+            "config": updated_config.get('plugins', {}).get('assistant_login', {})
+        }
+    except Exception as e:
+        raise server_error(e)
+
+
 class SchedulerConfigRequest(BaseModel):
     """Request model for Scheduler config updates"""
     config: Dict[str, Any]
@@ -735,6 +817,31 @@ async def migrate_analytics_config(admin_user: str = Depends(require_admin)):
             "success": True,
             "migrated": migrated,
             "message": "Analytics config migrated into config_db" if migrated
+                       else "Already migrated — no changes made",
+        }
+    except Exception as e:
+        raise server_error(e)
+
+
+@router.post("/config/migrate-ldap")
+async def migrate_ldap_config(admin_user: str = Depends(require_admin)):
+    """
+    Backfill ldap.* and plugins.assistant_login.* into config_db for installs
+    that were bootstrapped before LDAP support was added to
+    bootstrap_from_yaml. Safe to call repeatedly — no-ops if already migrated.
+    Requires config_db to be enabled.
+    """
+    if not config_manager.config_db:
+        raise HTTPException(status_code=400, detail="config_db is not enabled — nothing to migrate into")
+
+    try:
+        migrated_ldap = config_manager.config_db.migrate_ldap_config(config_manager.config)
+        migrated_assistant_login = config_manager.config_db.migrate_assistant_login_config(config_manager.config)
+        migrated = migrated_ldap or migrated_assistant_login
+        return {
+            "success": True,
+            "migrated": migrated,
+            "message": "LDAP config migrated into config_db" if migrated
                        else "Already migrated — no changes made",
         }
     except Exception as e:

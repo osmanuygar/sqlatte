@@ -165,8 +165,8 @@ class ConfigManager:
         safe_config = deepcopy(config)
 
         # Mask sensitive fields
-        sensitive_fields = ['api_key', 'password', 'credentials_json', 'credentials_path', 'secret_key',
-        'token']
+        sensitive_fields = ['api_key', 'password', 'bind_password', 'credentials_json', 'credentials_path',
+        'secret_key', 'token']
 
         def mask_recursive(obj):
             if isinstance(obj, dict):
@@ -353,6 +353,36 @@ class ConfigManager:
 
         updates = {'email': email_config}
         return self.update_config(updates, persist=persist, user=user, reason="Email config updated")
+
+    def update_ldap_config(
+        self,
+        ldap_config: Dict[str, Any],
+        persist: bool = False,
+        user: str = 'system'
+    ) -> Dict[str, Any]:
+        """Update LDAP configuration (used by admin login + the assistant
+        login gate). Preserves the current bind_password if a masked value
+        is sent back unchanged."""
+        if 'bind_password' in ldap_config:
+            if ldap_config['bind_password'] == '***masked***' or not ldap_config['bind_password']:
+                current_ldap_config = self.get_config().get('ldap', {})
+                if 'bind_password' in current_ldap_config:
+                    ldap_config['bind_password'] = current_ldap_config['bind_password']
+                else:
+                    ldap_config.pop('bind_password', None)
+
+        updates = {'ldap': ldap_config}
+        return self.update_config(updates, persist=persist, user=user, reason="LDAP config updated")
+
+    def update_assistant_login_config(
+        self,
+        assistant_login_config: Dict[str, Any],
+        persist: bool = False,
+        user: str = 'system'
+    ) -> Dict[str, Any]:
+        """Update the SQLatte Assistant's optional LDAP login gate."""
+        updates = {'plugins': {'assistant_login': assistant_login_config}}
+        return self.update_config(updates, persist=persist, user=user, reason="Assistant login gate config updated")
 
     def get_config_history(self, key: Optional[str] = None, limit: int = 100) -> list:
         """
