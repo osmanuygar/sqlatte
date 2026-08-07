@@ -208,6 +208,5 @@ __marimo__/
 
 # SQLatte config (contains secrets/credentials)
 config/*
-!config/config.yaml.example
 
 uploads/
