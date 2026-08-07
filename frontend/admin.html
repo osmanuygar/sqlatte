@@ -2249,10 +2249,40 @@
                         <div class="form-group">
                             <label>Search Base DN</label>
                             <input type="text" id="ldap-base-dn" placeholder="dc=example,dc=com">
+                            <small>Also used by the memberOf group check below when using direct bind (e.g. a "DOMAIN\{username}" template isn't a real DN).</small>
                         </div>
                         <div class="form-group">
                             <label>User Search Filter</label>
                             <input type="text" id="ldap-user-search-filter" placeholder="(uid={username})  or  (sAMAccountName={username})">
+                        </div>
+                    </div>
+                </details>
+
+                <details style="margin: 8px 0 16px;" open>
+                    <summary style="cursor:pointer; color:#a0a0a0; font-size:13px;">Group restriction (optional)</summary>
+                    <div style="margin-top:12px;">
+                        <div class="form-group">
+                            <label>Required Group DN</label>
+                            <input type="text" id="ldap-required-group-dn" placeholder="CN=sys_bigdata,OU=Groups,DC=example,DC=com">
+                            <small>Leave empty to allow any successfully-bound user. When set, the user must also belong to this group.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Group Member Attribute</label>
+                            <select id="ldap-group-member-attr">
+                                <option value="member">member — OpenLDAP groupOfNames (reads the group's member values)</option>
+                                <option value="memberOf">memberOf — Active Directory (reads the user's memberOf values)</option>
+                                <option value="memberUid">memberUid — POSIX groups (matches bare username)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Group Lookup Filter</label>
+                            <input type="text" id="ldap-group-lookup-filter" placeholder="(sAMAccountName={username})">
+                            <small>
+                                memberOf mode only, and only needed when the bind user isn't a real DN (e.g. an AD
+                                direct-bind down-level logon name like "DOMAIN\{username}") — the user entry is
+                                looked up under the Search Base DN above using this filter. Defaults to
+                                (sAMAccountName={username}).
+                            </small>
                         </div>
                     </div>
                 </details>
@@ -2876,6 +2906,9 @@
             document.getElementById('ldap-bind-dn').value = ldapConfig.bind_dn || '';
             document.getElementById('ldap-base-dn').value = ldapConfig.base_dn || '';
             document.getElementById('ldap-user-search-filter').value = ldapConfig.user_search_filter || '';
+            document.getElementById('ldap-required-group-dn').value = ldapConfig.required_group_dn || '';
+            document.getElementById('ldap-group-member-attr').value = ldapConfig.group_member_attr || 'member';
+            document.getElementById('ldap-group-lookup-filter').value = ldapConfig.group_lookup_filter || '';
             // 🔒 Service account password — masked helper
             setMaskedField('ldap-bind-password', ldapConfig.bind_password);
 
@@ -3351,6 +3384,9 @@
                 bind_dn: document.getElementById('ldap-bind-dn').value,
                 base_dn: document.getElementById('ldap-base-dn').value,
                 user_search_filter: document.getElementById('ldap-user-search-filter').value,
+                required_group_dn: document.getElementById('ldap-required-group-dn').value,
+                group_member_attr: document.getElementById('ldap-group-member-attr').value,
+                group_lookup_filter: document.getElementById('ldap-group-lookup-filter').value,
                 ...(bindPassword && { bind_password: bindPassword })
             };
 

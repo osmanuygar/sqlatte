@@ -480,6 +480,10 @@ class ConfigDB:
                           'LDAP service account password (search+bind mode)')
         self._set_config('ldap.base_dn', ldap_config.get('base_dn', ''), 'ldap')
         self._set_config('ldap.user_search_filter', ldap_config.get('user_search_filter', ''), 'ldap')
+        # AD/LDAP group restriction (added after the fields above)
+        self._set_config('ldap.required_group_dn', ldap_config.get('required_group_dn', ''), 'ldap')
+        self._set_config('ldap.group_member_attr', ldap_config.get('group_member_attr', 'member'), 'ldap')
+        self._set_config('ldap.group_lookup_filter', ldap_config.get('group_lookup_filter', ''), 'ldap')
 
     def migrate_ldap_config(self, yaml_config: Dict[str, Any]) -> bool:
         """Backfill `ldap.*` into this store for installs that were already
@@ -492,6 +496,29 @@ class ConfigDB:
             return False
 
         self._bootstrap_ldap_section(yaml_config)
+        self.conn.commit()
+        return True
+
+    def migrate_ldap_group_fields(self, yaml_config: Dict[str, Any]) -> bool:
+        """Backfill just `ldap.required_group_dn` / `group_member_attr` /
+        `group_lookup_filter` for installs whose `ldap.*` was already
+        migrated into config_db before AD group restriction was added.
+
+        Deliberately narrower than `migrate_ldap_config`: it only writes
+        these three keys, so it can't clobber other ldap.* values (e.g.
+        bind_password) that may have since been changed via the admin UI
+        and diverged from config.yaml.
+
+        Idempotent: no-ops if `ldap.group_member_attr` is already present.
+        Returns True if it wrote new configs, False if there was nothing to do.
+        """
+        if self.get_config('ldap.group_member_attr') is not None:
+            return False
+
+        ldap_config = yaml_config.get('ldap', {})
+        self._set_config('ldap.required_group_dn', ldap_config.get('required_group_dn', ''), 'ldap')
+        self._set_config('ldap.group_member_attr', ldap_config.get('group_member_attr', 'member'), 'ldap')
+        self._set_config('ldap.group_lookup_filter', ldap_config.get('group_lookup_filter', ''), 'ldap')
         self.conn.commit()
         return True
 
