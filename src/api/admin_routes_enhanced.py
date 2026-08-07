@@ -836,8 +836,9 @@ async def migrate_ldap_config(admin_user: str = Depends(require_admin)):
 
     try:
         migrated_ldap = config_manager.config_db.migrate_ldap_config(config_manager.config)
+        migrated_ldap_groups = config_manager.config_db.migrate_ldap_group_fields(config_manager.config)
         migrated_assistant_login = config_manager.config_db.migrate_assistant_login_config(config_manager.config)
-        migrated = migrated_ldap or migrated_assistant_login
+        migrated = migrated_ldap or migrated_ldap_groups or migrated_assistant_login
         return {
             "success": True,
             "migrated": migrated,
