@@ -2,7 +2,11 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.29.0
 
 # MCP (Model Context Protocol) SSE server
-mcp>=1.20.0
+# Pinned below 2.0 — 2.0.0 renamed/removed the low-level Server.list_tools()
+# decorator API that src/api/mcp_sse.py depends on ("'Server' object has no
+# attribute 'list_tools'"). Re-evaluate the mcp_sse.py implementation against
+# 2.x's new API before lifting this cap.
+mcp>=1.20.0,<2.0.0
 
 # LLM Providers
 anthropic>=0.27.0

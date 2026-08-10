@@ -210,3 +210,6 @@ __marimo__/
 config/*
 
 uploads/
+
+# k8s manifests (environment-specific, not tracked)
+k8s/
