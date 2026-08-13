@@ -84,6 +84,13 @@ MAIN_EXECUTOR = ThreadPoolExecutor(
     thread_name_prefix="sqlatte-main"
 )
 
+# Dedicated pool for /health so k8s liveness/readiness probes never queue
+# behind query/LLM work saturating MAIN_EXECUTOR.
+HEALTH_EXECUTOR = ThreadPoolExecutor(
+    max_workers=2,
+    thread_name_prefix="sqlatte-health"
+)
+
 print(f"✅ Thread pool initialized: 20 workers")
 
 # Create providers - using function to allow reloading
@@ -571,18 +578,34 @@ async def config_admin_page():
         return HTMLResponse(content="<h1>Config Admin not found</h1>", status_code=404)
 
 
+_health_cache: Dict[str, Any] = {"ts": 0.0, "llm": None, "db": None}
+_HEALTH_CACHE_TTL_SECONDS = 30
+# provider.health_check() opens a real connection (Trino/Postgres/MySQL/...)
+# and, for VertexAI, makes an actual billed generate_content() call — both
+# synchronous and both blocking the event loop if called inline. Run them in
+# the thread pool and cache the result briefly so K8s liveness/readiness
+# probes (hit every few seconds) don't each trigger a fresh round-trip.
 @app.get("/health")
 async def health_check():
     """Minimal health check — provider names and up/down status only (no connection details)."""
+    now = time.time()
+    if now - _health_cache["ts"] > _HEALTH_CACHE_TTL_SECONDS:
+        loop = asyncio.get_event_loop()
+        llm_healthy, db_healthy = await asyncio.gather(
+            loop.run_in_executor(HEALTH_EXECUTOR, llm_provider.health_check),
+            loop.run_in_executor(HEALTH_EXECUTOR, db_provider.health_check),
+        )
+        _health_cache.update(ts=now, llm=llm_healthy, db=db_healthy)
+
     return {
         "status": "healthy",
         "llm": {
             "provider": config['llm']['provider'],
-            "healthy": llm_provider.health_check()
+            "healthy": _health_cache["llm"]
         },
         "database": {
             "provider": config['database']['provider'],
-            "healthy": db_provider.health_check()
+            "healthy": _health_cache["db"]
         },
     }
 
@@ -849,17 +872,25 @@ async def trigger_reload_providers(admin_user: str = Depends(require_admin)):
         raise server_error(e)
 
 
+_tables_cache: Dict[str, Any] = {"ts": 0.0, "tables": None}
+_TABLES_CACHE_TTL_SECONDS = 300
+# Same reasoning as _health_cache above: db_provider.get_tables() is a real
+# round trip (for BigQuery with a large dataset, a slow one — 30s+ observed)
+# and this is the single server-wide provider, so one cache entry covers
+# every caller.
 @app.get("/tables")
 async def list_tables():
-    """List available tables (async)"""
+    """List available tables (async, cached)"""
     try:
-        # Run in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        tables = await loop.run_in_executor(
-            MAIN_EXECUTOR,
-            db_provider.get_tables
-        )
-        return {"tables": tables}
+        now = time.time()
+        if now - _tables_cache["ts"] > _TABLES_CACHE_TTL_SECONDS:
+            loop = asyncio.get_event_loop()
+            tables = await loop.run_in_executor(
+                MAIN_EXECUTOR,
+                db_provider.get_tables
+            )
+            _tables_cache.update(ts=now, tables=tables)
+        return {"tables": _tables_cache["tables"]}
     except Exception as e:
         raise server_error(e)
 

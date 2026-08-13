@@ -213,3 +213,4 @@ uploads/
 
 # k8s manifests (environment-specific, not tracked)
 k8s/
+k8s-marketting/

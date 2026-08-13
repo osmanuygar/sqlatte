@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, Dict, Any, List
 import asyncio
 import ipaddress
+import json
 import re
 import threading
 import time as _time
@@ -187,6 +188,16 @@ class AuthPlugin(BasePlugin):
         self.db_provider = config.get('db_provider', None)  # Optional
         self.db_host = config.get('db_host', None)  # Optional
         self.db_port = config.get('db_port', None)  # Optional
+
+        # _get_tables_for_session() instantiates a brand-new DatabaseProvider
+        # (and, for BigQuery, re-enumerates every table in the dataset) on
+        # every single call — fine for Trino, but a 30s+ round trip for a
+        # BigQuery dataset with many tables. Cache the result briefly, keyed
+        # by db_config (auto-sessions all share the same server-configured
+        # db_config, so they share one cache entry; distinct manual-login
+        # configs each get their own).
+        self._tables_cache: Dict[str, Dict[str, Any]] = {}
+        self._TABLES_CACHE_TTL_SECONDS = 300
 
         print(f"🔐 Auth Plugin Enhanced:")
         print(f"   - Thread Pool: {self.executor._max_workers} workers")
@@ -950,13 +961,20 @@ class AuthPlugin(BasePlugin):
             return False
 
     def _get_tables_for_session(self, db_config: Dict[str, Any]) -> List[str]:
-        """Get tables for a session's DB connection"""
+        """Get tables for a session's DB connection (cached — see __init__)"""
+        cache_key = json.dumps(db_config, sort_keys=True, default=str)
+        cached = self._tables_cache.get(cache_key)
+        now = time.time()
+        if cached and now - cached["ts"] <= self._TABLES_CACHE_TTL_SECONDS:
+            return cached["tables"]
+
         try:
             wrapped_config = {'database': db_config}
             db_provider = ProviderFactory.create_db_provider(wrapped_config)
             tables = db_provider.get_tables()
 
             print(f"📊 Retrieved {len(tables)} tables")
+            self._tables_cache[cache_key] = {"ts": now, "tables": tables}
             return tables
 
         except Exception as e:
