@@ -326,7 +326,14 @@ pip install -r requirements.txt
 
 ### 2. Configuration
 
-Edit `config/config.yaml`:
+Copy the template and edit it:
+
+```bash
+cp config/config.yaml.example config/config.yaml
+```
+
+`config/config.yaml` is gitignored (it'll hold real credentials) — only
+`config.yaml.example` is tracked. Edit the copy:
 
 ```yaml
 # ============================================
