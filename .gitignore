@@ -212,6 +212,7 @@ config/*
 
 uploads/
 
-# k8s manifests (environment-specific, not tracked)
-k8s/
+# Real, environment-specific k8s manifests (internal hostnames/registry —
+# never tracked). Generic k8s/ (vendor-neutral template) IS tracked.
+k8s-okd/
 k8s-marketting/
