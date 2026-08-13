@@ -208,6 +208,9 @@ __marimo__/
 
 # SQLatte config (contains secrets/credentials)
 config/*
-!config/config.yaml.example
 
 uploads/
+
+# k8s manifests (environment-specific, not tracked)
+k8s/
+k8s-marketting/

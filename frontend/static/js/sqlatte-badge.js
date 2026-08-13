@@ -12,8 +12,14 @@
                 window.location.hostname === '') {
                 return 'http://localhost:8000';
             }
-            const port = window.location.port || '8000';
-            return window.location.protocol + '//' + window.location.hostname + ':' + port;
+            // Same-origin as the page that embeds this script — SQLatte serves
+            // frontend + API from the same process/port. An empty
+            // window.location.port means the page is on the protocol's
+            // default port (80/443), typically via a reverse proxy/route
+            // terminating TLS in front of the app — forcing ":8000" here
+            // breaks that case by pointing at a port the client can't reach.
+            const port = window.location.port ? ':' + window.location.port : '';
+            return window.location.protocol + '//' + window.location.hostname + port;
         })(),
         position: 'bottom-right',
         autoShowDelay: 1000,

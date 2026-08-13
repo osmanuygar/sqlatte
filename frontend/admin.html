@@ -1027,15 +1027,20 @@
                         </div>
                         <div class="form-group">
                             <label>Location</label>
-                            <select id="db-bigquery-location">
+                            <input type="text" id="db-bigquery-location" list="db-bigquery-location-options" placeholder="US, EU, europe-west3, ...">
+                            <datalist id="db-bigquery-location-options">
                                 <option value="US">US (Multi-region)</option>
                                 <option value="EU">EU (Multi-region)</option>
                                 <option value="us-central1">us-central1</option>
                                 <option value="us-east1">us-east1</option>
                                 <option value="europe-west1">europe-west1</option>
+                                <option value="europe-west3">europe-west3</option>
+                                <option value="europe-west2">europe-west2</option>
+                                <option value="europe-north1">europe-north1</option>
                                 <option value="asia-northeast1">asia-northeast1</option>
-                            </select>
-                            <small>BigQuery dataset location</small>
+                                <option value="asia-southeast1">asia-southeast1</option>
+                            </datalist>
+                            <small>BigQuery dataset location (any valid GCP region/multi-region)</small>
                         </div>
                         <div class="form-group">
                             <label>Credentials Path</label>
