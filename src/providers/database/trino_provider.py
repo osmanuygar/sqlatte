@@ -4,7 +4,7 @@ Trino Database Provider
 
 import trino
 from trino.auth import BasicAuthentication
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Dict
 from src.core.db_provider import DatabaseProvider
 
 
@@ -90,6 +90,55 @@ class TrinoProvider(DatabaseProvider):
             cursor.close()
             conn.close()
     
+    def discover_tables(self, search_term: str) -> Dict[str, Any]:
+        """
+        Cross-catalog table/collection name search via system.jdbc.tables —
+        Trino's federated JDBC metadata catalog, spans every catalog this
+        connection's user can see in one query. Metadata only, no row data.
+
+        Auto-DESCRIBEs the first 5 matches for column info (best-effort —
+        a DESCRIBE failure, e.g. a permissions gap on one specific catalog,
+        just drops that table from `columns`, doesn't fail the whole call).
+        """
+        from src.core.sql_validator import validate_identifier
+
+        conn = self.connect()
+        cursor = conn.cursor()
+        try:
+            like_pattern = f"%{search_term.lower()}%"
+            cursor.execute(
+                "SELECT table_cat, table_schem, table_name FROM system.jdbc.tables "
+                "WHERE LOWER(table_name) LIKE ? "
+                "ORDER BY table_cat, table_schem, table_name LIMIT 100",
+                (like_pattern,),
+            )
+            matches = [
+                {"catalog": row[0], "schema": row[1], "table": row[2]}
+                for row in cursor.fetchall()
+            ]
+        finally:
+            cursor.close()
+            conn.close()
+
+        columns: Dict[str, List[str]] = {}
+        for m in matches[:5]:
+            try:
+                ref = f"{validate_identifier(m['catalog'])}.{validate_identifier(m['schema'])}.{validate_identifier(m['table'])}"
+            except ValueError:
+                continue
+            desc_conn = self.connect()
+            desc_cursor = desc_conn.cursor()
+            try:
+                desc_cursor.execute(f"DESCRIBE {ref}")
+                columns[ref] = [row[0] for row in desc_cursor.fetchall()]
+            except Exception:
+                pass
+            finally:
+                desc_cursor.close()
+                desc_conn.close()
+
+        return {"matches": matches, "columns": columns}
+
     def health_check(self) -> bool:
         """Check Trino connection"""
         try:

@@ -1,3 +1,19 @@
+## [0.6.2] - 2026-08-17
+
+### Added - Trino Catalog Lock & Discovery Tokens
+- **Catalog lock enforcement** (`plugins.auth.enforce_catalog_lock`, on by default): rejects generated SQL that references a Trino catalog other than the one the session/token is scoped to — closes off an MCP client steering `ask_database` at a foreign catalog. No effect without `allowed_catalogs` configured or on non-Trino providers.
+- **Discovery tokens** (`plugins.auth.enable_discovery_tokens`, **off by default**): cross-catalog table/collection name search, metadata only, no row data, no `ask_database` access.
+  - New MCP tool `discover_tables` (only advertised to clients when the flag is on)
+  - `POST /auth/discovery-token` — issue a token directly from Trino credentials
+  - `POST /auth/discover` — search by session
+  - `POST /auth/token/generate-discovery` — issue from an active session
+  - `POST /admin/discovery-token` — admin-issued, backend-only for now (no self-service UI)
+  - `TrinoProvider.discover_tables()` — federated search via `system.jdbc.tables`, Trino only
+
+### Changed
+- `/auth/config` now reports `discovery_enabled` so the frontend and MCP server know whether to surface discovery UI/tools.
+- `frontend/tokens.html`: token list shows a Query/Discovery type badge; the discovery mini-form only renders when `discovery_enabled` is true.
+
 ## [0.5.0-beta] - 2025-01-XX
 
 ### Added - Semantic Layer (Beta) 🧠

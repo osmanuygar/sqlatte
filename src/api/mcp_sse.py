@@ -183,7 +183,12 @@ def _format_result(result: dict) -> str:
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    return [
+    try:
+        discovery_enabled = (await _api("get", "/auth/config")).get("discovery_enabled", False)
+    except Exception:
+        discovery_enabled = False
+
+    tools = [
         types.Tool(
             name="ask_database",
             description=(
@@ -219,6 +224,31 @@ async def list_tools() -> list[types.Tool]:
         ),
     ]
 
+    if discovery_enabled:
+        tools.insert(2, types.Tool(
+            name="discover_tables",
+            description=(
+                "Search table/collection names across ALL catalogs (not just the "
+                "connected one) by a partial name match — e.g. find which catalog "
+                "and schema a table like 'couponcampaign' actually lives in before "
+                "querying it. Trino only; metadata only, returns no row data. "
+                "Requires a discovery token — a regular query token will get a "
+                "clear error telling you to use one."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "search_term": {
+                        "type": "string",
+                        "description": "Partial table/collection name to search for, e.g. 'campaign'.",
+                    },
+                },
+                "required": ["search_term"],
+            },
+        ))
+
+    return tools
+
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
@@ -250,6 +280,22 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             result = await _api("get", "/auth/tables")
             tables = result.get("tables", [])
             return [types.TextContent(type="text", text="\n".join(tables) or "No tables found.")]
+
+        elif name == "discover_tables":
+            result = await _api("post", "/auth/discover", json={
+                "search_term": arguments["search_term"],
+            })
+            matches = result.get("matches", [])
+            if not matches:
+                return [types.TextContent(type="text", text=f"No tables matching '{arguments['search_term']}' found in any catalog.")]
+            lines = [f"{m['catalog']}.{m['schema']}.{m['table']}" for m in matches]
+            text = f"**Matches ({len(matches)}):**\n" + "\n".join(lines)
+            columns_by_table = result.get("columns", {})
+            if columns_by_table:
+                text += "\n\n**Columns (top matches):**"
+                for table_ref, cols in columns_by_table.items():
+                    text += f"\n\n`{table_ref}`:\n" + "\n".join(f"- {c}" for c in cols)
+            return [types.TextContent(type="text", text=text)]
 
         elif name == "get_schema":
             result = await _api("get", f"/auth/schema/{arguments['table_name']}")
@@ -297,6 +343,7 @@ async def handle_sse(request: Request) -> Response:
             username=result["username"],
             db_config=result["db_config"],
             api_token=token,
+            token_type=result.get("token_type", "query"),
         )
         provider = result["db_config"].get("provider", "")
         sql_dialect = _PROVIDER_TO_DIALECT.get(provider, "")

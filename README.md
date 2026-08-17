@@ -178,7 +178,7 @@ Token TTL is configurable (24h default). Each user generates their own token —
 }
 ```
 
-Available tools: **`ask_database`** (natural language → SQL → results), **`list_tables`**, **`get_schema`**.
+Available tools: **`ask_database`** (natural language → SQL → results), **`list_tables`**, **`get_schema`**, and **`discover_tables`** (Trino only, cross-catalog table search — opt-in via `plugins.auth.enable_discovery_tokens: true`, off by default).
 
 ### Field Masking
 
