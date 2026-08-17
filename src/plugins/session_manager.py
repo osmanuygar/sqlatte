@@ -18,7 +18,8 @@ class AuthSession:
             username: str,
             db_config: Dict[str, Any],
             ttl_minutes: int = 480,  # 8 hours default
-            api_token: Optional[str] = None
+            api_token: Optional[str] = None,
+            token_type: str = "query",
     ):
         self.session_id = session_id
         self.username = username
@@ -28,6 +29,9 @@ class AuthSession:
         self.ttl_minutes = ttl_minutes
         self.conversation_id = None  # Link to conversation manager session
         self.api_token = api_token  # Originating API token, if this session was created from one
+        # "query" (default, full ask_database access) or "discovery" (catalog
+        # search only — /auth/query rejects discovery sessions outright).
+        self.token_type = token_type
 
     def is_expired(self) -> bool:
         """Check if session has expired"""
@@ -77,6 +81,7 @@ class SessionManager:
             db_config: Dict[str, Any],
             ttl_minutes: Optional[int] = None,
             api_token: Optional[str] = None,
+            token_type: str = "query",
     ) -> str:
         """
         Create a new authentication session.
@@ -88,6 +93,7 @@ class SessionManager:
                          Defaults to the manager-wide session_ttl_minutes.
             api_token:   The API token this session was created from, if any.
                          Used to enforce per-query daily budgets on /auth/query.
+            token_type:  "query" (default) or "discovery" — see AuthSession.
 
         Returns:
             Session ID string.
@@ -102,6 +108,7 @@ class SessionManager:
                 db_config=db_config,
                 ttl_minutes=effective_ttl,
                 api_token=api_token,
+                token_type=token_type,
             )
             self.sessions[session_id] = session
 

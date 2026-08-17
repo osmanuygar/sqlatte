@@ -4,7 +4,7 @@ Supports: Trino, Presto, ClickHouse, PostgreSQL, MySQL, etc.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Dict
 
 
 class DatabaseProvider(ABC):
@@ -59,7 +59,21 @@ class DatabaseProvider(ABC):
             Tuple of (column_names, rows)
         """
         pass
-    
+
+    def discover_tables(self, search_term: str) -> Dict[str, Any]:
+        """
+        Cross-catalog table/collection name search — metadata only, no row
+        data. Default: unsupported. Only TrinoProvider overrides this
+        (system.jdbc.tables gives a real federated view across every
+        catalog Trino knows about; other providers have no equivalent).
+
+        Returns: {"matches": [{"catalog", "schema", "table"}, ...],
+                  "columns": {"cat.schema.table": [col, ...], ...}}
+        """
+        raise NotImplementedError(
+            f"Table discovery isn't supported for the '{self.__class__.__name__}' provider (Trino only)."
+        )
+
     @abstractmethod
     def health_check(self) -> bool:
         """Check if database connection is healthy"""

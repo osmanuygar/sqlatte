@@ -188,6 +188,17 @@ class AuthPlugin(BasePlugin):
         self.db_provider = config.get('db_provider', None)  # Optional
         self.db_host = config.get('db_host', None)  # Optional
         self.db_port = config.get('db_port', None)  # Optional
+        # Trino-only: reject generated SQL that references a catalog other
+        # than the session's own. On by default — set to false in config.yaml
+        # (plugins.auth.enforce_catalog_lock: false) to turn it back off
+        # without a code change if it turns out too strict somewhere.
+        self.enforce_catalog_lock = config.get('enforce_catalog_lock', True)
+        # Cross-catalog discovery tokens/endpoints — off by default, still
+        # settling in. Set true in config.yaml (plugins.auth.enable_discovery_tokens)
+        # to turn on. Gates /auth/discovery-token, /auth/discover,
+        # /auth/token/generate-discovery, the admin /discovery-token endpoint,
+        # and the MCP discover_tables tool.
+        self.enable_discovery_tokens = config.get('enable_discovery_tokens', False)
 
         # _get_tables_for_session() instantiates a brand-new DatabaseProvider
         # (and, for BigQuery, re-enumerates every table in the dataset) on
@@ -229,7 +240,8 @@ class AuthPlugin(BasePlugin):
                 "catalog_schema_map": self.catalog_schema_map,
                 "db_provider": self.db_provider,
                 "db_host": self.db_host,
-                "db_port": self.db_port
+                "db_port": self.db_port,
+                "discovery_enabled": self.enable_discovery_tokens,
             })
 
         @app.post("/auth/login")
@@ -312,6 +324,72 @@ class AuthPlugin(BasePlugin):
                 print(f"❌ Login error: {e}")
                 import traceback
                 traceback.print_exc()
+                raise server_error(e)
+
+        @app.post("/auth/discovery-token")
+        async def create_discovery_token_direct(request: dict, http_request: Request):
+            """
+            Issue a Trino discovery token directly from username/password —
+            no catalog/schema, no prior session. Same shape as /auth/login
+            (server-configured host/port, brute-force protection) but skips
+            the catalog allowlist entirely since discovery is cross-catalog
+            by design, and returns the token immediately instead of a session.
+            """
+            if not self.enable_discovery_tokens:
+                raise HTTPException(404, "Discovery tokens are disabled on this server.")
+
+            if self.db_provider != "trino":
+                raise HTTPException(
+                    400,
+                    f"Discovery tokens are Trino-only — this server is configured for '{self.db_provider}'."
+                )
+
+            ip = _client_ip(http_request)
+            _check_login_allowed(ip)
+
+            username = (request.get("username") or "").strip()
+            password = request.get("password") or ""
+            if not username or not password:
+                raise HTTPException(400, "username and password are required")
+
+            trino_config = {
+                "host": self.db_host,
+                "port": self.db_port,
+                "user": username,
+                "password": password,
+                "http_scheme": "https",
+            }
+
+            try:
+                loop = asyncio.get_event_loop()
+                is_valid = await loop.run_in_executor(
+                    self.executor, self._test_db_connection, "trino", trino_config
+                )
+                if not is_valid:
+                    _record_failed_login(ip)
+                    raise HTTPException(401, "Invalid credentials or connection failed")
+
+                from src.core.config_db import get_config_db
+                ttl_hours = int(request.get("ttl_hours", 24))
+                description = request.get("description", "Discovery Token")
+                token = get_config_db().create_discovery_token(
+                    username=username,
+                    trino_config=trino_config,
+                    ttl_hours=ttl_hours,
+                    description=description,
+                )
+
+                _clear_login_attempts(ip)
+                return {
+                    "success": True,
+                    "token": token,
+                    "ttl_hours": ttl_hours,
+                    "message": f"Discovery token valid for {ttl_hours}h. discover_tables only — no ask_database.",
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"❌ Discovery token error: {e}")
                 raise server_error(e)
 
         @app.post("/auth/logout")
@@ -409,6 +487,44 @@ class AuthPlugin(BasePlugin):
                 raise
             except Exception as e:
                 print(f"❌ Error loading tables: {e}")
+                import traceback
+                traceback.print_exc()
+                raise server_error(e)
+
+        @app.post("/auth/discover")
+        async def discover_tables(request: dict, session_id: str = Header(..., alias="X-Session-ID")):
+            """
+            Cross-catalog table/collection name search — metadata only, no
+            row data. Works for query tokens too (harmless, same data a
+            SHOW/DESCRIBE could already surface), but this is the whole
+            point of discovery tokens, which have no catalog/schema of
+            their own to fall back on.
+            """
+            if not self.enable_discovery_tokens:
+                raise HTTPException(404, "Discovery is disabled on this server.")
+
+            try:
+                session = self.session_manager.get_session(session_id)
+                if not session:
+                    raise HTTPException(401, "Session expired or invalid")
+
+                search_term = (request.get("search_term") or "").strip()
+                if not search_term:
+                    raise HTTPException(400, "search_term is required")
+
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    self.executor,
+                    self._discover_tables_for_session,
+                    session.db_config,
+                    search_term,
+                )
+                return result
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"❌ Error discovering tables: {e}")
                 import traceback
                 traceback.print_exc()
                 raise server_error(e)
@@ -537,6 +653,14 @@ class AuthPlugin(BasePlugin):
                 session = self.session_manager.get_session(session_id)
                 if not session:
                     raise HTTPException(401, "Session expired or invalid")
+
+                # 1a. Discovery tokens are metadata-only — never allowed to run a real query
+                if getattr(session, "token_type", "query") == "discovery":
+                    raise HTTPException(
+                        403,
+                        "This is a discovery token (catalog/table search only). "
+                        "Use a regular query token for ask_database."
+                    )
 
                 # 1b. Enforce the token's daily query budget, if this session came from one
                 if session.api_token:
@@ -766,6 +890,59 @@ class AuthPlugin(BasePlugin):
                 print(f"❌ Token generate error: {e}")
                 raise server_error(e)
 
+        @app.post("/auth/token/generate-discovery")
+        async def generate_discovery_token(
+            request: dict,
+            session_id: str = Header(..., alias="X-Session-ID")
+        ):
+            """
+            Generate a discovery-only token from an active session — reuses
+            the session's already-validated Trino credentials (host/user/
+            password), just without the catalog/schema restriction, since
+            discovery searches every catalog by design. Trino only.
+
+            No ask_database access with this token (see /auth/query's
+            discovery-session rejection) — discover_tables and get_schema only.
+            """
+            if not self.enable_discovery_tokens:
+                raise HTTPException(404, "Discovery tokens are disabled on this server.")
+
+            session = self.session_manager.get_session(session_id)
+            if not session:
+                raise HTTPException(401, "Session expired or invalid")
+
+            if session.db_config.get("provider") != "trino":
+                raise HTTPException(
+                    400,
+                    "Discovery tokens are Trino-only — this session's provider is "
+                    f"'{session.db_config.get('provider')}'."
+                )
+
+            try:
+                from src.core.config_db import get_config_db
+                config_db = get_config_db()
+
+                ttl_hours = int(request.get("ttl_hours", 24))
+                description = request.get("description", "Discovery Token")
+
+                token = config_db.create_discovery_token(
+                    username=session.username,
+                    trino_config=session.db_config["trino"],
+                    ttl_hours=ttl_hours,
+                    description=description,
+                )
+
+                return {
+                    "success": True,
+                    "token": token,
+                    "ttl_hours": ttl_hours,
+                    "description": description,
+                    "message": f"Discovery token valid for {ttl_hours} hours. discover_tables only — no ask_database.",
+                }
+            except Exception as e:
+                print(f"❌ Discovery token generate error: {e}")
+                raise server_error(e)
+
         @app.post("/auth/token/validate")
         async def validate_api_token(request: dict):
             """Validate an API token and return a fresh session_id."""
@@ -784,6 +961,7 @@ class AuthPlugin(BasePlugin):
                     username=result["username"],
                     db_config=result["db_config"],
                     api_token=token,
+                    token_type=result.get("token_type", "query"),
                 )
                 return {"success": True, "session_id": new_session_id, "username": result["username"]}
             except HTTPException:
@@ -1003,6 +1181,28 @@ class AuthPlugin(BasePlugin):
             traceback.print_exc()
             raise
 
+    def _discover_tables_for_session(
+        self,
+        db_config: Dict[str, Any],
+        search_term: str,
+    ) -> Dict[str, Any]:
+        """Cross-catalog table/collection search (Trino only — see DatabaseProvider.discover_tables)"""
+        try:
+            wrapped_config = {'database': db_config}
+            db_provider = ProviderFactory.create_db_provider(wrapped_config)
+            result = db_provider.discover_tables(search_term)
+
+            print(f"🔎 Discovery '{search_term}': {len(result.get('matches', []))} matches")
+            return result
+
+        except NotImplementedError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            print(f"❌ Discovery failed for '{search_term}': {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
     def _execute_query_for_session(
             self,
             db_config: Dict[str, Any],
@@ -1080,7 +1280,7 @@ class AuthPlugin(BasePlugin):
                         "error": "Failed to generate SQL query. Please try rephrasing your question."
                     }
 
-                from src.core.sql_validator import is_select_only, violation_reason, risk_score, dialect_for_provider
+                from src.core.sql_validator import is_select_only, violation_reason, risk_score, dialect_for_provider, catalog_violation
                 _prov = db_config.get("provider", "")
                 _dialect = dialect_for_provider(_prov)
                 _sql_valid = is_select_only(sql_query, dialect=_dialect)
@@ -1121,6 +1321,31 @@ class AuthPlugin(BasePlugin):
                         "reason": reason,
                         "message": f"Only SELECT queries are permitted. {reason}.",
                     }
+
+                if self.enforce_catalog_lock:
+                    _cat_reason = catalog_violation(sql_query, _dialect, _catalog)
+                    if _cat_reason:
+                        print(f"🚫 Blocked cross-catalog query (auth): {_cat_reason} | SQL: {sql_query[:120]}")
+                        if audit_log_db and session_id:
+                            audit_log_db.log(
+                                session_id=session_id, operation_type="sql_generation",
+                                model_name=llm_sql.get_model_name(), question=question,
+                                prompt_preview=enhanced_question[:500],
+                                input_tokens=_u.get("input_tokens", 0),
+                                output_tokens=_u.get("output_tokens", 0),
+                                user_id=user_id, widget_type=_widget,
+                                catalog_name=_catalog,
+                                table_names=_full_tables or None,
+                                generated_sql=sql_query,
+                                risk_score=_risk,
+                                sql_valid=False,
+                            )
+                        return {
+                            "response_type": "warning",
+                            "sql": sql_query,
+                            "reason": _cat_reason,
+                            "message": _cat_reason,
+                        }
 
                 import time as _time
                 _exec_start = _time.time()

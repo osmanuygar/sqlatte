@@ -354,6 +354,43 @@ def violation_reason(sql: str, dialect: str | None = None) -> str:
     return _ast_violation(stmts) or "Query is not a read-only SELECT statement"
 
 
+def catalog_violation(sql: str, dialect: str | None, allowed_catalog: str | None) -> str | None:
+    """
+    Trino only: reject any table reference that explicitly qualifies a
+    *different* catalog than the one this session/token is scoped to.
+
+    A session's db_config carries exactly one catalog (chosen at login) —
+    there's no legitimate reason for its generated SQL to reference another
+    one. Without this, an MCP client can smuggle a foreign-catalog table
+    into the `table_schema` argument it hands the LLM and get a query
+    against it, even though the token was only ever issued for one catalog
+    (Trino's own authorization, not SQLatte, ends up being the only real
+    boundary). Cross-catalog *search* is what discovery tokens are for
+    (see DatabaseProvider.discover_tables) — this function is about
+    ask_database, a different, narrower door.
+
+    Unqualified table refs (`table`, `schema.table`) are always fine — they
+    resolve to the connection's own default catalog. Returns None if
+    `allowed_catalog` is falsy (deployment has no catalog restriction
+    configured, so there's nothing to lock to) or `dialect` isn't Trino.
+    """
+    if dialect != "trino" or not allowed_catalog:
+        return None
+
+    stmts = _parse_statements(sql, dialect)
+    if stmts is None or len(stmts) != 1:
+        return None  # same "can't judge it" stance as is_select_only's AST path
+
+    for table in stmts[0].find_all(exp.Table):
+        cat = table.catalog
+        if cat and cat.lower() != allowed_catalog.lower():
+            return (
+                f"Query references catalog '{cat}', but this session is scoped to "
+                f"'{allowed_catalog}' — cross-catalog queries aren't permitted here."
+            )
+    return None
+
+
 def risk_score(sql: str, dialect: str | None = None) -> int:
     """Return an integer risk score 0–100 (lower is safer).
 

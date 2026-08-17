@@ -1,7 +1,7 @@
 # Application Settings
 app:
   name: "SQLatte"
-  version: "0.6.1"
+  version: "0.6.2"
   host: "0.0.0.0"
   port: 8002
 
@@ -95,6 +95,19 @@ plugins:
 
     allowed_db_types:
       - "trino"
+
+    # Trino only: reject generated SQL that references a catalog other than
+    # the one the session/token was scoped to at login — closes off an
+    # MCP client asking the LLM to query a different catalog than the token
+    # was issued for. Has no effect if allowed_catalogs is empty (nothing to
+    # lock to) or the provider isn't Trino. Set false to turn back off.
+    enforce_catalog_lock: true
+
+    # Trino only: cross-catalog table/collection name search via discovery
+    # tokens (/auth/discovery-token, /auth/discover, the MCP discover_tables
+    # tool, and the admin /discovery-token endpoint). Off by default — this
+    # is new and still settling in. Set true to enable.
+    enable_discovery_tokens: false
 
   # Optional LDAP login gate for the SQLatte Assistant (the legacy /query
   # widget in frontend/index.html), which otherwise has no login at all.

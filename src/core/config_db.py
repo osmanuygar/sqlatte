@@ -144,7 +144,8 @@ class ConfigDB:
                 revoked BOOLEAN DEFAULT FALSE,
                 daily_query_limit INTEGER DEFAULT NULL,
                 queries_used_today INTEGER NOT NULL DEFAULT 0,
-                usage_reset_date DATE DEFAULT CURRENT_DATE
+                usage_reset_date DATE DEFAULT CURRENT_DATE,
+                token_type VARCHAR(20) NOT NULL DEFAULT 'query'
             )
         """)
 
@@ -154,6 +155,9 @@ class ConfigDB:
                 "daily_query_limit INTEGER DEFAULT NULL",
                 "queries_used_today INTEGER NOT NULL DEFAULT 0",
                 "usage_reset_date DATE DEFAULT CURRENT_DATE",
+                # 'query' (default, full ask_database access) or 'discovery'
+                # (catalog/table-name search only — see create_discovery_token).
+                "token_type VARCHAR(20) NOT NULL DEFAULT 'query'",
             ]:
                 cursor.execute(
                     f"ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS {col_def}"
@@ -990,6 +994,38 @@ class ConfigDB:
         print(f"🔑 API token created for {username} (TTL: {ttl_hours}h, limit: {limit_str})")
         return token
 
+    def create_discovery_token(
+        self,
+        username: str,
+        trino_config: Dict[str, Any],
+        ttl_hours: int = 24,
+        description: str = "Discovery Token",
+    ) -> str:
+        """Create a discovery-only token — cross-catalog table/schema search,
+
+        Trino only, no ask_database access (enforced at /auth/query, not
+        here). trino_config carries host/port/user/password/http_scheme —
+        deliberately no catalog/schema, discovery isn't scoped to one.
+        """
+        token = secrets.token_urlsafe(48)
+        db_config = {"provider": "trino", "trino": trino_config}
+        encrypted = self._encrypt(json.dumps(db_config))
+        expires_at = datetime.now() + timedelta(hours=ttl_hours)
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO api_tokens
+                (token, username, db_config_encrypted, description, ttl_hours, expires_at, token_type)
+            VALUES (%s, %s, %s, %s, %s, %s, 'discovery')
+            """,
+            (token, username, encrypted, description, ttl_hours, expires_at)
+        )
+        self.conn.commit()
+        cursor.close()
+        print(f"🔎 Discovery token created for {username} (TTL: {ttl_hours}h)")
+        return token
+
     def validate_api_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Validate token and return credentials, or None if invalid/expired/revoked.
 
@@ -998,13 +1034,13 @@ class ConfigDB:
         consume_token_query_budget() per actual SQL query execution instead.
 
         Returns:
-          None                             — invalid / expired / revoked
-          {"username": …, "db_config": …}  — success
+          None                                             — invalid / expired / revoked
+          {"username": …, "db_config": …, "token_type": …} — success
         """
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            SELECT username, db_config_encrypted, expires_at, revoked
+            SELECT username, db_config_encrypted, expires_at, revoked, token_type
             FROM api_tokens WHERE token = %s
             """,
             (token,)
@@ -1014,7 +1050,7 @@ class ConfigDB:
             cursor.close()
             return None
 
-        username, encrypted, expires_at, revoked = row[0], row[1], row[2], row[3]
+        username, encrypted, expires_at, revoked, token_type = row[0], row[1], row[2], row[3], row[4]
 
         if revoked:
             cursor.close()
@@ -1032,7 +1068,7 @@ class ConfigDB:
         cursor.close()
 
         db_config = json.loads(self._decrypt(encrypted))
-        return {"username": username, "db_config": db_config}
+        return {"username": username, "db_config": db_config, "token_type": token_type or "query"}
 
     def consume_token_query_budget(self, token: str) -> Optional[Dict[str, Any]]:
         """Check and consume one unit of a token's daily query budget.
@@ -1111,7 +1147,7 @@ class ConfigDB:
         cursor.execute(
             """
             SELECT token, description, ttl_hours, created_at, expires_at, last_used_at,
-                   daily_query_limit, queries_used_today, usage_reset_date
+                   daily_query_limit, queries_used_today, usage_reset_date, token_type
             FROM api_tokens
             WHERE username = %s AND revoked = FALSE AND expires_at > %s
             ORDER BY created_at DESC
@@ -1131,6 +1167,7 @@ class ConfigDB:
                 "last_used_at": row[5].isoformat() if row[5] else None,
                 "daily_query_limit": row[6],
                 "queries_used_today": row[7] if row[8] == today else 0,
+                "token_type": row[9] or "query",
             }
             for row in rows
         ]
@@ -1141,7 +1178,8 @@ class ConfigDB:
         cursor.execute(
             """
             SELECT id, token, username, description, ttl_hours, created_at, expires_at,
-                   last_used_at, revoked, daily_query_limit, queries_used_today, usage_reset_date
+                   last_used_at, revoked, daily_query_limit, queries_used_today, usage_reset_date,
+                   token_type
             FROM api_tokens
             ORDER BY created_at DESC
             """
@@ -1165,6 +1203,7 @@ class ConfigDB:
                 "expired": row[6] is not None and now > row[6],
                 "daily_query_limit": row[9],
                 "queries_used_today": row[10] if row[11] == today else 0,
+                "token_type": row[12] or "query",
             }
             for row in rows
         ]

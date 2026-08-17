@@ -1215,6 +1215,73 @@ async def reset_prompt(request: Request, admin_user: str = Depends(require_admin
 
 # ── Admin Token Management ────────────────────────────────────────────────────
 
+class DiscoveryTokenRequest(BaseModel):
+    """Request model for discovery-token creation. Trino only — no
+    catalog/schema, discovery searches across every catalog the given
+    Trino user can see."""
+    username: str
+    host: str
+    port: int = 443
+    user: str
+    password: str
+    http_scheme: str = "https"
+    ttl_hours: int = 24
+    description: str = "Discovery Token"
+
+
+@router.post("/discovery-token")
+async def admin_create_discovery_token(
+    request: DiscoveryTokenRequest,
+    admin_user: str = Depends(require_admin),
+):
+    """
+    Create a Trino discovery token (cross-catalog table/collection name
+    search, no ask_database access — see db_provider.discover_tables and
+    /auth/query's discovery-session rejection).
+
+    Backend-only for now: no self-service UI yet, admin creates these by
+    calling this endpoint directly (e.g. via curl or the admin panel's
+    request console) and hands the token to whoever needs it.
+    """
+    auth_cfg = config_manager.get_config().get("plugins", {}).get("auth", {})
+    if not auth_cfg.get("enable_discovery_tokens", False):
+        raise HTTPException(404, "Discovery tokens are disabled on this server.")
+
+    try:
+        from src.core.config_db import get_config_db
+        from src.providers.database.trino_provider import TrinoProvider
+
+        trino_config = {
+            "host": request.host,
+            "port": request.port,
+            "user": request.user,
+            "password": request.password,
+            "http_scheme": request.http_scheme,
+        }
+
+        # Fail fast with a clear error instead of handing out a token that
+        # can't actually connect.
+        if not TrinoProvider(trino_config).health_check():
+            raise HTTPException(400, "Could not connect to Trino with the given credentials")
+
+        token = get_config_db().create_discovery_token(
+            username=request.username,
+            trino_config=trino_config,
+            ttl_hours=request.ttl_hours,
+            description=request.description,
+        )
+        return {
+            "success": True,
+            "token": token,
+            "ttl_hours": request.ttl_hours,
+            "message": f"Discovery token valid for {request.ttl_hours}h. discover_tables only — no ask_database.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise server_error(e)
+
+
 @router.get("/tokens")
 async def admin_list_tokens(admin_user: str = Depends(require_admin)):
     """List all API tokens across all users."""
