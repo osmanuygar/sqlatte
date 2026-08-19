@@ -1920,8 +1920,11 @@
     /**
      * FORMAT TABLE WITH SQL HIGHLIGHTING - UPDATED!
      */
-    function formatTable(columns, data, queryId = null, sql = null, explanation = null, insights=null) {
-        if (!data || data.length === 0) {
+    function formatTable(columns, data, queryId = null, sql = null, explanation = null, insights=null, executionSkipped = false) {
+        const hasData = data && data.length > 0;
+
+        // Nothing at all to show (no rows, no SQL, no explanation) — bail early.
+        if (!hasData && !sql && !explanation) {
             return '<div class="text-sm" style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
         }
 
@@ -1976,37 +1979,41 @@
         }
 
         // Results
+        if (executionSkipped) {
+            html += '<div class="text-sm" style="opacity: 0.75; margin-top: 8px;">⏭️ Query not executed in this environment — copy the SQL above to run it yourself.</div>';
+        } else if (!hasData) {
+            html += '<div class="text-sm" style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
+        } else {
+            html += '<div class="sqlatte-results-container">';
 
+            html += `<div class="sqlatte-results-toolbar">`;
+            html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">📥 CSV</button>`;
+            html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize">📊 Chart</button>`;
 
-        html += '<div class="sqlatte-results-container">';
+            if (queryId) {
+                html += `<button class="sqlatte-fav-btn" onclick="SQLatteWidget.addToFavorites('${queryId}')" title="Add to Favorites">⭐ Save</button>`;
+            }
 
-        html += `<div class="sqlatte-results-toolbar">`;
-        html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">📥 CSV</button>`;
-        html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize">📊 Chart</button>`;
+            html += `<span class="text-xs" style="opacity: 0.7; margin-left: auto;">${data.length} rows</span>`;
+            html += `</div>`;
 
-        if (queryId) {
-            html += `<button class="sqlatte-fav-btn" onclick="SQLatteWidget.addToFavorites('${queryId}')" title="Add to Favorites">⭐ Save</button>`;
-        }
-
-        html += `<span class="text-xs" style="opacity: 0.7; margin-left: auto;">${data.length} rows</span>`;
-        html += `</div>`;
-
-        html += '<table class="sqlatte-results-table"><thead><tr>';
-        columns.forEach(col => {
-            html += `<th title="${escapeHtml(col)}">${escapeHtml(col)}</th>`;
-        });
-        html += '</tr></thead><tbody>';
-
-        data.forEach(row => {
-            html += '<tr>';
-            row.forEach(cell => {
-                const cellValue = escapeHtml(String(cell));
-                html += `<td title="${cellValue}">${cellValue}</td>`;
+            html += '<table class="sqlatte-results-table"><thead><tr>';
+            columns.forEach(col => {
+                html += `<th title="${escapeHtml(col)}">${escapeHtml(col)}</th>`;
             });
-            html += '</tr>';
-        });
+            html += '</tr></thead><tbody>';
 
-        html += '</tbody></table></div>';
+            data.forEach(row => {
+                html += '<tr>';
+                row.forEach(cell => {
+                    const cellValue = escapeHtml(String(cell));
+                    html += `<td title="${cellValue}">${cellValue}</td>`;
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+        }
 
         return html;
     }
@@ -2102,7 +2109,8 @@
                     result.query_id,
                     result.sql,
                     result.explanation,
-                    result.insights
+                    result.insights,
+                    result.execution_skipped
                 );
             } else {
                 const msg = result.message || JSON.stringify(result);

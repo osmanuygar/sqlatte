@@ -186,6 +186,10 @@ database:
 
   bigquery:
     project_id: "${BQ_PROJECT_ID}"
+    # datasets: restrict to specific datasets (list, or comma-separated string).
+    # Leave both dataset/datasets empty for cross-dataset queries (all datasets in the project).
+    datasets: []
+    # dataset: legacy single-dataset field, still supported for backward compatibility
     dataset: ""
     location: "US"
     credentials_path: "${GOOGLE_APPLICATION_CREDENTIALS}"
@@ -205,6 +209,11 @@ query:
   default_limit: 100
   max_limit: 1000
   timeout: 300
+  # If false, the assistant generates SQL but does NOT run it against the
+  # database — the SQL/explanation are returned, results stay empty.
+  # Only affects the interactive assistant (/query, /auth/query); scheduled
+  # queries and MCP tool calls always execute regardless of this flag.
+  execute_generated_sql: true
 
 # ============================================
 # Scheduler & Email

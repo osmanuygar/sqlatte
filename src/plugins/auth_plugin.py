@@ -1347,11 +1347,21 @@ class AuthPlugin(BasePlugin):
                             "message": _cat_reason,
                         }
 
+                # Execute — unless query.execute_generated_sql is off. MCP calls
+                # (bypass_intent) always execute regardless: they're a
+                # programmatic tool contract, not the interactive assistant.
+                _execute_sql = bypass_intent or llm_config.get("query", {}).get("execute_generated_sql", True)
+
                 import time as _time
-                _exec_start = _time.time()
-                columns, data = db_provider.execute_query(sql_query)
-                _execution_ms = int((_time.time() - _exec_start) * 1000)
-                print(f"✅ Query executed: {len(data)} rows returned")
+                if _execute_sql:
+                    _exec_start = _time.time()
+                    columns, data = db_provider.execute_query(sql_query)
+                    _execution_ms = int((_time.time() - _exec_start) * 1000)
+                    print(f"✅ Query executed: {len(data)} rows returned")
+                else:
+                    columns, data = [], []
+                    _execution_ms = 0
+                    print("⏭️  [Auth] Execution skipped (query.execute_generated_sql=false) — SQL generated only")
 
                 if audit_log_db and session_id:
                     audit_log_db.log(
@@ -1393,7 +1403,8 @@ class AuthPlugin(BasePlugin):
                     "data": data,
                     "explanation": explanation,
                     "row_cap_applied": row_cap if row_cap and len(data) == row_cap else None,
-                    "query_id": None
+                    "query_id": None,
+                    "execution_skipped": not _execute_sql
                 }
 
             else:

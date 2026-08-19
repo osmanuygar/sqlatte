@@ -309,6 +309,7 @@ class SQLQueryResponse(BaseModel):
     session_id: str
     query_id: Optional[str] = None
     insights: Optional[List[Dict]] = None
+    execution_skipped: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -448,11 +449,20 @@ def _process_query_sync(
                     "message": f"Only SELECT queries are permitted. {reason}.",
                 }
 
-            # Execute query
-            _exec_start = time.time()
-            columns, data = db.execute_query(sql_query)
-            _execution_ms = int((time.time() - _exec_start) * 1000)
-            print(f"✅ Query executed: {len(data)} rows")
+            # Execute query — unless query.execute_generated_sql is off, in which
+            # case only the generated SQL/explanation are returned (no results,
+            # no insights). Provider-agnostic: doesn't care whether db is
+            # BigQuery/Trino/MySQL/Postgres.
+            _execute_sql = current_config.get("query", {}).get("execute_generated_sql", True)
+            if _execute_sql:
+                _exec_start = time.time()
+                columns, data = db.execute_query(sql_query)
+                _execution_ms = int((time.time() - _exec_start) * 1000)
+                print(f"✅ Query executed: {len(data)} rows")
+            else:
+                columns, data = [], []
+                _execution_ms = 0
+                print("⏭️  Execution skipped (query.execute_generated_sql=false) — SQL generated only")
 
             if audit_log_db:
                 audit_log_db.log(
@@ -470,27 +480,29 @@ def _process_query_sync(
                 )
 
             # Insights (güçlü model — insights engine config'den okur)
+            # Skipped entirely when execution was skipped — there's no data to analyze.
             insights = []
-            try:
-                engine = get_insights_engine()
-                if engine is None:
-                    print("⚠️ Insights engine not initialized")
-                else:
-                    # Insights engine kendi LLM'ini oluşturuyor,
-                    # model_routing'deki "insights" modelini config'den alır.
-                    insights = engine.generate_insights(
-                        columns=columns,
-                        data=data,
-                        user_question=question,
-                        schema_info=schema_info,
-                        sql_query=sql_query
-                    )
-                    if insights:
-                        print(f"🧠 Generated {len(insights)} insights")
-            except Exception as e:
-                print(f"⚠️ Insights generation failed: {e}")
-                import traceback
-                traceback.print_exc()
+            if _execute_sql:
+                try:
+                    engine = get_insights_engine()
+                    if engine is None:
+                        print("⚠️ Insights engine not initialized")
+                    else:
+                        # Insights engine kendi LLM'ini oluşturuyor,
+                        # model_routing'deki "insights" modelini config'den alır.
+                        insights = engine.generate_insights(
+                            columns=columns,
+                            data=data,
+                            user_question=question,
+                            schema_info=schema_info,
+                            sql_query=sql_query
+                        )
+                        if insights:
+                            print(f"🧠 Generated {len(insights)} insights")
+                except Exception as e:
+                    print(f"⚠️ Insights generation failed: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             return {
                 "type": "sql",
@@ -500,7 +512,8 @@ def _process_query_sync(
                 "row_count": len(data),
                 "explanation": explanation,
                 "insights": insights,
-                "tables": selected_tables
+                "tables": selected_tables,
+                "execution_skipped": not _execute_sql
             }
 
         # ── Chat path (hızlı/orta model) ────────────────────────────────
@@ -1035,7 +1048,8 @@ async def process_query(request: QueryRequest, http_request: Request):
                 explanation=result["explanation"],
                 session_id=session_id,
                 query_id=history_record.id,
-                insights=result.get("insights", [])
+                insights=result.get("insights", []),
+                execution_skipped=result.get("execution_skipped", False)
             )
 
         elif result["type"] == "security_warning":
