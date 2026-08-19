@@ -895,12 +895,18 @@
                         </div>
                         <div class="form-group">
                             <label>Location</label>
-                            <select id="vertexai-location">
+                            <input type="text" id="vertexai-location" list="vertexai-location-options" placeholder="us-central1, europe-west1, europe-west3, ...">
+                            <datalist id="vertexai-location-options">
                                 <option value="us-central1">us-central1</option>
                                 <option value="us-east1">us-east1</option>
                                 <option value="europe-west1">europe-west1</option>
+                                <option value="europe-west3">europe-west3</option>
+                                <option value="europe-west2">europe-west2</option>
+                                <option value="europe-north1">europe-north1</option>
                                 <option value="asia-northeast1">asia-northeast1</option>
-                            </select>
+                                <option value="asia-southeast1">asia-southeast1</option>
+                            </datalist>
+                            <small>Any valid GCP region — the dropdown only suggests common ones (Vertex AI model availability varies by region).</small>
                         </div>
                         <div class="form-group">
                             <label>Default Model</label>
@@ -1021,9 +1027,9 @@
                             <small>GCP Project ID (required)</small>
                         </div>
                         <div class="form-group">
-                            <label>Dataset (Optional)</label>
-                            <input type="text" id="db-bigquery-dataset" placeholder="analytics">
-                            <small>Leave empty for cross-dataset queries</small>
+                            <label>Datasets (Optional)</label>
+                            <input type="text" id="db-bigquery-datasets" placeholder="analytics, marketing_ds2">
+                            <small>Comma-separated to restrict to specific datasets. Leave empty for cross-dataset queries (all datasets in the project).</small>
                         </div>
                         <div class="form-group">
                             <label>Location</label>
@@ -2855,7 +2861,8 @@
             if (dbProvider === 'bigquery') {
                 const bqConfig = config.database?.bigquery || {};
                 document.getElementById('db-bigquery-project').value = bqConfig.project_id || '';
-                document.getElementById('db-bigquery-dataset').value = bqConfig.dataset || '';
+                // Prefer the new multi-dataset field, fall back to the legacy single `dataset`
+                document.getElementById('db-bigquery-datasets').value = bqConfig.datasets || bqConfig.dataset || '';
                 document.getElementById('db-bigquery-location').value = bqConfig.location || 'US';
                 document.getElementById('db-bigquery-timeout').value = bqConfig.timeout || 300;
                 document.getElementById('db-bigquery-max-results').value = bqConfig.max_results || 10000;
@@ -3176,7 +3183,7 @@
                 // BigQuery config (değişmez)
                 const config = {
                     project_id: document.getElementById('db-bigquery-project').value,
-                    dataset: document.getElementById('db-bigquery-dataset').value || '',
+                    datasets: document.getElementById('db-bigquery-datasets').value || '',
                     location: document.getElementById('db-bigquery-location').value,
                     timeout: parseInt(document.getElementById('db-bigquery-timeout').value) || 300,
                     max_results: parseInt(document.getElementById('db-bigquery-max-results').value) || 10000

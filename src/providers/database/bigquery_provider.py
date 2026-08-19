@@ -23,7 +23,22 @@ class BigQueryProvider(DatabaseProvider):
             raise ValueError("BigQuery requires 'project_id' in configuration")
 
         # Optional fields
-        self.dataset = config.get('dataset', '')  # Can be empty for cross-dataset queries
+        # datasets: preferred, multi-dataset restriction. Accepts a list
+        # (["ds1", "ds2"]) or a comma-separated string ("ds1, ds2").
+        # dataset (singular): legacy single-dataset config, still honored.
+        # Both empty -> cross-dataset mode (browse/query all datasets in project).
+        raw_datasets = config.get('datasets')
+        if not raw_datasets:
+            legacy = config.get('dataset', '')
+            raw_datasets = [legacy] if legacy else []
+        elif isinstance(raw_datasets, str):
+            raw_datasets = [raw_datasets]
+        self.datasets: List[str] = [d.strip() for part in raw_datasets for d in part.split(',') if d.strip()]
+
+        # Backward-compat single-dataset accessor, used as the implicit
+        # default only when exactly one dataset is configured.
+        self.dataset = self.datasets[0] if len(self.datasets) == 1 else ''
+
         self.location = config.get('location', 'US')  # Default to US multi-region
 
         # Authentication - 3 methods (same pattern as VertexAI)
@@ -39,7 +54,7 @@ class BigQueryProvider(DatabaseProvider):
         # Debug logging
         print(f"\n🔍 [BigQuery] Config loaded:")
         print(f"   Project ID: {self.project_id}")
-        print(f"   Dataset: {self.dataset or '(cross-dataset mode)'}")
+        print(f"   Dataset(s): {', '.join(self.datasets) or '(cross-dataset mode)'}")
         print(f"   Location: {self.location}")
         print(f"   Credentials: {self._get_auth_method()}")
 
@@ -119,8 +134,8 @@ class BigQueryProvider(DatabaseProvider):
     def get_tables(self) -> List[str]:
         """
         Get list of tables
-        If dataset is specified, list tables in that dataset
-        If no dataset, list all tables across all datasets
+        If one or more datasets are configured, list tables from just those
+        If no datasets configured, list all tables across all datasets in the project
         """
         if not self.client:
             self.connect()
@@ -128,13 +143,14 @@ class BigQueryProvider(DatabaseProvider):
         try:
             tables = []
 
-            if self.dataset:
-                # List tables in specific dataset
-                dataset_ref = self.client.dataset(self.dataset)
-                table_list = self.client.list_tables(dataset_ref)
+            if self.datasets:
+                # List tables from each configured dataset
+                for dataset_id in self.datasets:
+                    dataset_ref = self.client.dataset(dataset_id)
+                    table_list = self.client.list_tables(dataset_ref)
 
-                for table in table_list:
-                    tables.append(f"{self.dataset}.{table.table_id}")
+                    for table in table_list:
+                        tables.append(f"{dataset_id}.{table.table_id}")
             else:
                 # List all tables across all datasets
                 datasets = list(self.client.list_datasets())
@@ -173,13 +189,17 @@ class BigQueryProvider(DatabaseProvider):
                 else:
                     raise ValueError(f"Invalid table name format: {table_name}")
             else:
-                # Use default dataset
-                if not self.dataset:
-                    raise ValueError(
-                        f"Table name '{table_name}' requires dataset. "
-                        f"Use 'dataset.table' format or configure default dataset."
+                # Use default dataset (only unambiguous when exactly one is configured)
+                if len(self.datasets) != 1:
+                    hint = (
+                        "multiple datasets configured, specify one" if self.datasets
+                        else "no default dataset configured"
                     )
-                dataset_id = self.dataset
+                    raise ValueError(
+                        f"Table name '{table_name}' requires dataset ({hint}). "
+                        f"Use 'dataset.table' format."
+                    )
+                dataset_id = self.datasets[0]
                 table_id = table_name
 
             # Get table reference
@@ -281,7 +301,7 @@ class BigQueryProvider(DatabaseProvider):
         return {
             "type": "bigquery",
             "project_id": self.project_id,
-            "dataset": self.dataset or "(cross-dataset)",
+            "datasets": self.datasets or "(cross-dataset)",
             "location": self.location,
             "auth_method": self._get_auth_method(),
             "timeout": self.timeout,

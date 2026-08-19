@@ -266,11 +266,19 @@ class ConfigDB:
                            'database', 'string', False,
                            'GCP Project ID (required)')
 
-            # Optional: Dataset
+            # Optional: Dataset (legacy single-dataset field, still honored)
             self._set_config('database.bigquery.dataset',
                            bigquery_config.get('dataset', ''),
                            'database', 'string', False,
-                           'Default BigQuery dataset (optional)')
+                           'Default BigQuery dataset (optional, legacy — use datasets for multiple)')
+
+            # Optional: Datasets (new, multi-dataset restriction)
+            # Stored as a comma-joined string (same convention as export.formats);
+            # bigquery_provider.py splits it back into a list.
+            self._set_config('database.bigquery.datasets',
+                           self._join_datasets(bigquery_config.get('datasets')),
+                           'database', 'string', False,
+                           'BigQuery datasets to restrict to, comma-separated (optional, empty = cross-dataset)')
 
             # Optional: Location
             self._set_config('database.bigquery.location',
@@ -554,6 +562,38 @@ class ConfigDB:
             return False
 
         self._bootstrap_assistant_login_section(yaml_config)
+        self.conn.commit()
+        return True
+
+    @staticmethod
+    def _join_datasets(datasets) -> str:
+        """Normalize a bigquery `datasets` config value (list, comma-separated
+        string, or None) into a comma-joined string for storage. Mirrors how
+        bigquery_provider.py splits it back into a list on read."""
+        if not datasets:
+            return ''
+        parts = datasets.split(',') if isinstance(datasets, str) else datasets
+        return ','.join(d.strip() for d in parts if d and d.strip())
+
+    def migrate_bigquery_datasets_config(self, yaml_config: Dict[str, Any]) -> bool:
+        """Backfill `database.bigquery.datasets` into this store for installs
+        that were bootstrapped before multi-dataset support was added — that
+        guard in bootstrap_from_yaml only runs once, on an empty store.
+
+        Idempotent: no-ops if `database.bigquery.datasets` is already present.
+        Returns True if it wrote a new config, False if there was nothing to do.
+        """
+        if self.get_config('database.bigquery.datasets') is not None:
+            return False
+
+        bigquery_config = yaml_config.get('database', {}).get('bigquery', {})
+        if not bigquery_config:
+            return False
+
+        self._set_config('database.bigquery.datasets',
+                       self._join_datasets(bigquery_config.get('datasets')),
+                       'database', 'string', False,
+                       'BigQuery datasets to restrict to, comma-separated (optional, empty = cross-dataset)')
         self.conn.commit()
         return True
 
