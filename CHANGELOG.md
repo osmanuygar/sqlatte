@@ -1,8 +1,11 @@
-## [Unreleased]
+## [0.6.3] - 2026-08-24
 
 ### Fixed
 - `ConfigDB`'s single shared Postgres connection now runs with `autocommit=True`. Read-only calls like `get_config()` never committed, leaving the connection "idle in transaction" indefinitely (visible in `pg_stat_activity`) — since it's a process-wide singleton, that starved every subsequent DB-backed request, surfacing as MCP tool calls (`list_tables`, `ask_database`, etc.) timing out well after auth itself succeeded.
 - `TrinoProvider.discover_tables()`'s auto-DESCRIBE batch default raised from 5 to 25 matches (`DEFAULT_DESCRIBE_LIMIT`, overridable via a new `describe_limit` param), and it now reuses one connection for the whole batch instead of opening a fresh one per table.
+
+### Added
+- `rate_limiting.path_overrides` (optional): per-path `requests_per_window`/`window_seconds` that take priority over the section's global defaults — e.g. a stricter cap on `/auth/query` (real LLM+DB round trip) than on `/query` (legacy widget), or a burst guard on `/auth/discover` distinct from its own daily discover budget. Longest-prefix match wins; a path with only an override entry (not listed in `protected_paths`) is still protected.
 
 ### Changed - Unified catalog-less tokens
 - Merged the "query" and "discovery" token models: the token screen (`frontend/tokens.html`) no longer collects a catalog/schema for Trino when discovery is enabled — sign-in is catalog-less (username/password only), and every token from it is scoped entirely by `plugins.auth.allowed_catalogs` instead of a single catalog picked up front. What used to be the separate "Discovery Token" mini-form is now just how sign-in works.
