@@ -43,8 +43,13 @@ class LoginRequest(BaseModel):
     database_type: str
     host: str
     port: int
+    # Both default to None (not e.g. 'default') so omitting them from the
+    # request — the unified sign-in form no longer collects catalog/schema
+    # for Trino — produces a catalog-less session rather than an
+    # accidental single-catalog one. See AuthPlugin.register_routes'
+    # /auth/login for how that's then scoped by allowed_catalogs.
     catalog: Optional[str] = None
-    schema: Optional[str] = 'default'
+    schema: Optional[str] = None
     database: Optional[str] = None
     http_scheme: Optional[str] = 'https'
 
@@ -185,6 +190,19 @@ class AuthPlugin(BasePlugin):
             self.allowed_catalogs = raw_catalogs
 
         self.allowed_schemas = config.get('allowed_schemas', [])  # fallback
+
+        # Normalized {catalog: [allowed_schema, ...]} used to let discovery
+        # tokens run restricted ask_database queries (see
+        # catalog_allowlist_violation) — always a dict, even when the
+        # deployment used the old flat allowed_catalogs list (those catalogs
+        # then allow any schema). Empty means nothing is configured to allow,
+        # which /auth/query treats as "discovery tokens stay query-less".
+        if self.catalog_schema_map:
+            self._discovery_query_catalog_map = self.catalog_schema_map
+        elif self.allowed_catalogs:
+            self._discovery_query_catalog_map = {c: [] for c in self.allowed_catalogs}
+        else:
+            self._discovery_query_catalog_map = {}
         self.db_provider = config.get('db_provider', None)  # Optional
         self.db_host = config.get('db_host', None)  # Optional
         self.db_port = config.get('db_port', None)  # Optional
@@ -258,30 +276,62 @@ class AuthPlugin(BasePlugin):
             _check_login_allowed(ip)
 
             try:
-                # Catalog/schema allowlist check
-                if self.allowed_catalogs and request.catalog not in self.allowed_catalogs:
+                # A Trino login with no catalog is intentional now — the token
+                # screen no longer asks for one (see tokens.html). Visibility
+                # for that session is governed entirely by allowed_catalogs at
+                # query/discover/describe time instead of at login, so the
+                # catalog/schema allowlist check below only applies when the
+                # caller actually supplied one (e.g. a legacy client, or a
+                # non-Trino provider where this model doesn't apply).
+                is_catalog_less_trino = request.database_type == 'trino' and not request.catalog
+
+                # Deployments that haven't turned on discovery
+                # (plugins.auth.enable_discovery_tokens) don't get the
+                # catalog-less model either — tokens.html only omits the
+                # catalog field when discovery_enabled is true (see
+                # /auth/config), but guard the endpoint itself too against a
+                # client built for an older/differently-configured server.
+                if is_catalog_less_trino and not self.enable_discovery_tokens:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Catalog '{request.catalog}' not allowed"
+                        detail="This server requires a catalog for Trino logins "
+                               "(plugins.auth.enable_discovery_tokens is off)."
                     )
 
-                if self.allowed_schemas and request.schema not in self.allowed_schemas:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Schema '{request.schema}' not allowed"
-                    )
+                if not is_catalog_less_trino:
+                    if self.allowed_catalogs and request.catalog not in self.allowed_catalogs:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Catalog '{request.catalog}' not allowed"
+                        )
+
+                    if self.allowed_schemas and request.schema not in self.allowed_schemas:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Schema '{request.schema}' not allowed"
+                        )
 
                 # Build database config from login request
                 db_config = self._build_db_config(request)
 
-                # Test connection in thread pool (non-blocking)
+                # Test connection in thread pool (non-blocking). A catalog-less
+                # Trino login can't use the usual SHOW TABLES probe (fails with
+                # MISSING_CATALOG_NAME) — just open the connection instead, same
+                # check the old discovery-token flow used.
                 loop = asyncio.get_event_loop()
-                is_valid = await loop.run_in_executor(
-                    self.executor,
-                    self._test_db_connection,
-                    request.database_type,
-                    db_config
-                )
+                if is_catalog_less_trino:
+                    is_valid = await loop.run_in_executor(
+                        self.executor,
+                        self._test_trino_discovery_connection,
+                        db_config
+                    )
+                else:
+                    is_valid = await loop.run_in_executor(
+                        self.executor,
+                        self._test_db_connection,
+                        request.database_type,
+                        db_config
+                    )
 
                 if not is_valid:
                     _record_failed_login(ip)   # M-03: count the failure
@@ -363,7 +413,7 @@ class AuthPlugin(BasePlugin):
             try:
                 loop = asyncio.get_event_loop()
                 is_valid = await loop.run_in_executor(
-                    self.executor, self._test_db_connection, "trino", trino_config
+                    self.executor, self._test_trino_discovery_connection, trino_config
                 )
                 if not is_valid:
                     _record_failed_login(ip)
@@ -384,7 +434,9 @@ class AuthPlugin(BasePlugin):
                     "success": True,
                     "token": token,
                     "ttl_hours": ttl_hours,
-                    "message": f"Discovery token valid for {ttl_hours}h. discover_tables only — no ask_database.",
+                    "message": f"Discovery token valid for {ttl_hours}h. discover_tables always works; "
+                               f"ask_database works too if the server has allowed_catalogs configured "
+                               f"(fully-qualified tables only).",
                 }
             except HTTPException:
                 raise
@@ -464,7 +516,17 @@ class AuthPlugin(BasePlugin):
 
         @app.get("/auth/tables")
         async def get_tables(session_id: str = Header(..., alias="X-Session-ID")):
-            """Get available tables for authenticated user"""
+            """
+            Get available tables for authenticated user.
+
+            A catalog-less session (see _config_catalog) has no single
+            catalog for SHOW TABLES to run against — instead of erroring,
+            fall back to discover_tables with an empty search_term (see
+            TrinoProvider.discover_tables), restricted to allowed_catalogs,
+            and hand back fully-qualified catalog.schema.table names. Same
+            metadata call as /auth/discover, so it draws from the same
+            discover budget.
+            """
             try:
                 session = self.session_manager.get_session(session_id)
 
@@ -475,11 +537,40 @@ class AuthPlugin(BasePlugin):
                     )
 
                 loop = asyncio.get_event_loop()
-                tables = await loop.run_in_executor(
-                    self.executor,
-                    self._get_tables_for_session,
-                    session.db_config
-                )
+
+                if self._config_catalog(session.db_config) is None:
+                    if not self._discovery_query_catalog_map:
+                        raise HTTPException(
+                            403,
+                            "This token has no default catalog and this server has no "
+                            "allowed_catalogs configured to list tables from. Ask an admin "
+                            "to set plugins.auth.allowed_catalogs."
+                        )
+                    if session.api_token:
+                        from src.core.config_db import get_config_db
+                        budget = get_config_db().consume_token_discover_budget(session.api_token)
+                        if budget is None:
+                            raise HTTPException(401, "API token expired or revoked")
+                        if budget.get("_error") == "budget_exceeded":
+                            raise HTTPException(
+                                429,
+                                f"Daily discover budget of {budget['daily_limit']} calls exceeded. "
+                                f"Resets at midnight UTC."
+                            )
+
+                    result = await loop.run_in_executor(
+                        self.executor,
+                        self._discover_tables_for_session,
+                        session.db_config,
+                        "",
+                    )
+                    tables = [f"{m['catalog']}.{m['schema']}.{m['table']}" for m in result.get("matches", [])]
+                else:
+                    tables = await loop.run_in_executor(
+                        self.executor,
+                        self._get_tables_for_session,
+                        session.db_config
+                    )
 
                 return {"tables": tables}
 
@@ -508,9 +599,27 @@ class AuthPlugin(BasePlugin):
                 if not session:
                     raise HTTPException(401, "Session expired or invalid")
 
+                # Enforce the token's daily discover budget, if this session
+                # came from one — same pattern as /auth/query's query budget,
+                # just a separate counter (see consume_token_discover_budget).
+                if session.api_token:
+                    from src.core.config_db import get_config_db
+                    budget = get_config_db().consume_token_discover_budget(session.api_token)
+                    if budget is None:
+                        raise HTTPException(401, "API token expired or revoked")
+                    if budget.get("_error") == "budget_exceeded":
+                        raise HTTPException(
+                            429,
+                            f"Daily discover budget of {budget['daily_limit']} calls exceeded. "
+                            f"Resets at midnight UTC."
+                        )
+
+                # Empty search_term means "list everything (within
+                # allowed_catalogs, if configured)" — this is also what
+                # /auth/tables falls back to for a catalog-less session, so
+                # both share this one code path instead of a separate
+                # per-catalog SHOW TABLES loop.
                 search_term = (request.get("search_term") or "").strip()
-                if not search_term:
-                    raise HTTPException(400, "search_term is required")
 
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
@@ -654,12 +763,29 @@ class AuthPlugin(BasePlugin):
                 if not session:
                     raise HTTPException(401, "Session expired or invalid")
 
-                # 1a. Discovery tokens are metadata-only — never allowed to run a real query
-                if getattr(session, "token_type", "query") == "discovery":
+                # 1a. A catalog-less session (no default catalog — old
+                # discovery tokens, and every token minted since the token
+                # screen stopped collecting a catalog) has no single scope of
+                # its own, so ask_database is only allowed when the
+                # deployment has an allowlist configured
+                # (plugins.auth.allowed_catalogs) — the query gets checked
+                # against it below via catalog_allowlist_violation instead of
+                # the usual single-catalog catalog_violation lock. No
+                # allowlist means nothing is safe to permit, so it stays
+                # metadata-only. Driven by the session's actual db_config
+                # (see _config_catalog), not by token_type, so this covers a
+                # legacy 'query' token exactly as it always has (it carries a
+                # fixed catalog, so it never hits this branch) alongside
+                # every catalog-less token regardless of type.
+                token_type = getattr(session, "token_type", "query")
+                is_catalog_less = self._config_catalog(session.db_config) is None
+                if is_catalog_less and not self._discovery_query_catalog_map:
                     raise HTTPException(
                         403,
-                        "This is a discovery token (catalog/table search only). "
-                        "Use a regular query token for ask_database."
+                        "This token has no default catalog (catalog/table search only) and "
+                        "this server has no allowed_catalogs configured to run restricted "
+                        "queries against. Use a token with a default catalog for ask_database, "
+                        "or ask an admin to set plugins.auth.allowed_catalogs."
                     )
 
                 # 1b. Enforce the token's daily query budget, if this session came from one
@@ -719,6 +845,7 @@ class AuthPlugin(BasePlugin):
                     session_id,
                     session.username,
                     bypass_intent,
+                    token_type,
                 )
                 execution_time = (time.time() - start_time) * 1000
 
@@ -861,12 +988,16 @@ class AuthPlugin(BasePlugin):
                 raw_limit = request.get("daily_query_limit")
                 daily_query_limit = int(raw_limit) if raw_limit not in (None, "", 0, "0") else None
 
+                raw_discover_limit = request.get("daily_discover_limit")
+                daily_discover_limit = int(raw_discover_limit) if raw_discover_limit not in (None, "", 0, "0") else None
+
                 token = config_db.create_api_token(
                     username=session.username,
                     db_config=session.db_config,
                     ttl_hours=ttl_hours,
                     description=description,
                     daily_query_limit=daily_query_limit,
+                    daily_discover_limit=daily_discover_limit,
                 )
 
                 platform_default = config_db.get_default_token_limit()
@@ -877,14 +1008,24 @@ class AuthPlugin(BasePlugin):
                 else:
                     effective_limit = daily_query_limit
 
+                discover_platform_default = config_db.get_default_discover_limit()
+                if daily_discover_limit is None:
+                    effective_discover_limit = discover_platform_default
+                elif discover_platform_default is not None:
+                    effective_discover_limit = min(daily_discover_limit, discover_platform_default)
+                else:
+                    effective_discover_limit = daily_discover_limit
+
                 limit_str = f"{effective_limit} queries/day" if effective_limit is not None else "unlimited"
+                discover_limit_str = f"{effective_discover_limit} discover calls/day" if effective_discover_limit is not None else "unlimited discover calls"
                 return {
                     "success": True,
                     "token": token,
                     "ttl_hours": ttl_hours,
                     "description": description,
                     "daily_query_limit": effective_limit,
-                    "message": f"Token valid for {ttl_hours} hours, {limit_str}. Set SQLATTE_TOKEN in your MCP config.",
+                    "daily_discover_limit": effective_discover_limit,
+                    "message": f"Token valid for {ttl_hours} hours, {limit_str}, {discover_limit_str}. Set SQLATTE_TOKEN in your MCP config.",
                 }
             except Exception as e:
                 print(f"❌ Token generate error: {e}")
@@ -896,13 +1037,19 @@ class AuthPlugin(BasePlugin):
             session_id: str = Header(..., alias="X-Session-ID")
         ):
             """
-            Generate a discovery-only token from an active session — reuses
-            the session's already-validated Trino credentials (host/user/
-            password), just without the catalog/schema restriction, since
-            discovery searches every catalog by design. Trino only.
+            Generate a discovery token from an active session — reuses the
+            session's already-validated Trino credentials (host/user/
+            password). Trino only.
 
-            No ask_database access with this token (see /auth/query's
-            discovery-session rejection) — discover_tables and get_schema only.
+            discover_tables always works. ask_database also works, restricted
+            to fully-qualified tables within plugins.auth.allowed_catalogs
+            (see AuthPlugin._config_catalog and
+            sql_validator.catalog_allowlist_violation); with no
+            allowed_catalogs configured it stays blocked. Since the token
+            screen (tokens.html) now signs in catalog-less by default when
+            discovery is enabled, /auth/token/generate produces the same
+            shape of token — this endpoint is kept for direct/API callers
+            that still want an explicitly-labeled "discovery" token.
             """
             if not self.enable_discovery_tokens:
                 raise HTTPException(404, "Discovery tokens are disabled on this server.")
@@ -937,7 +1084,9 @@ class AuthPlugin(BasePlugin):
                     "token": token,
                     "ttl_hours": ttl_hours,
                     "description": description,
-                    "message": f"Discovery token valid for {ttl_hours} hours. discover_tables only — no ask_database.",
+                    "message": f"Discovery token valid for {ttl_hours} hours. discover_tables always works; "
+                               f"ask_database works too if the server has allowed_catalogs configured "
+                               f"(fully-qualified tables only).",
                 }
             except Exception as e:
                 print(f"❌ Discovery token generate error: {e}")
@@ -1083,6 +1232,26 @@ class AuthPlugin(BasePlugin):
                 traceback.print_exc()
                 raise HTTPException(500, f"Auto-session creation failed: {str(e)}")
 
+    @staticmethod
+    def _config_catalog(db_config: Dict[str, Any]) -> Optional[str]:
+        """
+        The "single scope" a session/token's db_config is locked to, or None
+        if it has none — a Trino connection with no catalog set (a
+        catalog-less, discovery-shaped session) being the only case that
+        currently produces None. Used as the single source of truth for
+        "does this session need the allowlist (catalog_allowlist_violation /
+        qualified_table_allowlist_violation) or the old single-catalog lock
+        (catalog_violation)?" — driven by what the connection actually is,
+        not by token_type, so it naturally covers old and new tokens alike
+        without a migration: a legacy 'query' token still carries a fixed
+        catalog and keeps the single-catalog behavior; a legacy 'discovery'
+        token, and every token minted since catalog selection was removed
+        from the token screen, has none and gets the allowlist behavior.
+        """
+        prov = db_config.get("provider", "")
+        sub = db_config.get(prov, {}) or {}
+        return sub.get("catalog") or sub.get("project_id") or sub.get("database") or None
+
     def _build_db_config(self, request: LoginRequest) -> Dict[str, Any]:
         """Build database config from login request"""
         config = {
@@ -1138,6 +1307,22 @@ class AuthPlugin(BasePlugin):
             print(f"❌ Connection test failed: {e}")
             return False
 
+    def _test_trino_discovery_connection(self, trino_config: Dict[str, Any]) -> bool:
+        """
+        Credential check for the catalog-less discovery-token flow.
+
+        Unlike _test_db_connection (which runs SHOW TABLES and therefore
+        requires a session catalog/schema), this only opens a connection —
+        SHOW TABLES fails with MISSING_CATALOG_NAME when no catalog is set,
+        which discovery tokens intentionally never set.
+        """
+        from src.providers.database.trino_provider import TrinoProvider
+        try:
+            return TrinoProvider(trino_config).health_check()
+        except Exception as e:
+            print(f"❌ Discovery connection test failed: {e}")
+            return False
+
     def _get_tables_for_session(self, db_config: Dict[str, Any]) -> List[str]:
         """Get tables for a session's DB connection (cached — see __init__)"""
         cache_key = json.dumps(db_config, sort_keys=True, default=str)
@@ -1166,7 +1351,32 @@ class AuthPlugin(BasePlugin):
         db_config: Dict[str, Any],
         table_name: str
     ) -> str:
-        """Get schema for a specific table"""
+        """
+        Get schema for a specific table (DESCRIBE).
+
+        A session with a fixed catalog (see _config_catalog) is implicitly
+        scoped by the connection itself, same as it always has been — no
+        extra check needed. A catalog-less session has no such connection-
+        level scope, so describe is gated the same way ask_database is:
+        table_name must be fully qualified as catalog.schema.table and that
+        catalog+schema must be in the allowlist (plugins.auth.allowed_catalogs)
+        — see qualified_table_allowlist_violation. Applies to old discovery
+        tokens and every token minted since catalog selection was removed
+        from the token screen alike.
+        """
+        if self._config_catalog(db_config) is None and db_config.get("provider") == "trino":
+            if not self._discovery_query_catalog_map:
+                raise HTTPException(
+                    403,
+                    "This token has no default catalog and this server has no "
+                    "allowed_catalogs configured to describe tables against. Ask an "
+                    "admin to set plugins.auth.allowed_catalogs."
+                )
+            from src.core.sql_validator import qualified_table_allowlist_violation
+            violation = qualified_table_allowlist_violation(table_name, self._discovery_query_catalog_map)
+            if violation:
+                raise HTTPException(403, violation)
+
         try:
             wrapped_config = {'database': db_config}
             db_provider = ProviderFactory.create_db_provider(wrapped_config)
@@ -1186,11 +1396,18 @@ class AuthPlugin(BasePlugin):
         db_config: Dict[str, Any],
         search_term: str,
     ) -> Dict[str, Any]:
-        """Cross-catalog table/collection search (Trino only — see DatabaseProvider.discover_tables)"""
+        """
+        Cross-catalog table/collection search (Trino only — see
+        DatabaseProvider.discover_tables), always restricted server-side to
+        self._discovery_query_catalog_map when it's configured — narrower
+        than "every catalog this DB user can see", which is both more
+        relevant to hand back and keeps a catalog-less token from ever
+        seeing metadata for catalogs it isn't allowed to query anyway.
+        """
         try:
             wrapped_config = {'database': db_config}
             db_provider = ProviderFactory.create_db_provider(wrapped_config)
-            result = db_provider.discover_tables(search_term)
+            result = db_provider.discover_tables(search_term, self._discovery_query_catalog_map)
 
             print(f"🔎 Discovery '{search_term}': {len(result.get('matches', []))} matches")
             return result
@@ -1212,6 +1429,7 @@ class AuthPlugin(BasePlugin):
             session_id: str = None,
             user_id: str = None,
             bypass_intent: bool = False,
+            token_type: str = "query",
     ) -> Dict[str, Any]:
         """
         Execute query with CONVERSATION CONTEXT support and model routing.
@@ -1280,7 +1498,7 @@ class AuthPlugin(BasePlugin):
                         "error": "Failed to generate SQL query. Please try rephrasing your question."
                     }
 
-                from src.core.sql_validator import is_select_only, violation_reason, risk_score, dialect_for_provider, catalog_violation
+                from src.core.sql_validator import is_select_only, violation_reason, risk_score, dialect_for_provider, catalog_violation, catalog_allowlist_violation
                 _prov = db_config.get("provider", "")
                 _dialect = dialect_for_provider(_prov)
                 _sql_valid = is_select_only(sql_query, dialect=_dialect)
@@ -1291,11 +1509,7 @@ class AuthPlugin(BasePlugin):
                     for line in schema_info.split("\n")
                     if line.startswith("Table:")
                 ]
-                _catalog = (
-                    db_config.get(_prov, {}).get("catalog")
-                    or db_config.get(_prov, {}).get("project_id")
-                    or db_config.get(_prov, {}).get("database")
-                )
+                _catalog = self._config_catalog(db_config)
                 _widget = "mcp" if bypass_intent else "auth"
 
                 if not _sql_valid:
@@ -1323,7 +1537,21 @@ class AuthPlugin(BasePlugin):
                     }
 
                 if self.enforce_catalog_lock:
-                    _cat_reason = catalog_violation(sql_query, _dialect, _catalog)
+                    # A catalog-less session (no default catalog — see
+                    # _config_catalog) has no single catalog of its own (see
+                    # /auth/query's is_catalog_less check above, which already
+                    # refused to get here at all if _discovery_query_catalog_map
+                    # is empty) — check every table ref against the allowlist
+                    # instead of locking to one catalog. Driven by _catalog
+                    # itself rather than token_type, so this applies to any
+                    # catalog-less token, old or new, regardless of how it was
+                    # created.
+                    if not _catalog:
+                        _cat_reason = catalog_allowlist_violation(
+                            sql_query, _dialect, self._discovery_query_catalog_map
+                        )
+                    else:
+                        _cat_reason = catalog_violation(sql_query, _dialect, _catalog)
                     if _cat_reason:
                         print(f"🚫 Blocked cross-catalog query (auth): {_cat_reason} | SQL: {sql_query[:120]}")
                         if audit_log_db and session_id:

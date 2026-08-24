@@ -194,7 +194,10 @@ async def list_tools() -> list[types.Tool]:
             description=(
                 "Ask a question in natural language about data in a specific table. "
                 "SQLatte translates it to SQL, runs it, and returns results. "
-                "Always provide table_name — call list_tables first if unknown."
+                "Always provide table_name — call list_tables first if unknown. If this "
+                "is a catalog-less token, list_tables/discover_tables return fully-"
+                "qualified catalog.schema.table names — pass one of those as table_name; "
+                "queries are then restricted to the server's allowed catalogs."
             ),
             inputSchema={
                 "type": "object",
@@ -208,12 +211,22 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="list_tables",
-            description="List all available tables in the connected catalog/schema.",
+            description=(
+                "List available tables. For a token with a default catalog, lists "
+                "the connected catalog/schema. For a catalog-less token, lists every "
+                "table in the server's allowed catalogs instead, as fully-qualified "
+                "catalog.schema.table names."
+            ),
             inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="get_schema",
-            description="Get column definitions for a specific table.",
+            description=(
+                "Get column definitions for a specific table. For a catalog-less "
+                "token, table_name must be fully qualified as catalog.schema.table "
+                "(from list_tables/discover_tables) and restricted to the server's "
+                "allowed catalogs."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -228,22 +241,23 @@ async def list_tools() -> list[types.Tool]:
         tools.insert(2, types.Tool(
             name="discover_tables",
             description=(
-                "Search table/collection names across ALL catalogs (not just the "
-                "connected one) by a partial name match — e.g. find which catalog "
-                "and schema a table like 'couponcampaign' actually lives in before "
-                "querying it. Trino only; metadata only, returns no row data. "
-                "Requires a discovery token — a regular query token will get a "
-                "clear error telling you to use one."
+                "Search table/collection names across allowed catalogs (not just the "
+                "connected one, if any) by a partial name match — e.g. find which "
+                "catalog and schema a table like 'couponcampaign' actually lives in "
+                "before querying it. Omit search_term (or pass an empty string) to "
+                "list everything instead of searching. Trino only; metadata only, "
+                "returns no row data. Works with any token — including ask_database "
+                "on a catalog-less token, which requires the fully-qualified "
+                "catalog.schema.table this returns."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "search_term": {
                         "type": "string",
-                        "description": "Partial table/collection name to search for, e.g. 'campaign'.",
+                        "description": "Partial table/collection name to search for, e.g. 'campaign'. Omit or leave empty to list everything.",
                     },
                 },
-                "required": ["search_term"],
             },
         ))
 
@@ -282,12 +296,14 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             return [types.TextContent(type="text", text="\n".join(tables) or "No tables found.")]
 
         elif name == "discover_tables":
+            search_term = arguments.get("search_term", "")
             result = await _api("post", "/auth/discover", json={
-                "search_term": arguments["search_term"],
+                "search_term": search_term,
             })
             matches = result.get("matches", [])
             if not matches:
-                return [types.TextContent(type="text", text=f"No tables matching '{arguments['search_term']}' found in any catalog.")]
+                label = f"matching '{search_term}'" if search_term else "in any allowed catalog"
+                return [types.TextContent(type="text", text=f"No tables found {label}.")]
             lines = [f"{m['catalog']}.{m['schema']}.{m['table']}" for m in matches]
             text = f"**Matches ({len(matches)}):**\n" + "\n".join(lines)
             columns_by_table = result.get("columns", {})

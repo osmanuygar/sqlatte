@@ -1251,6 +1251,7 @@ class DiscoveryTokenRequest(BaseModel):
     http_scheme: str = "https"
     ttl_hours: int = 24
     description: str = "Discovery Token"
+    daily_discover_limit: Optional[int] = None
 
 
 @router.post("/discovery-token")
@@ -1259,13 +1260,16 @@ async def admin_create_discovery_token(
     admin_user: str = Depends(require_admin),
 ):
     """
-    Create a Trino discovery token (cross-catalog table/collection name
-    search, no ask_database access — see db_provider.discover_tables and
-    /auth/query's discovery-session rejection).
+    Create a Trino discovery token — cross-catalog table/collection name
+    search (see db_provider.discover_tables), plus ask_database restricted
+    to fully-qualified tables within plugins.auth.allowed_catalogs (see
+    AuthPlugin._config_catalog and sql_validator.catalog_allowlist_violation).
+    With no allowed_catalogs configured, ask_database stays blocked entirely.
 
-    Backend-only for now: no self-service UI yet, admin creates these by
-    calling this endpoint directly (e.g. via curl or the admin panel's
-    request console) and hands the token to whoever needs it.
+    tokens.html now signs users in catalog-less by default (when discovery
+    is enabled) and /auth/token/generate produces the same shape of token —
+    this admin endpoint remains for minting one without a self-service login,
+    e.g. for a service account.
     """
     auth_cfg = config_manager.get_config().get("plugins", {}).get("auth", {})
     if not auth_cfg.get("enable_discovery_tokens", False):
@@ -1293,12 +1297,16 @@ async def admin_create_discovery_token(
             trino_config=trino_config,
             ttl_hours=request.ttl_hours,
             description=request.description,
+            daily_discover_limit=request.daily_discover_limit,
         )
         return {
             "success": True,
             "token": token,
             "ttl_hours": request.ttl_hours,
-            "message": f"Discovery token valid for {request.ttl_hours}h. discover_tables only — no ask_database.",
+            "message": f"Discovery token valid for {request.ttl_hours}h. discover_tables always works "
+                       f"(subject to its own daily discover budget, default 150/day); "
+                       f"ask_database works too if the server has allowed_catalogs configured "
+                       f"(fully-qualified tables only).",
         }
     except HTTPException:
         raise
@@ -1356,10 +1364,13 @@ async def admin_delete_token(token_id: int, admin_user: str = Depends(require_ad
 
 @router.get("/token-policy")
 async def get_token_policy(admin_user: str = Depends(require_admin)):
-    """Return the platform-wide token query budget policy."""
+    """Return the platform-wide token budget policy (query + discover)."""
     from src.core.config_db import get_config_db
-    limit = get_config_db().get_default_token_limit()
-    return {"default_daily_limit": limit}
+    config_db = get_config_db()
+    return {
+        "default_daily_limit": config_db.get_default_token_limit(),
+        "default_daily_discover_limit": config_db.get_default_discover_limit(),
+    }
 
 
 @router.post("/token-policy")
@@ -1367,20 +1378,38 @@ async def set_token_policy(
     request: Request,
     admin_user: str = Depends(require_admin),
 ):
-    """Set the platform-wide default daily query limit for new tokens."""
+    """Set the platform-wide default daily query and/or discover limit for new tokens.
+
+    Either field may be omitted from the body to leave that policy untouched
+    — only fields actually present get updated.
+    """
     body = await request.json()
-    raw = body.get("default_daily_limit")
     try:
-        limit = int(raw) if raw not in (None, "", "null") else None
-        if limit is not None and limit < 1:
-            raise HTTPException(400, "limit must be a positive integer or null (unlimited)")
         from src.core.config_db import get_config_db
-        get_config_db().set_default_token_limit(limit, changed_by=admin_user)
-        return {
-            "success": True,
-            "default_daily_limit": limit,
-            "message": f"Default daily limit set to {limit if limit is not None else 'unlimited'}",
-        }
+        config_db = get_config_db()
+        result: Dict[str, Any] = {"success": True}
+        messages = []
+
+        if "default_daily_limit" in body:
+            raw = body.get("default_daily_limit")
+            limit = int(raw) if raw not in (None, "", "null") else None
+            if limit is not None and limit < 1:
+                raise HTTPException(400, "default_daily_limit must be a positive integer or null (unlimited)")
+            config_db.set_default_token_limit(limit, changed_by=admin_user)
+            result["default_daily_limit"] = limit
+            messages.append(f"query limit → {limit if limit is not None else 'unlimited'}")
+
+        if "default_daily_discover_limit" in body:
+            raw = body.get("default_daily_discover_limit")
+            discover_limit = int(raw) if raw not in (None, "", "null") else None
+            if discover_limit is not None and discover_limit < 1:
+                raise HTTPException(400, "default_daily_discover_limit must be a positive integer or null (unlimited)")
+            config_db.set_default_discover_limit(discover_limit, changed_by=admin_user)
+            result["default_daily_discover_limit"] = discover_limit
+            messages.append(f"discover limit → {discover_limit if discover_limit is not None else 'unlimited'}")
+
+        result["message"] = "Default " + ", ".join(messages) if messages else "No changes"
+        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -1484,6 +1513,36 @@ async def admin_set_token_limit(
             "success": True,
             "daily_query_limit": limit,
             "message": f"Token limit set to {limit if limit is not None else 'unlimited'}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise server_error(e)
+
+
+@router.post("/token/set-discover-limit")
+async def admin_set_discover_limit(
+    request: Request,
+    admin_user: str = Depends(require_admin),
+):
+    """Override the daily discover-call limit on a specific token by DB id (admin only)."""
+    body = await request.json()
+    token_id = body.get("id")
+    if not token_id:
+        raise HTTPException(400, "id is required")
+    raw = body.get("daily_discover_limit")
+    try:
+        limit = int(raw) if raw not in (None, "", "null") else None
+        if limit is not None and limit < 1:
+            raise HTTPException(400, "limit must be a positive integer or null (unlimited)")
+        from src.core.config_db import get_config_db
+        ok = get_config_db().admin_set_discover_limit(int(token_id), limit)
+        if not ok:
+            raise HTTPException(404, "Token not found")
+        return {
+            "success": True,
+            "daily_discover_limit": limit,
+            "message": f"Discover limit set to {limit if limit is not None else 'unlimited'}",
         }
     except HTTPException:
         raise

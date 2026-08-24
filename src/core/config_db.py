@@ -72,6 +72,19 @@ class ConfigDB:
                 password=db_password,
                 gssencmode="disable"  # Disable GSSAPI encryption for simplicity
             )
+            # autocommit: every statement here (including read-only ones like
+            # get_config) is meant to be self-contained — there's no
+            # multi-statement transaction anywhere in this class that needs
+            # atomicity across calls. Without this, a plain SELECT still
+            # opens an implicit transaction that only ends when something
+            # else on this same connection calls .commit() — and read-only
+            # methods here never did, leaving the connection sitting
+            # "idle in transaction" indefinitely (visible in
+            # pg_stat_activity) since ConfigDB is a process-wide singleton
+            # with a single shared connection (see get_config_db below).
+            # Existing explicit self.conn.commit() calls elsewhere in this
+            # file remain safe no-ops under autocommit.
+            self.conn.autocommit = True
             self.db_type = "postgresql"
 
         # Encryption for sensitive values
@@ -145,7 +158,9 @@ class ConfigDB:
                 daily_query_limit INTEGER DEFAULT NULL,
                 queries_used_today INTEGER NOT NULL DEFAULT 0,
                 usage_reset_date DATE DEFAULT CURRENT_DATE,
-                token_type VARCHAR(20) NOT NULL DEFAULT 'query'
+                token_type VARCHAR(20) NOT NULL DEFAULT 'query',
+                daily_discover_limit INTEGER DEFAULT 150,
+                discovers_used_today INTEGER NOT NULL DEFAULT 0
             )
         """)
 
@@ -158,6 +173,14 @@ class ConfigDB:
                 # 'query' (default, full ask_database access) or 'discovery'
                 # (catalog/table-name search only — see create_discovery_token).
                 "token_type VARCHAR(20) NOT NULL DEFAULT 'query'",
+                # /auth/discover budget — applies to every token regardless of
+                # token_type (query tokens can call discover_tables too, see
+                # /auth/discover's docstring). Defaults to 150/day, unlike
+                # daily_query_limit which defaults to unlimited — discover
+                # calls are metadata-only and cheap, but still worth capping
+                # against a runaway/misbehaving client by default.
+                "daily_discover_limit INTEGER DEFAULT 150",
+                "discovers_used_today INTEGER NOT NULL DEFAULT 0",
             ]:
                 cursor.execute(
                     f"ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS {col_def}"
@@ -991,6 +1014,45 @@ class ConfigDB:
         cursor.close()
         return affected > 0
 
+    # Built-in fallback when tokens.default_daily_discover_limit was never
+    # set — unlike the query budget (unlimited until an admin opts in),
+    # discover calls default to capped: they're cheap (no LLM call, see
+    # /auth/discover) but still worth bounding against a runaway client.
+    _DEFAULT_DISCOVER_LIMIT = 150
+
+    def get_default_discover_limit(self) -> Optional[int]:
+        """Platform-wide default daily discover-call limit for new tokens (None = unlimited)."""
+        raw = self.get_config("tokens.default_daily_discover_limit", default=None)
+        if raw is None:
+            return self._DEFAULT_DISCOVER_LIMIT
+        if raw == "":
+            return None  # admin explicitly cleared it → unlimited
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return self._DEFAULT_DISCOVER_LIMIT
+
+    def set_default_discover_limit(self, limit: Optional[int], changed_by: str = "admin") -> None:
+        """Set the platform-wide default daily discover limit (None clears it → unlimited)."""
+        if limit is None:
+            self._set_config("tokens.default_daily_discover_limit", "", "tokens", "int", False,
+                             "Default daily discover-call limit per API token (empty = unlimited)")
+        else:
+            self._set_config("tokens.default_daily_discover_limit", str(int(limit)), "tokens", "int", False,
+                             "Default daily discover-call limit per API token (empty = unlimited)")
+
+    def admin_set_discover_limit(self, token_id: int, limit: Optional[int]) -> bool:
+        """Override daily discover limit on a specific token by DB id (admin only). None = unlimited."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE api_tokens SET daily_discover_limit = %s WHERE id = %s",
+            (limit, token_id)
+        )
+        affected = cursor.rowcount
+        self.conn.commit()
+        cursor.close()
+        return affected > 0
+
     def create_api_token(
         self,
         username: str,
@@ -998,12 +1060,16 @@ class ConfigDB:
         ttl_hours: int = 24,
         description: str = "MCP Token",
         daily_query_limit: Optional[int] = None,
+        daily_discover_limit: Optional[int] = None,
     ) -> str:
         """Create a persisted API token storing encrypted db_config.
 
         daily_query_limit: queries per day cap; None → inherit platform default.
-        If a platform default exists and the caller passes a higher value, the
-        platform default wins (user cannot exceed the admin-set ceiling).
+        daily_discover_limit: discover-call per day cap; None → inherit
+        platform default (150 unless an admin changed it — see
+        get_default_discover_limit). Both: if a platform default exists and
+        the caller passes a higher value, the platform default wins (user
+        cannot exceed the admin-set ceiling).
         """
         platform_default = self.get_default_token_limit()
 
@@ -1014,6 +1080,15 @@ class ConfigDB:
         else:
             effective_limit = daily_query_limit
 
+        discover_platform_default = self.get_default_discover_limit()
+
+        if daily_discover_limit is None:
+            effective_discover_limit = discover_platform_default
+        elif discover_platform_default is not None:
+            effective_discover_limit = min(daily_discover_limit, discover_platform_default)
+        else:
+            effective_discover_limit = daily_discover_limit
+
         token = secrets.token_urlsafe(48)
         db_config_json = json.dumps(db_config)
         encrypted = self._encrypt(db_config_json)
@@ -1023,15 +1098,18 @@ class ConfigDB:
         cursor.execute(
             """
             INSERT INTO api_tokens
-                (token, username, db_config_encrypted, description, ttl_hours, expires_at, daily_query_limit)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (token, username, db_config_encrypted, description, ttl_hours, expires_at,
+                 daily_query_limit, daily_discover_limit)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (token, username, encrypted, description, ttl_hours, expires_at, effective_limit)
+            (token, username, encrypted, description, ttl_hours, expires_at,
+             effective_limit, effective_discover_limit)
         )
         self.conn.commit()
         cursor.close()
         limit_str = f"{effective_limit}/day" if effective_limit is not None else "unlimited"
-        print(f"🔑 API token created for {username} (TTL: {ttl_hours}h, limit: {limit_str})")
+        discover_limit_str = f"{effective_discover_limit}/day" if effective_discover_limit is not None else "unlimited"
+        print(f"🔑 API token created for {username} (TTL: {ttl_hours}h, limit: {limit_str}, discover limit: {discover_limit_str})")
         return token
 
     def create_discovery_token(
@@ -1040,13 +1118,27 @@ class ConfigDB:
         trino_config: Dict[str, Any],
         ttl_hours: int = 24,
         description: str = "Discovery Token",
+        daily_discover_limit: Optional[int] = None,
     ) -> str:
-        """Create a discovery-only token — cross-catalog table/schema search,
+        """Create a discovery token — cross-catalog table/schema search always
+        works; ask_database also works but is restricted to fully-qualified
+        tables within plugins.auth.allowed_catalogs (enforced at /auth/query,
+        not here — see catalog_allowlist_violation). Trino only. trino_config
+        carries host/port/user/password/http_scheme — deliberately no
+        catalog/schema, discovery isn't scoped to one.
 
-        Trino only, no ask_database access (enforced at /auth/query, not
-        here). trino_config carries host/port/user/password/http_scheme —
-        deliberately no catalog/schema, discovery isn't scoped to one.
+        daily_discover_limit: discover-call per day cap; None → inherit
+        platform default (150 unless an admin changed it — see
+        get_default_discover_limit).
         """
+        platform_default = self.get_default_discover_limit()
+        if daily_discover_limit is None:
+            effective_discover_limit = platform_default
+        elif platform_default is not None:
+            effective_discover_limit = min(daily_discover_limit, platform_default)
+        else:
+            effective_discover_limit = daily_discover_limit
+
         token = secrets.token_urlsafe(48)
         db_config = {"provider": "trino", "trino": trino_config}
         encrypted = self._encrypt(json.dumps(db_config))
@@ -1056,14 +1148,16 @@ class ConfigDB:
         cursor.execute(
             """
             INSERT INTO api_tokens
-                (token, username, db_config_encrypted, description, ttl_hours, expires_at, token_type)
-            VALUES (%s, %s, %s, %s, %s, %s, 'discovery')
+                (token, username, db_config_encrypted, description, ttl_hours, expires_at,
+                 token_type, daily_discover_limit)
+            VALUES (%s, %s, %s, %s, %s, %s, 'discovery', %s)
             """,
-            (token, username, encrypted, description, ttl_hours, expires_at)
+            (token, username, encrypted, description, ttl_hours, expires_at, effective_discover_limit)
         )
         self.conn.commit()
         cursor.close()
-        print(f"🔎 Discovery token created for {username} (TTL: {ttl_hours}h)")
+        discover_limit_str = f"{effective_discover_limit}/day" if effective_discover_limit is not None else "unlimited"
+        print(f"🔎 Discovery token created for {username} (TTL: {ttl_hours}h, discover limit: {discover_limit_str})")
         return token
 
     def validate_api_token(self, token: str) -> Optional[Dict[str, Any]]:
@@ -1142,10 +1236,14 @@ class ConfigDB:
 
         today = datetime.now().date()
 
-        # Reset daily counter when the calendar date has rolled over
+        # Reset daily counters when the calendar date has rolled over — both
+        # queries_used_today and discovers_used_today share usage_reset_date,
+        # so reset both here even though only the query side is consumed by
+        # this call (keeps them from drifting out of sync with each other).
         if usage_reset_date != today:
             cursor.execute(
-                "UPDATE api_tokens SET queries_used_today = 0, usage_reset_date = %s WHERE token = %s",
+                "UPDATE api_tokens SET queries_used_today = 0, discovers_used_today = 0, "
+                "usage_reset_date = %s WHERE token = %s",
                 (today, token)
             )
             self.conn.commit()
@@ -1169,6 +1267,69 @@ class ConfigDB:
 
         return {"queries_used_today": queries_used_today + 1}
 
+    def consume_token_discover_budget(self, token: str) -> Optional[Dict[str, Any]]:
+        """Check and consume one unit of a token's daily discover budget.
+
+        Mirrors consume_token_query_budget but for /auth/discover — applies
+        to every token regardless of token_type (query tokens can call
+        discover_tables too). Call once per discover_tables call, not per
+        session.
+
+        Returns:
+          None                               — token no longer valid (revoked/expired/missing)
+          {"_error": "budget_exceeded", …}   — daily limit hit, call should be rejected
+          {"discovers_used_today": …}        — success, budget consumed
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT expires_at, revoked, daily_discover_limit, discovers_used_today, usage_reset_date
+            FROM api_tokens WHERE token = %s
+            """,
+            (token,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            return None
+
+        expires_at, revoked, daily_limit, discovers_used_today, usage_reset_date = row
+
+        if revoked or datetime.now() > expires_at:
+            cursor.close()
+            return None
+
+        today = datetime.now().date()
+
+        # Reset daily counters when the calendar date has rolled over — see
+        # the matching comment in consume_token_query_budget.
+        if usage_reset_date != today:
+            cursor.execute(
+                "UPDATE api_tokens SET queries_used_today = 0, discovers_used_today = 0, "
+                "usage_reset_date = %s WHERE token = %s",
+                (today, token)
+            )
+            self.conn.commit()
+            discovers_used_today = 0
+
+        # Enforce per-token daily budget
+        if daily_limit is not None and discovers_used_today >= daily_limit:
+            cursor.close()
+            return {
+                "_error": "budget_exceeded",
+                "daily_limit": daily_limit,
+                "discovers_used_today": discovers_used_today,
+            }
+
+        cursor.execute(
+            "UPDATE api_tokens SET last_used_at = %s, discovers_used_today = discovers_used_today + 1 WHERE token = %s",
+            (datetime.now(), token)
+        )
+        self.conn.commit()
+        cursor.close()
+
+        return {"discovers_used_today": discovers_used_today + 1}
+
     def revoke_api_token(self, token: str, username: str) -> bool:
         """Revoke a token (only owner can revoke)."""
         cursor = self.conn.cursor()
@@ -1187,7 +1348,8 @@ class ConfigDB:
         cursor.execute(
             """
             SELECT token, description, ttl_hours, created_at, expires_at, last_used_at,
-                   daily_query_limit, queries_used_today, usage_reset_date, token_type
+                   daily_query_limit, queries_used_today, usage_reset_date, token_type,
+                   daily_discover_limit, discovers_used_today
             FROM api_tokens
             WHERE username = %s AND revoked = FALSE AND expires_at > %s
             ORDER BY created_at DESC
@@ -1208,6 +1370,8 @@ class ConfigDB:
                 "daily_query_limit": row[6],
                 "queries_used_today": row[7] if row[8] == today else 0,
                 "token_type": row[9] or "query",
+                "daily_discover_limit": row[10],
+                "discovers_used_today": row[11] if row[8] == today else 0,
             }
             for row in rows
         ]
@@ -1219,7 +1383,7 @@ class ConfigDB:
             """
             SELECT id, token, username, description, ttl_hours, created_at, expires_at,
                    last_used_at, revoked, daily_query_limit, queries_used_today, usage_reset_date,
-                   token_type
+                   token_type, daily_discover_limit, discovers_used_today
             FROM api_tokens
             ORDER BY created_at DESC
             """
@@ -1244,6 +1408,8 @@ class ConfigDB:
                 "daily_query_limit": row[9],
                 "queries_used_today": row[10] if row[11] == today else 0,
                 "token_type": row[12] or "query",
+                "daily_discover_limit": row[13],
+                "discovers_used_today": row[14] if row[11] == today else 0,
             }
             for row in rows
         ]

@@ -4,7 +4,7 @@ Supports: Trino, Presto, ClickHouse, PostgreSQL, MySQL, etc.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Optional
 
 
 class DatabaseProvider(ABC):
@@ -60,12 +60,17 @@ class DatabaseProvider(ABC):
         """
         pass
 
-    def discover_tables(self, search_term: str) -> Dict[str, Any]:
+    def discover_tables(self, search_term: str, catalog_schema_map: Optional[Dict[str, list]] = None) -> Dict[str, Any]:
         """
         Cross-catalog table/collection name search — metadata only, no row
         data. Default: unsupported. Only TrinoProvider overrides this
         (system.jdbc.tables gives a real federated view across every
         catalog Trino knows about; other providers have no equivalent).
+
+        search_term: empty string means "list everything" (within
+        catalog_schema_map, if given).
+        catalog_schema_map: optional {catalog: [allowed_schema, ...]}
+        allowlist to restrict results to server-side.
 
         Returns: {"matches": [{"catalog", "schema", "table"}, ...],
                   "columns": {"cat.schema.table": [col, ...], ...}}

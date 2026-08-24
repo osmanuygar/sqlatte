@@ -4470,7 +4470,7 @@
         // ── Admin API Tokens ──────────────────────────────────────────────────────
         async function loadAdminTokens() {
             document.getElementById('admin-tok-body').innerHTML =
-                '<tr><td colspan="9" style="color:#888;text-align:center;padding:20px">Loading…</td></tr>';
+                '<tr><td colspan="11" style="color:#888;text-align:center;padding:20px">Loading…</td></tr>';
             try {
                 const [tokRes, polRes] = await Promise.all([
                     fetch('/admin/tokens'),
@@ -4482,14 +4482,17 @@
                 renderAdminTokens(data.tokens || []);
                 const inp = document.getElementById('tok-policy-default');
                 if (inp) inp.value = pol.default_daily_limit != null ? pol.default_daily_limit : '';
+                const discInp = document.getElementById('tok-policy-discover-default');
+                if (discInp) discInp.value = pol.default_daily_discover_limit != null ? pol.default_daily_discover_limit : '';
             } catch(e) {
                 document.getElementById('admin-tok-body').innerHTML =
-                    `<tr><td colspan="9" style="color:#e05252;text-align:center;padding:20px">${e.message}</td></tr>`;
+                    `<tr><td colspan="11" style="color:#e05252;text-align:center;padding:20px">${e.message}</td></tr>`;
             }
         }
 
         async function saveTokenPolicy() {
             const inp = document.getElementById('tok-policy-default');
+            const discInp = document.getElementById('tok-policy-discover-default');
             const msg = document.getElementById('tok-policy-msg');
             const raw = inp.value.trim();
             const limit = raw === '' ? null : parseInt(raw, 10);
@@ -4497,11 +4500,17 @@
                 msg.textContent = 'Enter a positive number or leave blank for unlimited.';
                 msg.style.color = '#e05252'; return;
             }
+            const discRaw = discInp.value.trim();
+            const discoverLimit = discRaw === '' ? null : parseInt(discRaw, 10);
+            if (discRaw !== '' && (isNaN(discoverLimit) || discoverLimit < 1)) {
+                msg.textContent = 'Enter a positive discover limit or leave blank for unlimited.';
+                msg.style.color = '#e05252'; return;
+            }
             try {
                 const res = await fetch('/admin/token-policy', {
                     method: 'POST',
                     headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({default_daily_limit: limit}),
+                    body: JSON.stringify({default_daily_limit: limit, default_daily_discover_limit: discoverLimit}),
                 });
                 const d = await res.json();
                 msg.textContent = d.message || (res.ok ? 'Saved.' : d.detail);
@@ -4528,11 +4537,20 @@
             return `<span style="color:${col};font-size:.8rem;font-weight:600">${used}</span>`
                  + `<span style="color:#666;font-size:.78rem"> / ${t.daily_query_limit}</span>`;
         }
+        function _tokDiscoverBudget(t) {
+            if (t.daily_discover_limit == null)
+                return '<span style="color:#666;font-size:.78rem">—</span>';
+            const used = t.discovers_used_today || 0;
+            const pct  = Math.min(100, Math.round(used / t.daily_discover_limit * 100));
+            const col  = pct >= 90 ? '#e05252' : pct >= 70 ? '#e0a84f' : '#52c97a';
+            return `<span style="color:${col};font-size:.8rem;font-weight:600">${used}</span>`
+                 + `<span style="color:#666;font-size:.78rem"> / ${t.daily_discover_limit}</span>`;
+        }
 
         function renderAdminTokens(tokens) {
             if (!tokens.length) {
                 document.getElementById('admin-tok-body').innerHTML =
-                    '<tr><td colspan="9" style="color:#888;text-align:center;padding:32px">No tokens found.</td></tr>';
+                    '<tr><td colspan="11" style="color:#888;text-align:center;padding:32px">No tokens found.</td></tr>';
                 return;
             }
             document.getElementById('admin-tok-body').innerHTML = tokens.map(t => `
@@ -4552,6 +4570,19 @@
                             style="width:70px;background:#111;border:1px solid #333;color:#ccc;
                                    border-radius:4px;padding:3px 6px;font-size:.78rem">
                         <button onclick="adminSetTokenLimit(${t.id},'lim-${t.id}',this)"
+                            style="background:rgba(212,165,116,.1);color:#D4A574;border:1px solid rgba(212,165,116,.3);
+                                   border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-left:4px">
+                            Set</button>` : ''}
+                    </td>
+                    <td>${_tokDiscoverBudget(t)}</td>
+                    <td>
+                        ${!t.revoked && !t.expired ? `
+                        <input type="number" min="1" placeholder="150"
+                            id="dlim-${t.id}"
+                            value="${t.daily_discover_limit != null ? t.daily_discover_limit : ''}"
+                            style="width:70px;background:#111;border:1px solid #333;color:#ccc;
+                                   border-radius:4px;padding:3px 6px;font-size:.78rem">
+                        <button onclick="adminSetDiscoverLimit(${t.id},'dlim-${t.id}',this)"
                             style="background:rgba(212,165,116,.1);color:#D4A574;border:1px solid rgba(212,165,116,.3);
                                    border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-left:4px">
                             Set</button>` : ''}
@@ -4583,6 +4614,23 @@
                     method: 'POST',
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({id: tokenId, daily_query_limit: limit}),
+                });
+                const d = await res.json();
+                if (!res.ok) { alert(d.detail || 'Failed'); btn.disabled = false; return; }
+                await loadAdminTokens();
+            } catch(e) { alert('Network error.'); btn.disabled = false; }
+        }
+
+        async function adminSetDiscoverLimit(tokenId, inputId, btn) {
+            const raw = document.getElementById(inputId).value.trim();
+            const limit = raw === '' ? null : parseInt(raw, 10);
+            if (raw !== '' && (isNaN(limit) || limit < 1)) { alert('Enter a positive number or leave blank to remove limit.'); return; }
+            btn.disabled = true;
+            try {
+                const res = await fetch('/admin/token/set-discover-limit', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({id: tokenId, daily_discover_limit: limit}),
                 });
                 const d = await res.json();
                 if (!res.ok) { alert(d.detail || 'Failed'); btn.disabled = false; return; }
@@ -4646,12 +4694,16 @@
             <div style="background:#1e1e1e;border:1px solid #333;border-radius:8px;padding:16px 20px;margin-bottom:20px">
                 <h3 style="font-size:.95rem;color:#D4A574;margin:0 0 10px">Token Budget Policy</h3>
                 <p style="color:#888;font-size:.82rem;margin:0 0 12px">
-                    Default daily query limit applied to every new token. Leave blank for unlimited.
+                    Default daily limits applied to every new token. Leave blank for unlimited.
                     Existing tokens are unaffected unless you override them individually below.
                 </p>
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                    <label style="color:#aaa;font-size:.85rem">Default daily limit</label>
+                    <label style="color:#aaa;font-size:.85rem">Default daily query limit</label>
                     <input id="tok-policy-default" type="number" min="1" placeholder="unlimited"
+                        style="width:110px;background:#111;border:1px solid #444;color:#eee;
+                               border-radius:5px;padding:6px 10px;font-size:.85rem">
+                    <label style="color:#aaa;font-size:.85rem;margin-left:10px">Default daily discover limit</label>
+                    <input id="tok-policy-discover-default" type="number" min="1" placeholder="150"
                         style="width:110px;background:#111;border:1px solid #444;color:#eee;
                                border-radius:5px;padding:6px 10px;font-size:.85rem">
                     <button onclick="saveTokenPolicy()"
@@ -4686,11 +4738,13 @@
                             <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Expires</th>
                             <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Today</th>
                             <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Daily Limit</th>
+                            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Discover Today</th>
+                            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">Discover Limit</th>
                             <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500"></th>
                         </tr>
                     </thead>
                     <tbody id="admin-tok-body">
-                        <tr><td colspan="9" style="color:#888;text-align:center;padding:32px">Click tab to load.</td></tr>
+                        <tr><td colspan="11" style="color:#888;text-align:center;padding:32px">Click tab to load.</td></tr>
                     </tbody>
                 </table>
             </div>

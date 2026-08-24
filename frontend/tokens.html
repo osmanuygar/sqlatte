@@ -208,6 +208,18 @@ function showTokens() {
 }
 
 // ── Build login form from /auth/config ──────────────────────────────────────
+//
+// Trino + discovery enabled: catalog/schema are no longer collected here at
+// all — sign-in is catalog-less (username/password only), and every token
+// created afterwards is scoped entirely by the server's allowed_catalogs
+// (see catalog_allowlist_violation / qualified_table_allowlist_violation on
+// the backend) instead of a catalog you'd pick up front. That's also what
+// used to be the separate "Discovery Token" flow — it's now just how
+// sign-in works, so there's only one form.
+//
+// Anything else (discovery off, or a non-Trino provider where this
+// catalog-independence model doesn't apply) keeps the original
+// catalog/schema-picking form for backward compatibility.
 function buildLoginForm(cfg) {
   const catalogs      = cfg.allowed_catalogs  || [];
   const schemas       = cfg.allowed_schemas   || [];
@@ -215,101 +227,77 @@ function buildLoginForm(cfg) {
   const provider      = cfg.db_provider       || 'trino';
   const hasCsMap      = Object.keys(csMap).length > 0;
   const discoveryOn   = !!cfg.discovery_enabled;
+  const catalogLess   = provider === 'trino' && discoveryOn;
 
-  // Catalog field: dropdown if >1, hidden+auto if =1, absent if 0
   let catalogHtml = '';
-  if (catalogs.length > 1) {
-    catalogHtml = `
-      <div class="field">
-        <label>Catalog</label>
-        <select id="l-catalog" required onchange="onCatalogChange(this.value)">
-          <option value="">Select catalog…</option>
-          ${catalogs.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
-        </select>
-      </div>`;
-  } else if (catalogs.length === 1) {
-    catalogHtml = `<input type="hidden" id="l-catalog" value="${escapeHtml(catalogs[0])}">`;
-  }
+  let schemaHtml  = '';
 
-  // Schema field
-  let schemaHtml = '';
-  const schemaLabel = (provider === 'postgresql' || provider === 'mysql') ? 'Database' : 'Schema';
-  if (catalogs.length > 0) {
-    // Will be populated by onCatalogChange; start empty or auto-fill if 1 catalog
-    const initOpt = catalogs.length === 1
-      ? ''   // will auto-fill on mount
-      : '<option value="">← Select a catalog first</option>';
-    schemaHtml = `
-      <div class="field">
-        <label>${schemaLabel}</label>
-        <select id="l-schema" required>${initOpt}</select>
-      </div>`;
-  } else if (schemas.length > 1) {
-    schemaHtml = `
-      <div class="field">
-        <label>${schemaLabel}</label>
-        <select id="l-schema" required>
-          <option value="">Select ${schemaLabel.toLowerCase()}…</option>
-          ${schemas.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
-        </select>
-      </div>`;
-  } else if (schemas.length === 1) {
-    schemaHtml = `<input type="hidden" id="l-schema" value="${escapeHtml(schemas[0])}">`;
-  } else {
-    schemaHtml = `
-      <div class="field">
-        <label>${schemaLabel}</label>
-        <input id="l-schema" type="text" placeholder="${schemaLabel.toLowerCase()}">
-      </div>`;
+  if (!catalogLess) {
+    // Catalog field: dropdown if >1, hidden+auto if =1, absent if 0
+    if (catalogs.length > 1) {
+      catalogHtml = `
+        <div class="field">
+          <label>Catalog</label>
+          <select id="l-catalog" required onchange="onCatalogChange(this.value)">
+            <option value="">Select catalog…</option>
+            ${catalogs.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
+          </select>
+        </div>`;
+    } else if (catalogs.length === 1) {
+      catalogHtml = `<input type="hidden" id="l-catalog" value="${escapeHtml(catalogs[0])}">`;
+    }
+
+    // Schema field
+    const schemaLabel = (provider === 'postgresql' || provider === 'mysql') ? 'Database' : 'Schema';
+    if (catalogs.length > 0) {
+      // Will be populated by onCatalogChange; start empty or auto-fill if 1 catalog
+      const initOpt = catalogs.length === 1
+        ? ''   // will auto-fill on mount
+        : '<option value="">← Select a catalog first</option>';
+      schemaHtml = `
+        <div class="field">
+          <label>${schemaLabel}</label>
+          <select id="l-schema" required>${initOpt}</select>
+        </div>`;
+    } else if (schemas.length > 1) {
+      schemaHtml = `
+        <div class="field">
+          <label>${schemaLabel}</label>
+          <select id="l-schema" required>
+            <option value="">Select ${schemaLabel.toLowerCase()}…</option>
+            ${schemas.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
+          </select>
+        </div>`;
+    } else if (schemas.length === 1) {
+      schemaHtml = `<input type="hidden" id="l-schema" value="${escapeHtml(schemas[0])}">`;
+    } else {
+      schemaHtml = `
+        <div class="field">
+          <label>${schemaLabel}</label>
+          <input id="l-schema" type="text" placeholder="${schemaLabel.toLowerCase()}">
+        </div>`;
+    }
   }
 
   // Info panel
   const infoLines = [];
   infoLines.push(`<strong>Database:</strong> ${escapeHtml(provider)} — ${escapeHtml(cfg.db_host)}:${escapeHtml(String(cfg.db_port))}`);
-  if (catalogs.length > 0) {
+  if (catalogLess) {
+    infoLines.push(
+      catalogs.length > 0
+        ? `<strong>Allowed catalogs:</strong> ${escapeHtml(catalogs.join(', '))} — every table you can query or describe is scoped to these.`
+        : `<strong style="color:var(--danger)">No allowed catalogs configured</strong> — table search works, but ask_database and describe are blocked until an admin sets plugins.auth.allowed_catalogs.`
+    );
+  } else if (catalogs.length > 0) {
     infoLines.push(`<strong>Available catalogs:</strong> ${escapeHtml(catalogs.join(', '))}`);
   }
   if (hasCsMap) {
     for (const [cat, schs] of Object.entries(csMap)) {
       infoLines.push(`<strong>${escapeHtml(cat)}:</strong> ${escapeHtml(schs.join(', '))}`);
     }
-  } else if (schemas.length > 0) {
+  } else if (!catalogLess && schemas.length > 0) {
     infoLines.push(`<strong>Available schemas:</strong> ${escapeHtml(schemas.join(', '))}`);
   }
-
-  // Discovery: separate mini-form, own username/password (no catalog/schema —
-  // discovery ignores them by design). Trino only. Lives right under the
-  // "Available catalogs" line specifically so it doesn't read as part of
-  // the catalog-scoped login above it — logging in for one catalog doesn't
-  // imply this searches only that catalog, it searches all of them.
-  const discoveryHtml = (provider === 'trino' && discoveryOn) ? `
-    <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border)">
-      <div style="font-size:.85rem;color:var(--accent);font-weight:600;margin-bottom:6px">🔎 Or get a Discovery Token</div>
-      <p style="color:var(--text-muted);font-size:.8rem;margin-bottom:12px;line-height:1.6">
-        Searches table/collection names across <strong>every</strong> catalog this login can see —
-        not scoped to a single catalog like the sign-in above. Metadata only, never row data, and
-        cannot run <code>ask_database</code>.
-      </p>
-      <div class="form-grid">
-        <div class="field">
-          <label>Username</label>
-          <input id="d-user" type="text" placeholder="your_db_user" autocomplete="username">
-        </div>
-        <div class="field">
-          <label>Password</label>
-          <input id="d-pass" type="password" placeholder="••••••••" autocomplete="current-password">
-        </div>
-      </div>
-      <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
-        <button class="btn-primary" id="btn-discover" onclick="getDiscoveryToken()">Get Discovery Token</button>
-        <span id="discover-err" class="err"></span>
-      </div>
-      <div id="discover-token-banner" style="display:none;background:rgba(212,165,116,.07);border:1px solid rgba(212,165,116,.25);border-radius:8px;padding:14px 18px;margin-top:14px">
-        <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:8px">Copy this token now — it will not be shown again.</p>
-        <div class="token-box" id="discover-token-val" onclick="copyDiscoveryToken()" style="color:var(--accent)"></div>
-        <div class="copy-hint" id="discover-copy-hint">Click to copy</div>
-      </div>
-    </div>` : '';
 
   document.getElementById('login-form-body').innerHTML = `
     <div class="form-grid">
@@ -328,19 +316,16 @@ function buildLoginForm(cfg) {
       <button class="btn-primary" id="btn-login" onclick="doLogin()">Sign In</button>
       <span id="login-err" class="err"></span>
     </div>
-    ${infoLines.length ? `<div class="info-panel">${infoLines.join('<br>')}</div>` : ''}
-    ${discoveryHtml}`;
+    ${infoLines.length ? `<div class="info-panel">${infoLines.join('<br>')}</div>` : ''}`;
 
-  // Auto-trigger catalog if only one option
-  if (catalogs.length === 1) {
+  // Auto-trigger catalog if only one option (non-catalog-less form only)
+  if (!catalogLess && catalogs.length === 1) {
     onCatalogChange(catalogs[0]);
   }
 
   // Enter key
   document.getElementById('login-form-body').addEventListener('keydown', e => {
-    if (e.key !== 'Enter') return;
-    if (e.target.id === 'd-user' || e.target.id === 'd-pass') getDiscoveryToken();
-    else doLogin();
+    if (e.key === 'Enter') doLogin();
   });
 }
 
@@ -367,8 +352,13 @@ async function doLogin() {
   err.textContent = '';
   btn.disabled = true;
 
-  const schemaVal  = document.getElementById('l-schema')?.value?.trim()  || 'default';
+  // l-catalog/l-schema are absent entirely in the catalog-less form (Trino +
+  // discovery enabled, see buildLoginForm) — leave catalog/schema out of the
+  // request in that case rather than defaulting schema to 'default', which
+  // would turn a catalog-less login into an accidental single-schema one.
+  const schemaEl   = document.getElementById('l-schema');
   const catalogVal = document.getElementById('l-catalog')?.value?.trim() || null;
+  const schemaVal  = schemaEl ? (schemaEl.value?.trim() || 'default') : null;
   const body = {
     username:      document.getElementById('l-user').value.trim(),
     password:      document.getElementById('l-pass').value,
@@ -508,35 +498,6 @@ function copyToken() {
   });
 }
 
-async function getDiscoveryToken() {
-  const btn = document.getElementById('btn-discover');
-  const err = document.getElementById('discover-err');
-  err.textContent = ''; btn.disabled = true;
-  const username = document.getElementById('d-user').value.trim();
-  const password = document.getElementById('d-pass').value;
-  if (!username || !password) { err.textContent = 'Username and password required.'; btn.disabled = false; return; }
-  try {
-    const res = await fetch(`${API}/auth/discovery-token`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { err.textContent = data.detail || `Error ${res.status}`; return; }
-    document.getElementById('discover-token-val').textContent = data.token;
-    document.getElementById('discover-copy-hint').textContent = 'Click to copy';
-    document.getElementById('discover-token-banner').style.display = 'block';
-    document.getElementById('d-pass').value = '';
-  } catch(e) { err.textContent = 'Network error.'; }
-  finally { btn.disabled = false; }
-}
-
-function copyDiscoveryToken() {
-  navigator.clipboard.writeText(document.getElementById('discover-token-val').textContent).then(() => {
-    document.getElementById('discover-copy-hint').textContent = 'Copied!';
-    setTimeout(() => document.getElementById('discover-copy-hint').textContent = 'Click to copy', 2000);
-  });
-}
-
 async function revokeToken(token, btn) {
   if (!confirm('Revoke this token? Connected agents will lose access immediately.')) return;
   btn.disabled = true;
@@ -552,9 +513,9 @@ async function revokeToken(token, btn) {
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 (async function boot() {
-  // 1. Load config first — showTokens() needs _cfg.db_provider to decide
-  // whether to show the (Trino-only) discovery card, and buildLoginForm()
-  // needs it too, so this has to happen before either code path below.
+  // 1. Load config first — buildLoginForm() needs _cfg.db_provider and
+  // discovery_enabled to decide whether to render the catalog-less form,
+  // so this has to happen before either code path below.
   try {
     const res = await fetch(`${API}/auth/config`);
     _cfg = res.ok ? await res.json() : {};
