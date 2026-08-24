@@ -1,3 +1,19 @@
+## [0.6.3] - 2026-08-24
+
+### Fixed
+- `ConfigDB`'s single shared Postgres connection now runs with `autocommit=True`. Read-only calls like `get_config()` never committed, leaving the connection "idle in transaction" indefinitely (visible in `pg_stat_activity`) — since it's a process-wide singleton, that starved every subsequent DB-backed request, surfacing as MCP tool calls (`list_tables`, `ask_database`, etc.) timing out well after auth itself succeeded.
+- `TrinoProvider.discover_tables()`'s auto-DESCRIBE batch default raised from 5 to 25 matches (`DEFAULT_DESCRIBE_LIMIT`, overridable via a new `describe_limit` param), and it now reuses one connection for the whole batch instead of opening a fresh one per table.
+
+### Added
+- `rate_limiting.path_overrides` (optional): per-path `requests_per_window`/`window_seconds` that take priority over the section's global defaults — e.g. a stricter cap on `/auth/query` (real LLM+DB round trip) than on `/query` (legacy widget), or a burst guard on `/auth/discover` distinct from its own daily discover budget. Longest-prefix match wins; a path with only an override entry (not listed in `protected_paths`) is still protected.
+
+### Changed - Unified catalog-less tokens
+- Merged the "query" and "discovery" token models: the token screen (`frontend/tokens.html`) no longer collects a catalog/schema for Trino when discovery is enabled — sign-in is catalog-less (username/password only), and every token from it is scoped entirely by `plugins.auth.allowed_catalogs` instead of a single catalog picked up front. What used to be the separate "Discovery Token" mini-form is now just how sign-in works.
+- Which enforcement path applies (single-catalog lock vs. allowlist) is now derived from the session/token's actual connection (`AuthPlugin._config_catalog` — does it have a catalog set?) instead of the stored `token_type`. This is fully backward compatible with no migration: a pre-existing "query" token still carries a fixed catalog and behaves exactly as before; a pre-existing "discovery" token, and every token minted from now on, has none and gets the allowlist behavior.
+- `discover_tables` (`TrinoProvider.discover_tables`, `POST /auth/discover`) is now restricted server-side to `allowed_catalogs` when configured, instead of searching every catalog the DB user can see — less noise for the LLM, and a catalog-less token can no longer discover metadata for catalogs it isn't allowed to query anyway. It also now accepts an empty `search_term` to mean "list everything."
+- `GET /auth/tables` (`list_tables`) now works for a catalog-less session — it falls back to `discover_tables` with an empty search term instead of erroring with "no default catalog," returning fully-qualified `catalog.schema.table` names.
+- `GET /auth/schema/{table_name}` and `POST /auth/schema/multiple` (describe) are now gated by the same allowlist for a catalog-less session — `table_name` must be fully qualified and within `allowed_catalogs` (new `sql_validator.qualified_table_allowlist_violation`). Previously describe had no allowlist check at all for discovery tokens.
+
 ## [0.6.2] - 2026-08-17
 
 ### Added - Trino Catalog Lock & Discovery Tokens

@@ -3,6 +3,13 @@ Rate limiting middleware — reads config.yaml rate_limiting section.
 
 Supported strategies: sliding_window, token_bucket, fixed_window
 Supported key types:  session_id (X-Session-ID header), ip, user_id
+
+path_overrides (optional): per-path requests_per_window/window_seconds that
+take priority over the section's global defaults — e.g. a stricter cap on
+/auth/query (real LLM+DB round trip) than on /query (legacy widget), or a
+burst guard on /auth/discover distinct from its own daily discover budget
+(see consume_token_discover_budget). Longest-prefix match wins; a path with
+only an override entry (not listed in protected_paths) is still protected.
 """
 
 import time
@@ -122,13 +129,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if path.startswith(excl):
                 return await call_next(request)
 
-        # Only apply to protected paths
-        protected = cfg.get("protected_paths", [])
-        if protected and not any(path.startswith(p) for p in protected):
+        # path_overrides lets specific paths (e.g. /auth/query, a real LLM+DB
+        # round trip) carry a stricter limit/window than the general default
+        # (e.g. /query, the legacy widget) — without it every protected path
+        # shares one global number, which is too loose for expensive paths
+        # and needlessly tight for cheap ones. A path counts as protected if
+        # it's in protected_paths OR has its own override, so admins don't
+        # have to list it in both places.
+        overrides  = cfg.get("path_overrides", {})
+        protected  = cfg.get("protected_paths", [])
+        all_gates  = protected + list(overrides.keys())
+        if all_gates and not any(path.startswith(p) for p in all_gates):
             return await call_next(request)
 
-        limit      = int(cfg.get("requests_per_window", 30))
-        window_sec = int(cfg.get("window_seconds", 60))
+        # Longest-prefix match wins when multiple overrides could apply.
+        override = None
+        for prefix in sorted(overrides.keys(), key=len, reverse=True):
+            if path.startswith(prefix):
+                override = overrides[prefix]
+                break
+
+        limit      = int((override or {}).get("requests_per_window", cfg.get("requests_per_window", 30)))
+        window_sec = int((override or {}).get("window_seconds", cfg.get("window_seconds", 60)))
         strategy   = cfg.get("strategy", "sliding_window")
         key_type   = cfg.get("key_type", "session_id")
 

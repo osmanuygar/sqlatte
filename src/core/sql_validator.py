@@ -391,6 +391,111 @@ def catalog_violation(sql: str, dialect: str | None, allowed_catalog: str | None
     return None
 
 
+def catalog_allowlist_violation(
+    sql: str,
+    dialect: str | None,
+    catalog_schema_map: dict,
+) -> str | None:
+    """
+    Trino only: the discovery-token counterpart to catalog_violation().
+
+    Discovery tokens carry no catalog/schema of their own (that's what makes
+    cross-catalog search possible), so there's no single catalog to lock
+    ask_database to. Instead, every table reference must be fully qualified
+    (catalog.schema.table — exactly what discover_tables/get_schema already
+    hand back) and each catalog+schema pair must appear in
+    catalog_schema_map, the same allowlist (plugins.auth.allowed_catalogs)
+    that already restricts interactive login.
+
+    catalog_schema_map: {catalog_name: [allowed_schema, ...]} — an empty
+    schema list for a catalog means any schema under it is allowed.
+
+    Returns None (no violation) if dialect isn't Trino. An empty
+    catalog_schema_map is NOT treated as "everything allowed" — callers
+    must not invoke this at all in that case (there's nothing configured to
+    permit), which is enforced by the caller, not here.
+    """
+    if dialect != "trino":
+        return None
+
+    stmts = _parse_statements(sql, dialect)
+    if stmts is None or len(stmts) != 1:
+        return None  # same "can't judge it" stance as is_select_only's AST path
+
+    allowed = {c.lower(): [s.lower() for s in schemas] for c, schemas in catalog_schema_map.items()}
+
+    for table in stmts[0].find_all(exp.Table):
+        cat = table.catalog
+        if not cat:
+            return (
+                "This token has no default catalog — every table reference must be "
+                "fully qualified as catalog.schema.table (e.g. "
+                "'s3_edr_accesslog.edr.my_table'). Use discover_tables to find the "
+                "exact qualified name."
+            )
+        cat_l = cat.lower()
+        if cat_l not in allowed:
+            return (
+                f"Query references catalog '{cat}', which isn't in this token's "
+                f"allowed catalog list."
+            )
+        schema = table.db
+        allowed_schemas = allowed[cat_l]
+        if allowed_schemas and schema and schema.lower() not in allowed_schemas:
+            return (
+                f"Query references schema '{cat}.{schema}', which isn't in this "
+                f"token's allowed schema list for catalog '{cat}'."
+            )
+    return None
+
+
+def qualified_table_allowlist_violation(
+    table_ref: str,
+    catalog_schema_map: dict,
+) -> str | None:
+    """
+    Non-SQL counterpart to catalog_allowlist_violation(), for endpoints that
+    take a bare table identifier rather than a full SQL statement — namely
+    describe/get_schema on a catalog-less (discovery-shaped) session, where
+    there's no connection-level catalog to implicitly scope the DESCRIBE to.
+
+    table_ref must be fully qualified as catalog.schema.table (exactly what
+    discover_tables hands back); catalog_schema_map is the same
+    {catalog: [allowed_schema, ...]} allowlist used by
+    catalog_allowlist_violation. An empty schema list for a catalog means
+    any schema under it is allowed.
+
+    Same convention as catalog_allowlist_violation: an empty
+    catalog_schema_map is NOT "everything allowed" — callers must not invoke
+    this at all in that case.
+    """
+    parts = table_ref.split(".")
+    if len(parts) != 3:
+        return (
+            "This token has no default catalog — every table reference must be "
+            "fully qualified as catalog.schema.table (e.g. "
+            "'s3_edr_accesslog.edr.my_table'). Use discover_tables to find the "
+            "exact qualified name."
+        )
+
+    cat, schema, _table = parts
+    allowed = {c.lower(): [s.lower() for s in schemas] for c, schemas in catalog_schema_map.items()}
+
+    cat_l = cat.lower()
+    if cat_l not in allowed:
+        return (
+            f"Table references catalog '{cat}', which isn't in this token's "
+            f"allowed catalog list."
+        )
+    allowed_schemas = allowed[cat_l]
+    if allowed_schemas and schema.lower() not in allowed_schemas:
+        return (
+            f"Table references schema '{cat}.{schema}', which isn't in this "
+            f"token's allowed schema list for catalog '{cat}'."
+        )
+    return None
+
+
 def risk_score(sql: str, dialect: str | None = None) -> int:
     """Return an integer risk score 0–100 (lower is safer).
 

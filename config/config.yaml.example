@@ -1,7 +1,7 @@
 # Application Settings
 app:
   name: "SQLatte"
-  version: "0.6.2"
+  version: "0.6.3"
   host: "0.0.0.0"
   port: 8002
 
@@ -338,6 +338,20 @@ rate_limiting:
     - "/health"
     - "/static"
     - "/admin"
+  # Optional per-path limits, stricter (or looser) than the defaults above —
+  # takes priority over requests_per_window/window_seconds for matching
+  # paths. Useful because /auth/query is a real LLM+DB round trip (an
+  # MCP-connected agent decomposing one user question into dozens of
+  # ask_database tool calls in under a minute is a real failure mode, not
+  # hypothetical) while /query is the cheaper legacy widget. A path here
+  # doesn't need to also be listed in protected_paths.
+  path_overrides:
+    "/auth/query":
+      requests_per_window: 10
+      window_seconds: 60
+    "/auth/discover":
+      requests_per_window: 20
+      window_seconds: 60
 
 mcp:
   sse:

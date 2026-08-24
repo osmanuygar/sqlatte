@@ -72,6 +72,60 @@ password: <same value as SQLATTE_APP_PASSWORD>
 database: sqlatte_analytics   # or sqlatte_config, respectively
 ```
 
+## Updating an existing deployment
+
+Two independent things can change between deploys — a new image (code) and/or
+a new `config.yaml` (config) — update whichever actually changed.
+
+**1. New code — build, push, roll out:**
+
+```bash
+# Build (run from the repo root, where Dockerfile lives)
+docker build -t <your-registry>/sqlatte:latest .
+
+# Push to whatever registry the cluster pulls from
+docker push <your-registry>/sqlatte:latest
+
+# 10-deployment.yaml pins `image: sqlatte:latest` — a mutable tag. Re-applying
+# identical manifest text is a no-op: kubectl only restarts pods on a spec
+# diff, and pushing a new image doesn't change the manifest text, so an
+# already-running pod keeps its already-pulled image indefinitely. Force it:
+kubectl rollout restart deployment/sqlatte -n sqlatte
+kubectl -n sqlatte rollout status deployment/sqlatte   # watch it come back healthy
+```
+
+Prefer a versioned tag (`sqlatte:v0.7.0`) over `:latest` where practical —
+`kubectl set image deployment/sqlatte sqlatte=<registry>/sqlatte:v0.7.0 -n sqlatte`
+both updates the manifest *and* triggers the rollout in one step, and makes
+`kubectl rollout undo` meaningful if the new version misbehaves. `:latest`
+can only be rolled back by re-pushing the old image under the same tag.
+
+Because of `strategy: Recreate` (see [Why replicas: 1](#why-replicas-1)),
+the rollout briefly takes the app fully offline — the old pod terminates
+completely before the new one starts. Every active session (UI logins, MCP
+SSE connections) is dropped and must reconnect; API tokens themselves are
+unaffected (they're persisted in Postgres, not session state).
+
+**2. New config — no image change needed:**
+
+```bash
+kubectl create secret generic sqlatte-config -n sqlatte \
+  --from-file=config.yaml=./config/config.k8s.yaml \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Secret volumes update in the pod's filesystem within ~60s on their own,
+# but the running Python process already has the old config in memory
+# (config.yaml is only read once at startup — see src/api/app.py's
+# module-level `config = config_manager.load_from_file(...)`), so it still
+# needs an explicit restart to pick the new values up:
+kubectl rollout restart deployment/sqlatte -n sqlatte
+```
+
+Schema changes (new Postgres columns/tables) never need a manual migration
+step — every module creates/alters its own tables on startup (see the "no
+PostgreSQL init script" note in the main README), so a plain restart against
+the existing database is enough even when the new image expects new columns.
+
 ## TLS
 
 Terminated at the Ingress (`12-ingress.yaml`), not in the app — same reasoning as the reverse-proxy recommendation for the Docker/bare-metal deployment. Needs an ingress controller and, for automatic certs, cert-manager; neither is included here (cluster-level installs).

@@ -153,7 +153,7 @@ Copy the token (shown only once).
 }
 ```
 
-Token TTL is configurable (24h default). Each user generates their own token — the token carries their catalog/schema context.
+Token TTL is configurable (24h default). By default each token carries the catalog/schema chosen at sign-in. With `plugins.auth.enable_discovery_tokens: true` (Trino only), the token screen drops the catalog/schema picker entirely — sign-in is username/password only, and every token is instead scoped by the server's `allowed_catalogs` (see [Configuration](#2-configuration)), letting an agent query and describe any table across every allowed catalog instead of being locked to one.
 
 ### Option B — Username / Password (Legacy)
 
@@ -178,7 +178,7 @@ Token TTL is configurable (24h default). Each user generates their own token —
 }
 ```
 
-Available tools: **`ask_database`** (natural language → SQL → results), **`list_tables`**, **`get_schema`**, and **`discover_tables`** (Trino only, cross-catalog table search — opt-in via `plugins.auth.enable_discovery_tokens: true`, off by default).
+Available tools: **`ask_database`** (natural language → SQL → results), **`list_tables`**, **`get_schema`**, and **`discover_tables`** (Trino only, cross-catalog table/column search by partial name — opt-in via `plugins.auth.enable_discovery_tokens: true`, off by default). With discovery enabled, a catalog-less token's `list_tables` and `ask_database`/`get_schema` are all automatically scoped to `allowed_catalogs` — `list_tables` returns fully-qualified `catalog.schema.table` names across every allowed catalog instead of erroring for having no default one.
 
 ### Field Masking
 
@@ -435,9 +435,13 @@ plugins:
     db_provider: "trino"
     db_host: "trino_hostname"
     db_port: 443
-    allowed_catalogs: []  # Empty = allow all
+    allowed_catalogs: []  # Empty = allow all. Or per-catalog schemas:
+    #   - name: "s3_access_logs"
+    #     allowed_schemas: ["web"]
     allowed_schemas: []
     allowed_db_types: ["trino"]
+    enforce_catalog_lock: true       # Trino only, on by default — see MCP Server section
+    enable_discovery_tokens: false   # Trino only — catalog-less tokens scoped by allowed_catalogs; see MCP Server section
 ```
 
 > **Note — no PostgreSQL init script.** SQLatte doesn't ship an `init.sql` or migration step for `analytics.postgresql` / `config_db.postgresql`. Each module creates its own tables on first connect (`CREATE TABLE IF NOT EXISTS`), so just point it at an existing database — the user just needs `CREATE`/`CREATE TABLE` privileges on that database, no manual schema setup required. `docker-compose.yml` doesn't provision a Postgres container either; bring your own instance and pass its connection details in `config.yaml`.
@@ -448,8 +452,13 @@ plugins:
 # Development
 python -m src.api.app
 
-# Production (with Gunicorn)
-gunicorn src.api.app:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+# Production (with Gunicorn) — keep -w 1. Sessions (auth_plugin.py's
+# SessionManager, admin_auth.py) live in-memory, per-process; more than one
+# worker splits that state and users get random "session expired" errors on
+# whichever worker doesn't have theirs. Same reason k8s pins replicas: 1 —
+# see docs/kubernetes-deployment.md#why-replicas-1. Don't raise this without
+# first moving sessions to a shared store (Redis/Postgres).
+gunicorn src.api.app:app -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 ```
 
 ### 4. Access

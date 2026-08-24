@@ -9,8 +9,10 @@ import pytest
 
 from src.core.sql_validator import (
     _parse_statements,
+    catalog_allowlist_violation,
     dialect_for_provider,
     is_select_only,
+    qualified_table_allowlist_violation,
     risk_score,
     validate_identifier,
     validate_job_id,
@@ -150,3 +152,110 @@ class TestRiskScore:
     def test_score_stays_within_0_to_100(self):
         sql = "SELECT pg_sleep(5), dblink_exec('a','b'), xp_cmdshell('c')"
         assert 0 <= risk_score(sql, dialect="postgres") <= 100
+
+
+# ── Catalog-less (discovery-shaped) token allowlist checks ──────────────────
+#
+# These back the unified token model: a session/token with no default
+# catalog (old discovery tokens, and every token minted since the token
+# screen stopped collecting a catalog) is scoped entirely by
+# plugins.auth.allowed_catalogs instead of a single connection-level
+# catalog. catalog_allowlist_violation gates ask_database (full SQL);
+# qualified_table_allowlist_violation gates describe (bare table_name).
+
+CATALOG_MAP = {
+    "s3_edr_accesslog": ["edr"],
+    "s3_geoip": ["cloudflare"],
+    "mongo_stores_db": [],  # empty list == any schema under this catalog allowed
+}
+
+
+class TestCatalogAllowlistViolation:
+    def test_non_trino_dialect_is_always_none(self):
+        assert catalog_allowlist_violation(
+            "SELECT * FROM s3_edr_accesslog.edr.t", "postgres", CATALOG_MAP
+        ) is None
+
+    def test_allowed_fully_qualified_table_passes(self):
+        sql = "SELECT * FROM s3_edr_accesslog.edr.access_log LIMIT 10"
+        assert catalog_allowlist_violation(sql, "trino", CATALOG_MAP) is None
+
+    def test_case_insensitive_match(self):
+        sql = "SELECT * FROM S3_EDR_ACCESSLOG.EDR.access_log LIMIT 10"
+        assert catalog_allowlist_violation(sql, "trino", CATALOG_MAP) is None
+
+    def test_unqualified_table_is_rejected(self):
+        reason = catalog_allowlist_violation("SELECT * FROM access_log", "trino", CATALOG_MAP)
+        assert reason is not None
+        assert "fully qualified" in reason
+
+    def test_catalog_not_in_allowlist_is_rejected(self):
+        sql = "SELECT * FROM some_other_catalog.edr.access_log"
+        reason = catalog_allowlist_violation(sql, "trino", CATALOG_MAP)
+        assert reason is not None
+        assert "some_other_catalog" in reason
+
+    def test_schema_not_in_allowed_list_for_catalog_is_rejected(self):
+        sql = "SELECT * FROM s3_edr_accesslog.wrong_schema.access_log"
+        reason = catalog_allowlist_violation(sql, "trino", CATALOG_MAP)
+        assert reason is not None
+        assert "wrong_schema" in reason
+
+    def test_empty_schema_list_allows_any_schema(self):
+        sql = "SELECT * FROM mongo_stores_db.any_schema_at_all.stores"
+        assert catalog_allowlist_violation(sql, "trino", CATALOG_MAP) is None
+
+    def test_cross_catalog_join_rejects_the_disallowed_side(self):
+        sql = (
+            "SELECT * FROM s3_edr_accesslog.edr.access_log a "
+            "JOIN some_other_catalog.edr.t b ON a.id = b.id"
+        )
+        reason = catalog_allowlist_violation(sql, "trino", CATALOG_MAP)
+        assert reason is not None
+        assert "some_other_catalog" in reason
+
+
+class TestQualifiedTableAllowlistViolation:
+    """The describe-path (bare table_name) counterpart to catalog_allowlist_violation."""
+
+    def test_allowed_fully_qualified_table_passes(self):
+        assert qualified_table_allowlist_violation(
+            "s3_edr_accesslog.edr.access_log", CATALOG_MAP
+        ) is None
+
+    def test_case_insensitive_match(self):
+        assert qualified_table_allowlist_violation(
+            "S3_GEOIP.CLOUDFLARE.ip_ranges", CATALOG_MAP
+        ) is None
+
+    def test_empty_schema_list_allows_any_schema(self):
+        assert qualified_table_allowlist_violation(
+            "mongo_stores_db.any_schema.stores", CATALOG_MAP
+        ) is None
+
+    @pytest.mark.parametrize("bad", ["access_log", "edr.access_log", ""])
+    def test_not_fully_qualified_is_rejected(self, bad):
+        reason = qualified_table_allowlist_violation(bad, CATALOG_MAP)
+        assert reason is not None
+        assert "fully qualified" in reason
+
+    def test_disallowed_catalog_is_rejected(self):
+        reason = qualified_table_allowlist_violation(
+            "some_other_catalog.edr.access_log", CATALOG_MAP
+        )
+        assert reason is not None
+        assert "some_other_catalog" in reason
+
+    def test_disallowed_schema_for_allowed_catalog_is_rejected(self):
+        reason = qualified_table_allowlist_violation(
+            "s3_edr_accesslog.wrong_schema.access_log", CATALOG_MAP
+        )
+        assert reason is not None
+        assert "wrong_schema" in reason
+
+    def test_four_part_name_is_rejected_as_not_fully_qualified(self):
+        # e.g. a caller accidentally including a column or extra segment
+        reason = qualified_table_allowlist_violation(
+            "s3_edr_accesslog.edr.access_log.extra", CATALOG_MAP
+        )
+        assert reason is not None
