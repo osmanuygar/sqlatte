@@ -310,6 +310,13 @@ class SQLQueryResponse(BaseModel):
     query_id: Optional[str] = None
     insights: Optional[List[Dict]] = None
     execution_skipped: bool = False
+    awaiting_confirmation: bool = False
+    cost_estimate: Optional[Dict[str, Any]] = None
+
+
+class QueryConfirmRequest(BaseModel):
+    session_id: str
+    execute: bool = True
 
 
 class ChatResponse(BaseModel):
@@ -454,6 +461,13 @@ def _process_query_sync(
             # no insights). Provider-agnostic: doesn't care whether db is
             # BigQuery/Trino/MySQL/Postgres.
             _execute_sql = current_config.get("query", {}).get("execute_generated_sql", True)
+            # Only meaningful when _execute_sql is False: ask the user before
+            # running the held-back SQL instead of just showing it.
+            _confirm_before_execute = (
+                not _execute_sql
+                and current_config.get("query", {}).get("confirm_before_execute", False)
+            )
+            _cost_estimate = None
             if _execute_sql:
                 _exec_start = time.time()
                 columns, data = db.execute_query(sql_query)
@@ -462,7 +476,28 @@ def _process_query_sync(
             else:
                 columns, data = [], []
                 _execution_ms = 0
-                print("⏭️  Execution skipped (query.execute_generated_sql=false) — SQL generated only")
+                if _confirm_before_execute:
+                    # Provider-agnostic: returns None on anything but BigQuery
+                    # (or if the dry-run itself fails) — the confirm prompt
+                    # just shows without a size/cost line in that case.
+                    try:
+                        _cost_estimate = db.estimate_cost(sql_query)
+                    except Exception as e:
+                        print(f"⚠️ Cost estimate failed: {e}")
+                    # Stashed server-side, keyed by session_id — the client never
+                    # gets to hand back an edited SQL string for us to run.
+                    conversation_manager.set_pending_execution(session_id, {
+                        "sql": sql_query,
+                        "question": question,
+                        "explanation": explanation,
+                        "dialect": _dialect,
+                        "catalog": _catalog,
+                        "table_names": _full_tables,
+                        "model_name": llm_sql.get_model_name(),
+                    })
+                    print("⏸️  Execution held for confirmation (query.confirm_before_execute=true)")
+                else:
+                    print("⏭️  Execution skipped (query.execute_generated_sql=false) — SQL generated only")
 
             if audit_log_db:
                 audit_log_db.log(
@@ -513,7 +548,9 @@ def _process_query_sync(
                 "explanation": explanation,
                 "insights": insights,
                 "tables": selected_tables,
-                "execution_skipped": not _execute_sql
+                "execution_skipped": not _execute_sql,
+                "awaiting_confirmation": _confirm_before_execute,
+                "cost_estimate": _cost_estimate,
             }
 
         # ── Chat path (hızlı/orta model) ────────────────────────────────
@@ -1049,7 +1086,9 @@ async def process_query(request: QueryRequest, http_request: Request):
                 session_id=session_id,
                 query_id=history_record.id,
                 insights=result.get("insights", []),
-                execution_skipped=result.get("execution_skipped", False)
+                execution_skipped=result.get("execution_skipped", False),
+                awaiting_confirmation=result.get("awaiting_confirmation", False),
+                cost_estimate=result.get("cost_estimate")
             )
 
         elif result["type"] == "security_warning":
@@ -1099,6 +1138,118 @@ async def process_query(request: QueryRequest, http_request: Request):
             user_id=None  # ← YENİ
         )
         print(f"❌ Query error: {e}")
+        raise server_error(e)
+
+
+@app.post("/query/confirm-execute")
+async def confirm_execute_query(request: QueryConfirmRequest):
+    """
+    Execute (or discard) a SQL query that _process_query_sync held back for
+    confirmation (query.confirm_before_execute). The SQL is never taken from
+    the client — it's read back from server-side session state stashed by
+    the original /query call, so there's nothing here for a client to tamper
+    with by editing the request body.
+    """
+    pending = conversation_manager.pop_pending_execution(request.session_id)
+    if not pending:
+        raise HTTPException(status_code=404, detail="No pending query to confirm for this session.")
+
+    if not request.execute:
+        return ChatResponse(
+            response_type="chat",
+            message="Tamam, sorgu çalıştırılmadı.",
+            session_id=request.session_id,
+        )
+
+    sql_query = pending["sql"]
+    start_time = time.time()
+    try:
+        from src.core.sql_validator import is_select_only, violation_reason, risk_score
+        _dialect = pending.get("dialect")
+
+        # Re-validate even though this SQL was already checked at generation
+        # time — cheap insurance against stale/tampered session state.
+        if not is_select_only(sql_query, dialect=_dialect):
+            reason = violation_reason(sql_query, dialect=_dialect)
+            raise HTTPException(status_code=400, detail=f"Only SELECT queries are permitted. {reason}.")
+
+        current_config = config_manager.get_config()
+        db = ProviderFactory.create_db_provider(current_config)
+
+        _exec_start = time.time()
+        columns, data = db.execute_query(sql_query)
+        _execution_ms = int((time.time() - _exec_start) * 1000)
+        print(f"✅ Confirmed query executed: {len(data)} rows")
+
+        if audit_log_db:
+            audit_log_db.log(
+                session_id=request.session_id, operation_type="sql_generation",
+                model_name=pending.get("model_name", ""), question=pending.get("question", ""),
+                prompt_preview=pending.get("question", "")[:500],
+                catalog_name=pending.get("catalog"),
+                table_names=pending.get("table_names") or None,
+                generated_sql=sql_query,
+                risk_score=risk_score(sql_query, dialect=_dialect),
+                sql_valid=True,
+                execution_ms=_execution_ms,
+            )
+
+        insights = []
+        try:
+            engine = get_insights_engine()
+            if engine is not None:
+                insights = engine.generate_insights(
+                    columns=columns,
+                    data=data,
+                    user_question=pending.get("question", ""),
+                    schema_info="",
+                    sql_query=sql_query,
+                )
+        except Exception as e:
+            print(f"⚠️ Insights generation failed (confirmed execution): {e}")
+
+        history_record = query_history.add_query(
+            session_id=request.session_id,
+            question=pending.get("question", ""),
+            sql=sql_query,
+            tables=pending.get("table_names") or [],
+            row_count=len(data),
+            execution_time_ms=(time.time() - start_time) * 1000,
+            success=True,
+            widget_type="default",
+            user_id=None,
+        )
+
+        conversation_manager.add_message(
+            request.session_id,
+            role="assistant",
+            content=f"SQL: {sql_query}\n\nExplanation: {pending.get('explanation', '')}",
+            metadata={
+                "response_type": "sql",
+                "row_count": len(data),
+                "columns": columns,
+                "query_id": history_record.id
+            }
+        )
+
+        return SQLQueryResponse(
+            response_type="sql",
+            sql=sql_query,
+            columns=columns,
+            data=data,
+            row_count=len(data),
+            explanation=pending.get("explanation", ""),
+            session_id=request.session_id,
+            query_id=history_record.id,
+            insights=insights,
+            execution_skipped=False,
+            awaiting_confirmation=False,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Confirmed execution error: {e}")
         raise server_error(e)
 
 

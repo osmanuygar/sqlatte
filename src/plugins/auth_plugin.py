@@ -929,6 +929,116 @@ class AuthPlugin(BasePlugin):
                 traceback.print_exc()
                 raise server_error(e)
 
+        @app.post("/auth/query/confirm")
+        async def confirm_execute_query(
+                request: dict,
+                session_id: str = Header(..., alias="X-Session-ID")
+        ):
+            """
+            Execute (or discard) a SQL query that _execute_query_for_session
+            held back for confirmation (query.confirm_before_execute). The SQL
+            is never taken from the client — it's read back from server-side
+            conversation state stashed by the original /auth/query call.
+            """
+            from src.core.conversation_manager import conversation_manager
+            from src.core.query_history import query_history
+            from src.core.config_manager_enhanced import config_manager
+            from src.core.audit_log_db import audit_log_db
+
+            auth_session = self.session_manager.get_session(session_id)
+            if not auth_session:
+                raise HTTPException(401, "Session expired or invalid")
+
+            conv_id = auth_session.conversation_id
+            pending = conversation_manager.pop_pending_execution(conv_id) if conv_id else None
+            if not pending:
+                raise HTTPException(404, "No pending query to confirm for this session.")
+
+            execute = bool(request.get("execute", True))
+            if not execute:
+                conversation_manager.add_message(
+                    conv_id, role="assistant",
+                    content="Tamam, sorgu çalıştırılmadı.",
+                    metadata={"type": "chat"}
+                )
+                return {
+                    "response_type": "chat",
+                    "message": "Tamam, sorgu çalıştırılmadı.",
+                    "conversation_id": conv_id,
+                }
+
+            sql_query = pending["sql"]
+            start_time = time.time()
+            try:
+                from src.core.sql_validator import is_select_only, violation_reason, risk_score
+                _dialect = pending.get("dialect")
+
+                # Re-validate even though this SQL was already checked at
+                # generation time — cheap insurance against stale/tampered
+                # session state.
+                if not is_select_only(sql_query, dialect=_dialect):
+                    reason = violation_reason(sql_query, dialect=_dialect)
+                    raise HTTPException(400, f"Only SELECT queries are permitted. {reason}.")
+
+                wrapped_db_config = {'database': auth_session.db_config}
+                db_provider = ProviderFactory.create_db_provider(wrapped_db_config)
+
+                _exec_start = time.time()
+                columns, data = db_provider.execute_query(sql_query)
+                _execution_ms = int((time.time() - _exec_start) * 1000)
+                print(f"✅ [Auth] Confirmed query executed: {len(data)} rows returned")
+
+                if audit_log_db:
+                    audit_log_db.log(
+                        session_id=session_id, operation_type="sql_generation",
+                        model_name=pending.get("model_name", ""), question=pending.get("question", ""),
+                        prompt_preview=pending.get("question", "")[:500],
+                        user_id=auth_session.username, widget_type="auth",
+                        catalog_name=pending.get("catalog"),
+                        table_names=pending.get("table_names") or None,
+                        generated_sql=sql_query,
+                        risk_score=risk_score(sql_query, dialect=_dialect),
+                        sql_valid=True,
+                        execution_ms=_execution_ms,
+                    )
+
+                query_history.add_query(
+                    session_id=session_id,
+                    question=pending.get("question", ""),
+                    sql=sql_query,
+                    tables=pending.get("table_names") or [],
+                    row_count=len(data),
+                    execution_time_ms=(time.time() - start_time) * 1000,
+                    success=True,
+                    widget_type="auth",
+                    user_id=auth_session.username,
+                )
+
+                conversation_manager.add_message(
+                    conv_id, role="assistant",
+                    content=f"SQL: {sql_query}\n\nExplanation: {pending.get('explanation', '')}",
+                    metadata={"type": "sql", "sql": sql_query, "row_count": len(data)}
+                )
+
+                return {
+                    "sql": sql_query,
+                    "columns": columns,
+                    "data": data,
+                    "explanation": pending.get("explanation", ""),
+                    "query_id": None,
+                    "execution_skipped": False,
+                    "awaiting_confirmation": False,
+                    "conversation_id": conv_id,
+                }
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"❌ [Auth] Confirmed execution error: {e}")
+                import traceback
+                traceback.print_exc()
+                raise server_error(e)
+
         @app.get("/auth/conversation/history")
         async def get_conversation_history(
                 session_id: str = Header(..., alias="X-Session-ID"),
@@ -1579,8 +1689,15 @@ class AuthPlugin(BasePlugin):
                 # (bypass_intent) always execute regardless: they're a
                 # programmatic tool contract, not the interactive assistant.
                 _execute_sql = bypass_intent or llm_config.get("query", {}).get("execute_generated_sql", True)
+                # Only meaningful when _execute_sql is False: ask the user before
+                # running the held-back SQL instead of just showing it.
+                _confirm_before_execute = (
+                    not _execute_sql
+                    and llm_config.get("query", {}).get("confirm_before_execute", False)
+                )
 
                 import time as _time
+                _cost_estimate = None
                 if _execute_sql:
                     _exec_start = _time.time()
                     columns, data = db_provider.execute_query(sql_query)
@@ -1589,7 +1706,29 @@ class AuthPlugin(BasePlugin):
                 else:
                     columns, data = [], []
                     _execution_ms = 0
-                    print("⏭️  [Auth] Execution skipped (query.execute_generated_sql=false) — SQL generated only")
+                    if _confirm_before_execute and conversation_id:
+                        # Provider-agnostic: returns None on anything but
+                        # BigQuery — the confirm prompt just shows without a
+                        # size/cost line in that case.
+                        try:
+                            _cost_estimate = db_provider.estimate_cost(sql_query)
+                        except Exception as e:
+                            print(f"⚠️ [Auth] Cost estimate failed: {e}")
+                        # Stashed server-side, keyed by conversation_id — the
+                        # client never gets to hand back an edited SQL string
+                        # for us to run.
+                        conversation_manager.set_pending_execution(conversation_id, {
+                            "sql": sql_query,
+                            "question": question,
+                            "explanation": explanation,
+                            "dialect": _dialect,
+                            "catalog": _catalog,
+                            "table_names": _full_tables,
+                            "model_name": llm_sql.get_model_name(),
+                        })
+                        print("⏸️  [Auth] Execution held for confirmation (query.confirm_before_execute=true)")
+                    else:
+                        print("⏭️  [Auth] Execution skipped (query.execute_generated_sql=false) — SQL generated only")
 
                 if audit_log_db and session_id:
                     audit_log_db.log(
@@ -1632,7 +1771,9 @@ class AuthPlugin(BasePlugin):
                     "explanation": explanation,
                     "row_cap_applied": row_cap if row_cap and len(data) == row_cap else None,
                     "query_id": None,
-                    "execution_skipped": not _execute_sql
+                    "execution_skipped": not _execute_sql,
+                    "awaiting_confirmation": _confirm_before_execute,
+                    "cost_estimate": _cost_estimate,
                 }
 
             else:

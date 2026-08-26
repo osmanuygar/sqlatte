@@ -79,6 +79,22 @@ class DatabaseProvider(ABC):
             f"Table discovery isn't supported for the '{self.__class__.__name__}' provider (Trino only)."
         )
 
+    def estimate_cost(self, sql: str) -> Optional[Dict[str, Any]]:
+        """
+        Estimate what running `sql` would cost, without actually running it
+        or incurring any cost. Default: unsupported. Only BigQueryProvider
+        overrides this — a dry-run tells BigQuery's planner to compute
+        exactly how many bytes the query would scan without executing it,
+        which is what on-demand billing is based on. Other providers (Trino,
+        MySQL, PostgreSQL) have no equivalent notion of pre-execution cost.
+
+        Returns: {"bytes_processed": int, "gb_processed": float,
+                  "estimated_usd": float | None} on success, or None if
+        unsupported or the estimate itself fails — callers should treat
+        None as "no estimate available", not an error.
+        """
+        return None
+
     @abstractmethod
     def health_check(self) -> bool:
         """Check if database connection is healthy"""

@@ -160,6 +160,22 @@ class ConversationManager:
         _, session = self.get_or_create_session(session_id)
         session.add_message(role, content, metadata)
 
+    def set_pending_execution(self, session_id: str, payload: dict):
+        """
+        Stash a generated-but-not-executed SQL query on the session, awaiting
+        user confirmation (query.confirm_before_execute). Overwrites any
+        earlier pending query for this session — only the most recent one
+        can be confirmed.
+        """
+        _, session = self.get_or_create_session(session_id)
+        session.metadata["pending_execution"] = payload
+
+    def pop_pending_execution(self, session_id: str) -> Optional[dict]:
+        """Retrieve and clear the session's pending execution payload, if any."""
+        if session_id not in self.sessions:
+            return None
+        return self.sessions[session_id].metadata.pop("pending_execution", None)
+
     def get_conversation_context(
             self,
             session_id: str,

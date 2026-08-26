@@ -1920,7 +1920,62 @@
     /**
      * FORMAT TABLE WITH SQL HIGHLIGHTING - UPDATED!
      */
-    function formatTable(columns, data, queryId = null, sql = null, explanation = null, insights=null, executionSkipped = false) {
+    /**
+     * Renders the results toolbar + table for a query result. Shared by
+     * formatTable() and by confirmExecute() once a held-back query is
+     * confirmed and actually run.
+     */
+    function renderResultsTable(resultId, columns, data, queryId) {
+        let html = '<div class="sqlatte-results-container">';
+
+        html += `<div class="sqlatte-results-toolbar">`;
+        html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">📥 CSV</button>`;
+        html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize">📊 Chart</button>`;
+
+        if (queryId) {
+            html += `<button class="sqlatte-fav-btn" onclick="SQLatteWidget.addToFavorites('${queryId}')" title="Add to Favorites">⭐ Save</button>`;
+        }
+
+        html += `<span class="text-xs" style="opacity: 0.7; margin-left: auto;">${data.length} rows</span>`;
+        html += `</div>`;
+
+        html += '<table class="sqlatte-results-table"><thead><tr>';
+        columns.forEach(col => {
+            html += `<th title="${escapeHtml(col)}">${escapeHtml(col)}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        data.forEach(row => {
+            html += '<tr>';
+            row.forEach(cell => {
+                const cellValue = escapeHtml(String(cell));
+                html += `<td title="${cellValue}">${cellValue}</td>`;
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    /**
+     * Renders the "~X GB will be scanned (~$Y)" line shown next to the
+     * confirm-execute prompt. BigQuery-only (see estimate_cost() on the
+     * backend) — returns '' when there's no estimate to show.
+     */
+    function formatCostEstimate(costEstimate) {
+        if (!costEstimate || typeof costEstimate.gb_processed !== 'number') return '';
+        const gb = costEstimate.gb_processed;
+        const size = gb >= 1
+            ? `~${gb.toFixed(2)} GB`
+            : `~${Math.round(gb * 1024)} MB`;
+        const cost = (typeof costEstimate.estimated_usd === 'number')
+            ? `, ~$${costEstimate.estimated_usd.toFixed(4)}`
+            : '';
+        return ` <span class="sqlatte-cost-estimate">(${size} taranacak${cost})</span>`;
+    }
+
+    function formatTable(columns, data, queryId = null, sql = null, explanation = null, insights=null, executionSkipped = false, awaitingConfirmation = false, costEstimate = null) {
         const hasData = data && data.length > 0;
 
         // Nothing at all to show (no rows, no SQL, no explanation) — bail early.
@@ -1979,43 +2034,77 @@
         }
 
         // Results
-        if (executionSkipped) {
+        if (awaitingConfirmation) {
+            const costLine = formatCostEstimate(costEstimate);
+            html += `
+                <div class="sqlatte-confirm-execute" id="confirm-${resultId}">
+                    <p class="sqlatte-confirm-text">🤔 Bu sorguyu çalıştırıp verileri getireyim mi?${costLine}</p>
+                    <div class="sqlatte-confirm-actions">
+                        <button class="sqlatte-confirm-yes" onclick="SQLatteWidget.confirmExecute('${resultId}', true)">✅ Evet, çalıştır</button>
+                        <button class="sqlatte-confirm-no" onclick="SQLatteWidget.confirmExecute('${resultId}', false)">❌ Hayır, gerek yok</button>
+                    </div>
+                </div>`;
+        } else if (executionSkipped) {
             html += '<div class="text-sm" style="opacity: 0.75; margin-top: 8px;">⏭️ Query not executed in this environment — copy the SQL above to run it yourself.</div>';
         } else if (!hasData) {
             html += '<div class="text-sm" style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
         } else {
-            html += '<div class="sqlatte-results-container">';
-
-            html += `<div class="sqlatte-results-toolbar">`;
-            html += `<button class="sqlatte-export-btn" onclick="SQLatteWidget.exportCSV('${resultId}')" title="Export to CSV">📥 CSV</button>`;
-            html += `<button class="sqlatte-chart-btn" onclick="SQLatteWidget.showChart('${resultId}')" title="Visualize">📊 Chart</button>`;
-
-            if (queryId) {
-                html += `<button class="sqlatte-fav-btn" onclick="SQLatteWidget.addToFavorites('${queryId}')" title="Add to Favorites">⭐ Save</button>`;
-            }
-
-            html += `<span class="text-xs" style="opacity: 0.7; margin-left: auto;">${data.length} rows</span>`;
-            html += `</div>`;
-
-            html += '<table class="sqlatte-results-table"><thead><tr>';
-            columns.forEach(col => {
-                html += `<th title="${escapeHtml(col)}">${escapeHtml(col)}</th>`;
-            });
-            html += '</tr></thead><tbody>';
-
-            data.forEach(row => {
-                html += '<tr>';
-                row.forEach(cell => {
-                    const cellValue = escapeHtml(String(cell));
-                    html += `<td title="${cellValue}">${cellValue}</td>`;
-                });
-                html += '</tr>';
-            });
-
-            html += '</tbody></table></div>';
+            html += renderResultsTable(resultId, columns, data, queryId);
         }
 
         return html;
+    }
+
+    /**
+     * Handles the "Evet/Hayır" buttons under a held-back query
+     * (result.awaiting_confirmation). Executes it via the confirm endpoint,
+     * or discards it, then swaps the confirm block for the outcome in place.
+     */
+    async function confirmExecute(resultId, execute) {
+        const container = document.getElementById(`confirm-${resultId}`);
+        if (!container) return;
+
+        container.innerHTML = `<span class="sqlatte-loading"></span> ${execute ? 'Çalıştırılıyor...' : 'İşleniyor...'}`;
+
+        try {
+            let response;
+            if (sessionId) {
+                response = await fetch(`${BADGE_CONFIG.apiBase}/auth/query/confirm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                    body: JSON.stringify({ execute })
+                });
+            } else {
+                response = await fetch(`${BADGE_CONFIG.apiBase}/query/confirm-execute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId, execute })
+                });
+            }
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || 'Query execution failed');
+            }
+
+            const result = await response.json();
+
+            if (!execute) {
+                container.innerHTML = '<div class="text-sm" style="opacity: 0.7;">Tamam, sorgu çalıştırılmadı.</div>';
+                return;
+            }
+
+            window.sqlatteResultsCache[resultId] = { columns: result.columns, data: result.data };
+            container.outerHTML = result.data && result.data.length
+                ? renderResultsTable(resultId, result.columns, result.data, result.query_id)
+                : '<div class="text-sm" style="opacity: 0.7;">No results returned.</div>';
+
+            if (result.query_id) {
+                loadHistory();
+            }
+        } catch (error) {
+            container.innerHTML = `<div class="sqlatte-error"><strong>❌ Error:</strong> ${escapeHtml(error.message)}</div>`;
+        }
     }
 
     function renderHTML(html) {
@@ -2110,7 +2199,9 @@
                     result.sql,
                     result.explanation,
                     result.insights,
-                    result.execution_skipped
+                    result.execution_skipped,
+                    result.awaiting_confirmation,
+                    result.cost_estimate
                 );
             } else {
                 const msg = result.message || JSON.stringify(result);
@@ -3024,6 +3115,56 @@
     color: #fbbf24;
 }
 
+/* Confirm-before-execute prompt */
+.sqlatte-confirm-execute {
+    margin: 10px 0;
+    padding: 12px 14px;
+    background: rgba(212, 165, 116, 0.08);
+    border: 1px solid rgba(212, 165, 116, 0.3);
+    border-radius: 8px;
+}
+
+.sqlatte-confirm-text {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    color: #d4d4d4;
+}
+
+.sqlatte-cost-estimate {
+    color: #D4A574;
+    font-weight: 600;
+}
+
+.sqlatte-confirm-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.sqlatte-confirm-yes, .sqlatte-confirm-no {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.sqlatte-confirm-yes {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.sqlatte-confirm-no {
+    background: #333;
+    color: #d4d4d4;
+}
+
+.sqlatte-confirm-yes:hover, .sqlatte-confirm-no:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+}
+
 /* Results */
 .sqlatte-results-container {
     margin: 12px 0;
@@ -3499,6 +3640,7 @@
 
         // SQL Actions - NEW!
         copySQL: copySQLAction,
+        confirmExecute: confirmExecute,
 
         // History & Favorites
         toggleHistory: toggleHistoryPanel,
