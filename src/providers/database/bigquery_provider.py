@@ -49,6 +49,13 @@ class BigQueryProvider(DatabaseProvider):
         self.timeout = config.get('timeout', 300)  # Query timeout in seconds
         self.max_results = config.get('max_results', 10000)  # Max rows to return
 
+        # Optional — only used by estimate_cost() to turn a dry-run's bytes
+        # scanned into a dollar figure. On-demand pricing varies by region
+        # and by contract (committed-use/flat-rate customers don't pay per
+        # byte at all), so this isn't assumed; when unset, estimate_cost()
+        # still reports bytes/GB scanned, just no $ figure.
+        self.price_per_tb_usd = config.get('price_per_tb_usd')
+
         self.client = None
 
         # Debug logging
@@ -269,6 +276,38 @@ class BigQueryProvider(DatabaseProvider):
         except Exception as e:
             print(f"❌ [BigQuery] Query failed: {str(e)}")
             raise Exception(f"Query execution failed: {str(e)}")
+
+    def estimate_cost(self, sql: str) -> Optional[dict]:
+        """
+        Dry-run the query — BigQuery's planner works out exactly which
+        bytes it would read without actually running the query, so this
+        costs nothing and returns the real figure billing is based on
+        (not a guess). See DatabaseProvider.estimate_cost for the contract.
+        """
+        if not self.client:
+            self.connect()
+
+        try:
+            job_config = bigquery.QueryJobConfig(
+                dry_run=True,
+                use_query_cache=False,  # a cached-cost hit would under-report
+                use_legacy_sql=False,
+            )
+            job = self.client.query(sql, job_config=job_config)
+            bytes_processed = job.total_bytes_processed or 0
+
+            estimated_usd = None
+            if self.price_per_tb_usd:
+                estimated_usd = round((bytes_processed / (1024 ** 4)) * self.price_per_tb_usd, 4)
+
+            return {
+                "bytes_processed": bytes_processed,
+                "gb_processed": round(bytes_processed / (1024 ** 3), 3),
+                "estimated_usd": estimated_usd,
+            }
+        except Exception as e:
+            print(f"⚠️  [BigQuery] Dry-run cost estimate failed: {e}")
+            return None
 
     def health_check(self) -> bool:
         """
