@@ -916,7 +916,10 @@
                     data.data,
                     queryId,  // ✅ Use same queryId
                     data.sql,
-                    data.explanation
+                    data.explanation,
+                    data.execution_skipped,
+                    data.awaiting_confirmation,
+                    data.cost_estimate
                 );
                 addMessage('assistant', formatted);
 
@@ -1305,8 +1308,101 @@
         });
     }
 
-    function formatTable(columns, data, queryId = null, sql = null, explanation = null) {
-        if (!data || data.length === 0) {
+    /**
+     * Renders the actual results table + toolbar for a resultId already
+     * seeded in window.sqlatteAuthResultsCache. Shared by formatTable() and
+     * by confirmExecute() once a held-back query is confirmed and run.
+     */
+    function renderResultsTable(resultId, columns, data, queryId) {
+        const normalizedData = normalizeRows(columns, data);
+        window.sqlatteAuthResultsCache[resultId] = { columns, data: normalizedData };
+
+        let html = `
+            <div class="sqlatte-table-actions">
+                <button onclick="SQLatteAuthWidget.exportToCSV('${resultId}')">📥 CSV</button>
+                <button onclick="SQLatteAuthWidget.handleChartClick('${resultId}')">📊 Chart</button>
+                <button onclick="SQLatteAuthWidget.addToFavorites('${queryId}')">⭐ Save</button>
+            </div>
+            <div class="sqlatte-table-wrapper">
+                <table class="sqlatte-table">
+                    <thead>
+                        <tr>${columns.map(col => `<th>${escapeHtml(col)}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>
+                        ${normalizedData.slice(0, 100).map(row => `
+                            <tr>${columns.map(col => `<td>${escapeHtml(String(row[col] ?? ''))}</td>`).join('')}</tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        if (data.length > 100) {
+            html += `<div class="sqlatte-table-footer">Showing first 100 of ${data.length} rows</div>`;
+        }
+
+        return html;
+    }
+
+    /**
+     * Renders the "~X GB will be scanned (~$Y)" line shown next to the
+     * confirm-execute prompt. BigQuery-only — returns '' when there's no
+     * estimate to show.
+     */
+    function formatCostEstimate(costEstimate) {
+        if (!costEstimate || typeof costEstimate.gb_processed !== 'number') return '';
+        const gb = costEstimate.gb_processed;
+        const size = gb >= 1
+            ? `~${gb.toFixed(2)} GB`
+            : `~${Math.round(gb * 1024)} MB`;
+        const cost = (typeof costEstimate.estimated_usd === 'number')
+            ? `, ~$${costEstimate.estimated_usd.toFixed(4)}`
+            : '';
+        return ` <span class="sqlatte-cost-estimate">(${size} taranacak${cost})</span>`;
+    }
+
+    /**
+     * Handles the "Evet/Hayır" buttons under a held-back query
+     * (data.awaiting_confirmation). Confirms/discards it via /auth/query/confirm,
+     * then swaps the confirm block for the outcome in place.
+     */
+    async function confirmExecute(resultId, execute) {
+        const container = document.getElementById(`confirm-${resultId}`);
+        if (!container) return;
+
+        container.innerHTML = `<span class="sqlatte-loading"></span> ${execute ? 'Çalıştırılıyor...' : 'İşleniyor...'}`;
+
+        try {
+            const response = await fetch(`${AUTH_WIDGET_CONFIG.apiBase}/auth/query/confirm`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Session-ID': sessionId },
+                body: JSON.stringify({ execute })
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || 'Query execution failed');
+            }
+
+            const result = await response.json();
+
+            if (!execute) {
+                container.innerHTML = '<div style="opacity: 0.7;">Tamam, sorgu çalıştırılmadı.</div>';
+                return;
+            }
+
+            container.outerHTML = result.data && result.data.length
+                ? renderResultsTable(resultId, result.columns, result.data, result.query_id)
+                : '<div style="opacity: 0.7;">No results returned.</div>';
+        } catch (error) {
+            container.innerHTML = `<div class="sqlatte-error">❌ ${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    function formatTable(columns, data, queryId = null, sql = null, explanation = null, executionSkipped = false, awaitingConfirmation = false, costEstimate = null) {
+        const hasData = data && data.length > 0;
+
+        if (!hasData && !awaitingConfirmation && !executionSkipped && !sql) {
             return '<div style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
         }
 
@@ -1319,8 +1415,6 @@
         }
 
         const resultId = 'result-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        const normalizedData = normalizeRows(columns, data);
-        window.sqlatteAuthResultsCache[resultId] = { columns, data: normalizedData };
 
         let html = '';
 
@@ -1346,29 +1440,23 @@
             `;
         }
 
-        // Data Table
-        html += `
-            <div class="sqlatte-table-actions">
-                <button onclick="SQLatteAuthWidget.exportToCSV('${resultId}')">📥 CSV</button>
-                <button onclick="SQLatteAuthWidget.handleChartClick('${resultId}')">📊 Chart</button>
-                <button onclick="SQLatteAuthWidget.addToFavorites('${queryId}')">⭐ Save</button>
-            </div>
-            <div class="sqlatte-table-wrapper">
-                <table class="sqlatte-table">
-                    <thead>
-                        <tr>${columns.map(col => `<th>${escapeHtml(col)}</th>`).join('')}</tr>
-                    </thead>
-                    <tbody>
-                        ${normalizedData.slice(0, 100).map(row => `
-                            <tr>${columns.map(col => `<td>${escapeHtml(String(row[col] ?? ''))}</td>`).join('')}</tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-
-        if (data.length > 100) {
-            html += `<div class="sqlatte-table-footer">Showing first 100 of ${data.length} rows</div>`;
+        // Results
+        if (awaitingConfirmation) {
+            const costLine = formatCostEstimate(costEstimate);
+            html += `
+                <div class="sqlatte-confirm-execute" id="confirm-${resultId}">
+                    <p class="sqlatte-confirm-text">🤔 Bu sorguyu çalıştırıp verileri getireyim mi?${costLine}</p>
+                    <div class="sqlatte-confirm-actions">
+                        <button class="sqlatte-confirm-yes" onclick="SQLatteAuthWidget.confirmExecute('${resultId}', true)">✅ Evet, çalıştır</button>
+                        <button class="sqlatte-confirm-no" onclick="SQLatteAuthWidget.confirmExecute('${resultId}', false)">❌ Hayır, gerek yok</button>
+                    </div>
+                </div>`;
+        } else if (executionSkipped) {
+            html += '<div style="opacity: 0.75; margin-top: 8px;">⏭️ Query not executed in this environment — copy the SQL above to run it yourself.</div>';
+        } else if (!hasData) {
+            html += '<div style="opacity: 0.7; margin-top: 8px;">No results returned.</div>';
+        } else {
+            html += renderResultsTable(resultId, columns, data, queryId);
         }
 
         return html;
@@ -3393,6 +3481,56 @@ em {
 .sql-number { color: #ae81ff; }
 .sql-comment { color: #75715e; font-style: italic; opacity: 0.8; }
 
+/* Confirm-before-execute prompt */
+.sqlatte-confirm-execute {
+    margin: 10px 0;
+    padding: 12px 14px;
+    background: rgba(212, 165, 116, 0.08);
+    border: 1px solid rgba(212, 165, 116, 0.3);
+    border-radius: 8px;
+}
+
+.sqlatte-confirm-text {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    color: #d4d4d4;
+}
+
+.sqlatte-cost-estimate {
+    color: #D4A574;
+    font-weight: 600;
+}
+
+.sqlatte-confirm-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.sqlatte-confirm-yes, .sqlatte-confirm-no {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.sqlatte-confirm-yes {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.sqlatte-confirm-no {
+    background: #333;
+    color: #d4d4d4;
+}
+
+.sqlatte-confirm-yes:hover, .sqlatte-confirm-no:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+}
+
 /* Tables */
 .sqlatte-table-actions {
     margin: 12px 0;
@@ -3655,6 +3793,7 @@ em {
 
         // Utilities
         copySQLAction: copySQLAction,
+        confirmExecute: confirmExecute,
         executeSQL: (sql) => {
             const input = document.getElementById('sqlatte-auth-input');
             if (input) {
