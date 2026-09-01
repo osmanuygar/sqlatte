@@ -362,6 +362,16 @@
             banner.classList.add('show');
         }
 
+        function getRedirectTarget() {
+            const next = new URLSearchParams(window.location.search).get('next');
+            // Only allow a same-origin relative path (starts with a single "/",
+            // not "//" or a scheme) to avoid an open-redirect via ?next=.
+            if (next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\')) {
+                return next;
+            }
+            return '/admin/';
+        }
+
         async function doLogin() {
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
@@ -386,7 +396,7 @@
                 const data = await res.json();
 
                 if (res.ok && data.success) {
-                    window.location.href = '/admin/';
+                    window.location.href = getRedirectTarget();
                 } else {
                     showError('Invalid username or password.');
                 }

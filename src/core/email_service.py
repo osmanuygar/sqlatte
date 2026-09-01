@@ -36,6 +36,12 @@ class EmailService:
         self.smtp_password = smtp_config.get('password')
         self.from_email = smtp_config.get('from_email', 'noreply@sqlatte.com')
         self.from_name = smtp_config.get('from_name', 'SQLatte')
+        # Socket timeout (connect + each SMTP step). Without it, an unreachable
+        # relay hangs on the OS TCP connect timeout (~120s), tying up an
+        # email_sender worker. Default 30 suits a working relay (slow link /
+        # large attachment); drop it (e.g. 10) via email.smtp.timeout when the
+        # relay is known-flaky or unreachable.
+        self.smtp_timeout = smtp_config.get('timeout', 30)
 
         # Validate config
         if not all([self.smtp_host, self.smtp_port]):
@@ -49,7 +55,10 @@ class EmailService:
             thread_name_prefix="email_sender"
         )
 
-        logger.info(f"✅ Email service initialized: {self.from_email} (thread pool: 3 workers)")
+        logger.info(
+            f"✅ Email service initialized: {self.from_email} "
+            f"(thread pool: 3 workers, smtp timeout: {self.smtp_timeout}s)"
+        )
 
     def _send_email_sync(
             self,
@@ -94,8 +103,9 @@ class EmailService:
                     )
                     msg.attach(part)
 
-            # Send email (BLOCKING - that's why we run in thread pool)
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+            # Send email (BLOCKING - that's why we run in thread pool).
+            # timeout from email.smtp.timeout (default 30s) — see __init__.
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=self.smtp_timeout) as server:
                 # server.starttls()   # Uncomment if using TLS for google smtp
                 if self.smtp_user and self.smtp_password:
                     server.login(self.smtp_user, self.smtp_password)
