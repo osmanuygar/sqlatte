@@ -749,6 +749,22 @@ insights:         claude-sonnet  # analysis of results
 chat:             claude-haiku   # conversational responses
 ```
 
+### Confirm Before Execute
+
+Ask the user before running generated SQL, instead of just showing it or running it silently:
+
+```yaml
+query:
+  execute_generated_sql: false    # generate SQL without running it
+  confirm_before_execute: true    # ...but ask the user first (Evet/Hayır) instead of only displaying it
+  require_session: false          # require a logged-in session for the unauthenticated /query endpoint
+
+bigquery:
+  price_per_tb_usd: 6.25          # optional — adds a $ estimate next to the confirm prompt (BigQuery only)
+```
+
+Applies to the interactive Assistant and Authenticated Agent widgets only — programmatic access (MCP tools, API tokens) always executes immediately, since there's no one to click a confirmation button.
+
 ---
 
 ## 🏗️ Deployment
