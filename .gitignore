@@ -216,4 +216,5 @@ uploads/
 # never tracked). Generic k8s/ (vendor-neutral template) IS tracked.
 k8s-okd/
 k8s-marketting/
+k8s-bigqueryops/
 .DS_Store
