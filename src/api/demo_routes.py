@@ -177,7 +177,8 @@ async def demo_auth_page():
     </div>
 
     <!-- Load Auth Widget -->
-    <script src="/static/js/sqlatte-badge-auth.js"></script>
+    <!-- Cache-busted with a version query param so browsers don't keep serving a stale copy after edits -->
+    <script src="/static/js/sqlatte-badge-auth.js?v=20260901-confirm-execute"></script>
 
     <script>
         window.addEventListener('load', () => {
@@ -380,8 +381,8 @@ async def demo_comparison_page():
     </div>
 
     <!-- Load BOTH widgets for comparison -->
-    <script src="/static/js/sqlatte-badge.js"></script>
-    <script src="/static/js/sqlatte-badge-auth.js"></script>
+    <script src="/static/js/sqlatte-badge.js?v=20260901-confirm-execute"></script>
+    <script src="/static/js/sqlatte-badge-auth.js?v=20260901-confirm-execute"></script>
 
     <script>
         console.log('📊 Comparison page loaded');

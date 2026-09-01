@@ -1142,7 +1142,7 @@ async def process_query(request: QueryRequest, http_request: Request):
 
 
 @app.post("/query/confirm-execute")
-async def confirm_execute_query(request: QueryConfirmRequest):
+async def confirm_execute_query(request: QueryConfirmRequest, http_request: Request):
     """
     Execute (or discard) a SQL query that _process_query_sync held back for
     confirmation (query.confirm_before_execute). The SQL is never taken from
@@ -1150,6 +1150,15 @@ async def confirm_execute_query(request: QueryConfirmRequest):
     the original /query call, so there's nothing here for a client to tamper
     with by editing the request body.
     """
+    cfg_query = config_manager.get_config().get("query", {})
+    if cfg_query.get("require_session", False) or assistant_login_enabled():
+        session_header = http_request.headers.get("X-Session-ID", "")
+        if not session_header:
+            raise HTTPException(status_code=401, detail="X-Session-ID header required")
+        from src.plugins.session_manager import auth_session_manager
+        if not auth_session_manager.get_session(session_header):
+            raise HTTPException(status_code=401, detail="Invalid or expired session")
+
     pending = conversation_manager.pop_pending_execution(request.session_id)
     if not pending:
         raise HTTPException(status_code=404, detail="No pending query to confirm for this session.")

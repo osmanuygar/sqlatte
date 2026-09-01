@@ -112,6 +112,18 @@
             border-left: 3px solid transparent;
         }
 
+        /* Sections gated by config.yaml (ui.sections) start hidden (see the
+           .nav-gated class in the markup below) so a disabled item never
+           flashes on screen before /ui-config resolves. applyUiConfig()
+           removes this class from enabled items (and from everything as a
+           safe fallback if the config check fails). A dedicated class is
+           used, rather than toggling display inline, so removing it simply
+           falls back to the plain .nav-item rule above instead of fighting
+           it on selector specificity. */
+        .nav-item.nav-gated {
+            display: none;
+        }
+
         .nav-item:hover {
             background: var(--bg-nav-hover);
             color: var(--accent);
@@ -419,35 +431,35 @@
                     <span class="nav-icon">🏠</span>
                     <span class="nav-label">Home</span>
                 </a>
-                <a class="nav-item" data-section="assistant" onclick="showSection('assistant')">
+                <a class="nav-item nav-gated" data-section="assistant" onclick="showSection('assistant')">
                     <span class="nav-icon">🤖</span>
                     <span class="nav-label">Assistant</span>
                 </a>
-                <a class="nav-item" data-section="demo" onclick="showSection('demo')">
+                <a class="nav-item nav-gated" data-section="demo" onclick="showSection('demo')">
                     <span class="nav-icon">🔐</span>
                     <span class="nav-label">Authenticated Agent</span>
                 </a>
-                <a class="nav-item" data-section="tokens" href="/tokens" target="_blank">
+                <a class="nav-item nav-gated" data-section="tokens" href="/tokens" target="_blank">
                     <span class="nav-icon">🔑</span>
                     <span class="nav-label">API Tokens</span>
                 </a>
-                <a class="nav-item" data-section="analytics" onclick="showSection('analytics')">
+                <a class="nav-item nav-gated" data-section="analytics" onclick="showSection('analytics')">
                     <span class="nav-icon">📊</span>
                     <span class="nav-label">Analytics</span>
                 </a>
-                <a class="nav-item" data-section="schedules" onclick="showSection('schedules')">
+                <a class="nav-item nav-gated" data-section="schedules" onclick="showSection('schedules')">
                     <span class="nav-icon">📅</span>
                     <span class="nav-label">Schedules</span>
                 </a>
-                <a class="nav-item" data-section="dashboards" onclick="showSection('dashboards')">
+                <a class="nav-item nav-gated" data-section="dashboards" onclick="showSection('dashboards')">
                     <span class="nav-icon">📊</span>
                     <span class="nav-label">Dashboards</span>
                 </a>
-                <a class="nav-item" data-section="bigquery-ops" onclick="showSection('bigquery-ops')">
+                <a class="nav-item nav-gated" data-section="bigquery-ops" onclick="showSection('bigquery-ops')">
                     <span class="nav-icon">🔧</span>
                     <span class="nav-label">BigQuery Ops</span>
                 </a>
-                <a class="nav-item" data-section="admin" onclick="showSection('admin')">
+                <a class="nav-item nav-gated" data-section="admin" onclick="showSection('admin')">
                     <span class="nav-icon">⚙️</span>
                     <span class="nav-label">Configuration</span>
                 </a>
@@ -545,7 +557,7 @@
                     <p>Interact with SQLatte using your authenticated session</p>
                 </div>
                 <div class="iframe-container">
-                    <iframe id="demo-iframe" src="/demo"></iframe>
+                    <iframe id="demo-iframe" data-src="/demo"></iframe>
                 </div>
             </section>
 
@@ -556,7 +568,7 @@
                     <p>Query performance and usage statistics</p>
                 </div>
                 <div class="iframe-container">
-                    <iframe id="analytics-iframe" src="/analytics"></iframe>
+                    <iframe id="analytics-iframe" data-src="/analytics"></iframe>
                 </div>
             </section>
 
@@ -567,7 +579,7 @@
                     <p>Manage automated queries and email reports</p>
                 </div>
                 <div class="iframe-container">
-                    <iframe id="schedules-iframe" src="/admin/schedules"></iframe>
+                    <iframe id="schedules-iframe" data-src="/admin/schedules"></iframe>
                 </div>
             </section>
 
@@ -578,7 +590,7 @@
                     <p>Auto-generated dashboards from your favorite queries</p>
                 </div>
                 <div class="iframe-container" id="dashboards-container">
-                    <iframe id="dashboards-iframe" src="/dashboards.html"></iframe>
+                    <iframe id="dashboards-iframe" data-src="/dashboards.html"></iframe>
                 </div>
             </section>
             <!-- BIGQUERY OPS SECTION -->
@@ -588,7 +600,7 @@
                     <p>Cost optimization, security audits, and performance diagnostics</p>
                 </div>
                 <div class="iframe-container">
-                    <iframe id="ops-iframe" src="/ops-agent"></iframe>
+                    <iframe id="ops-iframe" data-src="/ops-agent"></iframe>
                 </div>
             </section>
 
@@ -599,7 +611,7 @@
                     <p>LLM provider and database settings</p>
                 </div>
                 <div class="iframe-container">
-                    <iframe id="admin-iframe" src="/admin"></iframe>
+                    <iframe id="admin-iframe" data-src="/admin"></iframe>
                 </div>
             </section>
         </main>
@@ -641,31 +653,49 @@
         })();
 
         // ============================================
-        // UI CONFIG — hide disabled sections on load
+        // UI CONFIG — reveal enabled sections on load
         // ============================================
+        // Nav items start with the .nav-gated class (see CSS above), which hides them,
+        // so a disabled item never flashes on screen while this fetch is in flight.
+        // Toggling the class (rather than inline display) avoids fighting the .nav-item
+        // rule's specificity — removing the class just falls back to it cleanly.
+        function showAllNavItems() {
+            document.querySelectorAll('.nav-item.nav-gated').forEach(item => {
+                item.classList.remove('nav-gated');
+            });
+        }
+
         async function applyUiConfig() {
             try {
                 const res = await fetch('/ui-config');
-                if (!res.ok) return;
+                if (!res.ok) {
+                    // Config check failed — fail open (matches the backend's all-true defaults)
+                    // rather than leaving every gated nav item permanently hidden.
+                    showAllNavItems();
+                    return;
+                }
                 const { sections } = await res.json();
 
                 Object.entries(sections).forEach(([id, enabled]) => {
-                    if (enabled) return;
-
-                    // Hide sidebar nav item
                     const navItem = document.querySelector(`.nav-item[data-section="${id}"]`);
-                    if (navItem) navItem.style.display = 'none';
+                    if (navItem) navItem.classList.toggle('nav-gated', !enabled);
 
                     // If somehow this section is active, go home
                     const section = document.getElementById(id);
-                    if (section && section.classList.contains('active')) {
+                    if (!enabled && section && section.classList.contains('active')) {
                         showSection('home');
                     }
                 });
             } catch (e) {
                 console.warn('Could not load UI config:', e);
+                showAllNavItems();
             }
         }
+
+        // Kick this off immediately (script runs after the nav markup above),
+        // instead of waiting for window 'load' (images, widget script, etc.) —
+        // the sooner it resolves, the sooner enabled items appear.
+        const uiConfigReady = applyUiConfig();
 
         // ============================================
         // NAVIGATION
@@ -702,8 +732,9 @@
         }
 
         window.addEventListener('load', async () => {
-            // Apply section visibility from config.yaml first
-            await applyUiConfig();
+            // Section visibility already kicked off above; just wait for it here
+            // so the widget/hash logic below sees the resolved nav state.
+            await uiConfigReady;
 
             if (window.SQLatteWidget) {
                 window.SQLatteWidget.configure({
