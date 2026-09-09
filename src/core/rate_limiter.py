@@ -18,7 +18,6 @@ import logging
 from collections import defaultdict, deque
 from typing import Dict, Deque
 
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -110,24 +109,43 @@ def _extract_key(request: Request, key_type: str) -> str:
 
 # ── Middleware ─────────────────────────────────────────────────────────────────
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
+class RateLimitMiddleware:
     """
     Config-driven rate limiter. Reads rate_limiting section from config.yaml
     on every request so changes take effect after a config reload.
+
+    Plain ASGI middleware rather than BaseHTTPMiddleware: this middleware
+    only ever inspects the incoming request and, when blocking, sends its
+    own response — it never needs to observe/modify the downstream response,
+    so it doesn't need BaseHTTPMiddleware's response-streaming machinery.
+    Stacking multiple BaseHTTPMiddleware instances (this + SecurityHeaders)
+    triggered a known Starlette bug that corrupted empty-body responses
+    (AssertionError: Unexpected message 'http.response.start' in
+    starlette.middleware.base's body_stream); going ASGI-native avoids it.
     """
 
-    async def dispatch(self, request: Request, call_next):
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
         cfg = self._get_config()
 
         if not cfg.get("enabled", False):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
+        request = Request(scope, receive=receive)
         path = request.url.path
 
         # Skip excluded paths
         for excl in cfg.get("exclude_paths", []):
             if path.startswith(excl):
-                return await call_next(request)
+                await self.app(scope, receive, send)
+                return
 
         # path_overrides lets specific paths (e.g. /auth/query, a real LLM+DB
         # round trip) carry a stricter limit/window than the general default
@@ -140,7 +158,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         protected  = cfg.get("protected_paths", [])
         all_gates  = protected + list(overrides.keys())
         if all_gates and not any(path.startswith(p) for p in all_gates):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         # Longest-prefix match wins when multiple overrides could apply.
         override = None
@@ -164,7 +183,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 "Rate limit exceeded: %s %s key=%s strategy=%s",
                 request.method, path, key, strategy
             )
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=429,
                 content={
                     "error": "Too Many Requests",
@@ -173,8 +192,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 },
                 headers={"Retry-After": str(window_sec)},
             )
+            await response(scope, receive, send)
+            return
 
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
     @staticmethod
     def _get_config() -> dict:

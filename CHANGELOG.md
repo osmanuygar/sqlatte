@@ -1,3 +1,8 @@
+## [0.6.4] - 2026-09-09
+
+### Fixed
+- `RateLimitMiddleware` and `SecurityHeadersMiddleware` were both subclasses of Starlette's `BaseHTTPMiddleware`; stacking two of them triggered a known Starlette bug that corrupted empty-body (`content-length: 0`) responses — `AssertionError: Unexpected message: {'type': 'http.response.start', ...}` inside `starlette.middleware.base`'s `body_stream`, dropping the response for that request. Both are now plain ASGI middleware (no `dispatch`/`call_next`, direct `send` wrapping) with identical behavior/headers/ordering — verified with a Starlette `TestClient` stress test (20 rapid empty-body responses through the stacked middlewares) that previously reproduced the assertion.
+
 ## [0.6.3] - 2026-08-24
 
 ### Fixed

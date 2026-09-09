@@ -8,9 +8,6 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
-from starlette.responses import Response as StarletteResponse
 from src.core.rate_limiter import RateLimitMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -220,25 +217,30 @@ app.add_middleware(
 app.add_middleware(RateLimitMiddleware)
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add hardening headers to every HTTP response."""
+class SecurityHeadersMiddleware:
+    """Add hardening headers to every HTTP response.
 
-    async def dispatch(
-        self,
-        request: StarletteRequest,
-        call_next,
-    ) -> StarletteResponse:
-        response = await call_next(request)
+    Plain ASGI middleware rather than BaseHTTPMiddleware: it only needs to
+    inject headers onto the outgoing http.response.start message, which a
+    `send` wrapper does directly. Stacking multiple BaseHTTPMiddleware
+    instances (this + RateLimitMiddleware) triggered a known Starlette bug
+    that corrupted empty-body responses (AssertionError: Unexpected message
+    'http.response.start' in starlette.middleware.base's body_stream); going
+    ASGI-native avoids it.
+    """
+
+    # Same headers/values as before, pre-encoded as ASGI (bytes, bytes) pairs.
+    _EXTRA_HEADERS = [
         # Prevent MIME-type sniffing
-        response.headers["X-Content-Type-Options"] = "nosniff"
+        (b"X-Content-Type-Options", b"nosniff"),
         # Deny framing (clickjacking protection)
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        (b"X-Frame-Options", b"SAMEORIGIN"),
         # Legacy XSS filter
-        response.headers["X-XSS-Protection"] = "1; mode=block"
+        (b"X-XSS-Protection", b"1; mode=block"),
         # Strict referrer policy
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        (b"Referrer-Policy", b"strict-origin-when-cross-origin"),
         # Basic CSP — allow same-origin resources + CDN scripts used by the UI
-        response.headers["Content-Security-Policy"] = (
+        (b"Content-Security-Policy", (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com; "
@@ -246,12 +248,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "img-src 'self' data:; "
             "connect-src 'self'; "
             "frame-ancestors 'self';"
-        )
+        ).encode("latin-1")),
         # Permissions Policy — disable unused browser features
-        response.headers["Permissions-Policy"] = (
-            "geolocation=(), microphone=(), camera=()"
-        )
-        return response
+        (b"Permissions-Policy", b"geolocation=(), microphone=(), camera=()"),
+    ]
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                message.setdefault("headers", []).extend(self._EXTRA_HEADERS)
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 
 app.add_middleware(SecurityHeadersMiddleware)
