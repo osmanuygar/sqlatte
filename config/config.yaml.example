@@ -166,6 +166,12 @@ database:
     schema: "${TRINO_SCHEMA:edr}"
     http_scheme: "https"
 
+    # Query timeout in seconds (OPTIONAL, default: 300 = 5 min).
+    # A query still running past this is server-side cancelled (cursor.cancel()
+    # → Trino coordinator DELETE) instead of running unbounded — protects the
+    # cluster from a runaway MCP/LLM-generated query.
+    timeout: 300
+
   postgresql:
     host: "${POSTGRES_HOST}"
     port: 5432

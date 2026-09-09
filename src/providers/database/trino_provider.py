@@ -2,9 +2,10 @@
 Trino Database Provider
 """
 
+import threading
 import trino
 from trino.auth import BasicAuthentication
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Optional
 from src.core.db_provider import DatabaseProvider
 
 
@@ -25,7 +26,13 @@ class TrinoProvider(DatabaseProvider):
         self.catalog = config.get('catalog') or None
         self.schema = config.get('schema') or None
         self.http_scheme = config.get('http_scheme', 'https')
-        
+        # Query timeout in seconds — mirrors BigQueryProvider's own `timeout`
+        # (bigquery_provider.py). Enforced in execute_query() via a watchdog
+        # that server-side-cancels the Trino query (cursor.cancel()) so a
+        # runaway query (e.g. from MCP's ask_database) doesn't tie up the
+        # Trino cluster and a thread-pool worker indefinitely.
+        self.timeout = config.get('timeout', 300)
+
         self.connection = None
     
     def connect(self):
@@ -80,19 +87,54 @@ class TrinoProvider(DatabaseProvider):
             cursor.close()
             conn.close()
     
-    def execute_query(self, sql: str) -> Tuple[List[str], List[List[Any]]]:
-        """Execute SQL query"""
+    def execute_query(self, sql: str, timeout: Optional[float] = None) -> Tuple[List[str], List[List[Any]]]:
+        """
+        Execute SQL query.
+
+        Aborts (server-side cancel, not just a client-side give-up) if the
+        query is still running after `timeout` seconds (default: self.timeout,
+        see __init__ — 300s/5min unless database.trino.timeout overrides it).
+        A watchdog timer calls cursor.cancel() from a separate thread, which
+        sends Trino a real cancel request for the running query, so the
+        cluster stops working on it instead of running unbounded.
+        """
         conn = self.connect()
         cursor = conn.cursor()
-        
+        timeout = self.timeout if timeout is None else timeout
+
+        timed_out = threading.Event()
+        timer = None
+        if timeout:
+            def _abort():
+                timed_out.set()
+                try:
+                    cursor.cancel()
+                except Exception:
+                    pass  # best-effort — query may have already finished
+
+            timer = threading.Timer(timeout, _abort)
+            timer.daemon = True
+            timer.start()
+
         try:
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
             data = [list(row) for row in rows]
+            if timed_out.is_set():
+                raise TimeoutError(f"Query exceeded {timeout}s and was cancelled")
             return columns, data
+        except Exception:
+            if timed_out.is_set():
+                raise TimeoutError(f"Query exceeded {timeout}s and was cancelled")
+            raise
         finally:
-            cursor.close()
+            if timer:
+                timer.cancel()
+            try:
+                cursor.close()
+            except Exception:
+                pass
             conn.close()
     
     # How many of the top matches get an automatic DESCRIBE for column info.
