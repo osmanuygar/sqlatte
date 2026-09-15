@@ -3,6 +3,7 @@ PostgreSQL Database Provider - Super Robust Version
 Handles all edge cases including tuple index errors
 """
 
+import threading
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from typing import List, Tuple, Any
@@ -24,6 +25,13 @@ class PostgreSQLProvider(DatabaseProvider):
         # Connection pool settings
         self.min_connections = config.get('min_connections', 1)
         self.max_connections = config.get('max_connections', 10)
+
+        # Query timeout in seconds — mirrors TrinoProvider/BigQueryProvider's
+        # own `timeout`. Enforced in execute_query() via a watchdog that
+        # server-side-cancels the query (conn.cancel(), psycopg2's real
+        # PQcancel) so a runaway query doesn't tie up Postgres and a
+        # thread-pool worker indefinitely.
+        self.timeout = config.get('timeout', 300)
 
         self.connection = None
 
@@ -298,9 +306,32 @@ class PostgreSQLProvider(DatabaseProvider):
                 conn.close()
 
     def execute_query(self, sql: str) -> Tuple[List[str], List[List[Any]]]:
-        """Execute SQL query and return results"""
+        """
+        Execute SQL query and return results.
+
+        Aborts (server-side cancel, not just a client-side give-up) if the
+        query is still running after `self.timeout` seconds (default: 300s,
+        see __init__ — overridden via database.postgresql.timeout). A
+        watchdog timer calls conn.cancel() from a separate thread, which
+        sends Postgres a real cancel request for the running query, so the
+        server stops working on it instead of running unbounded.
+        """
         conn = self.connect()
         cursor = conn.cursor()
+
+        timed_out = threading.Event()
+        timer = None
+        if self.timeout:
+            def _abort():
+                timed_out.set()
+                try:
+                    conn.cancel()
+                except Exception:
+                    pass  # best-effort — query may have already finished
+
+            timer = threading.Timer(self.timeout, _abort)
+            timer.daemon = True
+            timer.start()
 
         try:
             cursor.execute(sql)
@@ -319,12 +350,21 @@ class PostgreSQLProvider(DatabaseProvider):
             # Convert to list of lists
             data = [list(row) for row in rows]
 
+            if timed_out.is_set():
+                raise TimeoutError(f"Query exceeded {self.timeout}s and was cancelled")
             return columns, data
 
         except Exception as e:
+            if timed_out.is_set():
+                raise TimeoutError(f"Query exceeded {self.timeout}s and was cancelled")
             raise Exception(f"Query execution failed: {str(e)}")
         finally:
-            cursor.close()
+            if timer:
+                timer.cancel()
+            try:
+                cursor.close()
+            except Exception:
+                pass
             conn.close()
 
     def health_check(self) -> bool:

@@ -225,6 +225,22 @@ class AuditLogDB:
                     """, [cutoff])
                     by_operation = [dict(r) for r in cur.fetchall()]
 
+                    # Invalid SQL ratio: share of sql_generation attempts blocked
+                    # by the validator (non-SELECT / catalog-allowlist violations,
+                    # etc. — see is_select_only() in sql_validator.py). Rows where
+                    # sql_valid is NULL (non-sql_generation operations, or older
+                    # rows predating the column) are excluded from both sides.
+                    cur.execute("""
+                        SELECT
+                            COUNT(*) FILTER (WHERE sql_valid IS NOT NULL) AS sql_checked,
+                            COUNT(*) FILTER (WHERE sql_valid = FALSE)     AS sql_invalid
+                        FROM audit_logs WHERE created_at >= %s
+                    """, [cutoff])
+                    _valid_row = dict(cur.fetchone())
+                    sql_checked = int(_valid_row["sql_checked"])
+                    invalid_sql_count = int(_valid_row["sql_invalid"])
+                    invalid_sql_ratio = round(invalid_sql_count / sql_checked, 4) if sql_checked else 0.0
+
                     cur.execute("""
                         SELECT widget_type,
                                COUNT(*)                         AS calls,
@@ -258,6 +274,9 @@ class AuditLogDB:
                         "by_operation": by_operation,
                         "by_widget": by_widget,
                         "hourly": hourly,
+                        "sql_checked_count": sql_checked,
+                        "invalid_sql_count": invalid_sql_count,
+                        "invalid_sql_ratio": invalid_sql_ratio,
                     }
         except Exception as e:
             print(f"❌ AuditLogDB.get_summary error: {e}")
@@ -267,6 +286,7 @@ class AuditLogDB:
                 "total_input_tokens": 0, "total_output_tokens": 0,
                 "total_tokens": 0, "avg_tokens_per_call": 0.0,
                 "by_model": [], "by_operation": [], "by_widget": [], "hourly": [],
+                "sql_checked_count": 0, "invalid_sql_count": 0, "invalid_sql_ratio": 0.0,
             }
 
     def get_user_stats(self, user_id: str) -> Dict:

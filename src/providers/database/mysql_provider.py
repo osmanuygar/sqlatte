@@ -2,6 +2,7 @@
 MySQL Database Provider - Enhanced with Debug Logging
 """
 
+import threading
 import mysql.connector
 from mysql.connector import Error
 from typing import List, Tuple, Any
@@ -24,6 +25,14 @@ class MySQLProvider(DatabaseProvider):
         self.charset = config.get('charset', 'utf8mb4')
         self.use_unicode = config.get('use_unicode', True)
         self.autocommit = config.get('autocommit', True)
+
+        # Query timeout in seconds — mirrors TrinoProvider/PostgreSQLProvider's
+        # own `timeout`. MySQL has no client-side cancel like psycopg2's
+        # conn.cancel(), so the watchdog in execute_query() opens a short-lived
+        # second connection and issues `KILL QUERY <connection_id>` — the
+        # server-side equivalent — so a runaway query doesn't tie up MySQL
+        # and a thread-pool worker indefinitely.
+        self.timeout = config.get('timeout', 300)
 
         self.connection = None
 
@@ -209,9 +218,45 @@ class MySQLProvider(DatabaseProvider):
             conn.close()
 
     def execute_query(self, sql: str) -> Tuple[List[str], List[List[Any]]]:
-        """Execute SQL query and return results"""
+        """
+        Execute SQL query and return results.
+
+        Aborts (server-side cancel, not just a client-side give-up) if the
+        query is still running after `self.timeout` seconds (default: 300s,
+        see __init__ — overridden via database.mysql.timeout). A watchdog
+        timer opens a throwaway second connection and runs `KILL QUERY
+        <connection_id>`, MySQL's real server-side cancel, so the server
+        stops working on it instead of running unbounded.
+        """
         conn = self.connect()
         cursor = conn.cursor()
+
+        timed_out = threading.Event()
+        timer = None
+        if self.timeout:
+            conn_id = conn.connection_id
+
+            def _abort():
+                timed_out.set()
+                try:
+                    killer = mysql.connector.connect(
+                        host=self.host, port=self.port, database=self.database,
+                        user=self.user, password=self.password, connect_timeout=5,
+                    )
+                    try:
+                        # KILL is an admin statement, not a regular DML/DQL
+                        # one — some server/connector combos reject a bound
+                        # placeholder for it, so the (int, not user-supplied)
+                        # connection id is inlined directly instead.
+                        killer.cursor().execute(f"KILL QUERY {conn_id}")
+                    finally:
+                        killer.close()
+                except Exception:
+                    pass  # best-effort — query may have already finished
+
+            timer = threading.Timer(self.timeout, _abort)
+            timer.daemon = True
+            timer.start()
 
         try:
             # Execute query
@@ -226,12 +271,21 @@ class MySQLProvider(DatabaseProvider):
             # Convert to list of lists
             data = [list(row) for row in rows]
 
+            if timed_out.is_set():
+                raise TimeoutError(f"Query exceeded {self.timeout}s and was cancelled")
             return columns, data
 
         except Error as e:
+            if timed_out.is_set():
+                raise TimeoutError(f"Query exceeded {self.timeout}s and was cancelled")
             raise Exception(f"Query execution failed: {str(e)}")
         finally:
-            cursor.close()
+            if timer:
+                timer.cancel()
+            try:
+                cursor.close()
+            except Exception:
+                pass
             conn.close()
 
     def health_check(self) -> bool:

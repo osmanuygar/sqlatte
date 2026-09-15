@@ -181,6 +181,11 @@ database:
     schema: "${POSTGRES_SCHEMA:public}"
     min_connections: 1
     max_connections: 10
+    # Query timeout in seconds (OPTIONAL, default: 300 = 5 min).
+    # A query still running past this is server-side cancelled (conn.cancel(),
+    # psycopg2's real PQcancel) instead of running unbounded — protects the
+    # server from a runaway MCP/LLM-generated query.
+    timeout: 300
 
   mysql:
     host: "${MYSQL_HOST}"
@@ -189,6 +194,11 @@ database:
     user: "${MYSQL_USER}"
     password: "${MYSQL_PASSWORD}"
     autocommit: true
+    # Query timeout in seconds (OPTIONAL, default: 300 = 5 min).
+    # A query still running past this is server-side cancelled (a throwaway
+    # second connection runs `KILL QUERY <connection_id>`) instead of running
+    # unbounded — protects the server from a runaway MCP/LLM-generated query.
+    timeout: 300
 
   bigquery:
     project_id: "${BQ_PROJECT_ID}"
