@@ -4237,6 +4237,7 @@
                 {label:'Est. Cost',     value:'≈ $' + _estCost, title:'Estimated cost based on per-model pricing. Output tokens are billed at a higher rate than input tokens.'},
                 {label:'Avg In / Call', value:_afmt(d.total_calls ? Math.round(d.total_input_tokens / d.total_calls) : 0)},
                 {label:'Avg Out / Call',value:_afmt(d.total_calls ? Math.round(d.total_output_tokens / d.total_calls) : 0)},
+                {label:'Valid SQL %', value:_afmt((d.sql_checked_count||0) - (d.invalid_sql_count||0)) + ' (' + Math.round((1 - (d.invalid_sql_ratio||0))*100) + '%)', title:'Share of sql_generation attempts that passed the validator (not blocked as non-SELECT / catalog-allowlist violation) out of ' + _afmt(d.sql_checked_count||0) + ' checked.'},
             ].map(c=>`<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px 14px;" ${c.title?`title="${c.title}"`:''}><div style="font-size:11px;color:#707070;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">${c.label}</div><div style="font-size:1.4rem;font-weight:700;color:#f0e8d8;">${c.value}</div></div>`).join('');
             _aBreakdown('audit-model-table',  d.by_model||[],     'model_name',     'total_tokens');
             _aBreakdown('audit-op-table',     d.by_operation||[], 'operation_type', 'total_tokens');
