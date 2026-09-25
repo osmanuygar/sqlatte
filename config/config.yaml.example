@@ -372,6 +372,9 @@ rate_limiting:
 mcp:
   sse:
     enabled: false   # set true to expose /mcp/sse for network MCP clients
+  streamable_http:
+    enabled: false   # set true to expose POST /mcp/http (Streamable HTTP) —
+                     # needed for clients without SSE support, e.g. Microsoft Copilot Studio
 
   # Security alerts: notify when an AI/MCP-generated query looks sensitive.
   # Fires on either trigger — a risk_score above the threshold, or the query

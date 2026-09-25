@@ -296,6 +296,33 @@ app.include_router(ops_agent_routes.router, dependencies=_admin_api_dep)
 app.include_router(alarm_routes.router,     dependencies=_admin_api_dep)
 app.include_router(audit_router,            dependencies=_admin_api_dep)
 
+# MCP Streamable HTTP endpoint — enabled via config: mcp.streamable_http.enabled = true
+# Registered before the /mcp mount below: a Mount claims its whole prefix, so
+# /mcp/http would otherwise be routed into mcp_app and 404 there.
+if config.get("mcp", {}).get("streamable_http", {}).get("enabled", False):
+    try:
+        import contextlib
+        from src.api.mcp_sse import mcp_http_endpoint, mcp_http_manager
+
+        app.add_route("/mcp/http", mcp_http_endpoint, methods=["GET", "POST", "DELETE"])
+
+        # The session manager's task group must live for the app's lifetime.
+        # Startup and shutdown handlers run in the same lifespan task, so the
+        # anyio task group is entered and exited from the same task.
+        _mcp_http_lifespan = contextlib.AsyncExitStack()
+
+        @app.on_event("startup")
+        async def _start_mcp_http():
+            await _mcp_http_lifespan.enter_async_context(mcp_http_manager.run())
+
+        @app.on_event("shutdown")
+        async def _stop_mcp_http():
+            await _mcp_http_lifespan.aclose()
+
+        print("✅ MCP Streamable HTTP endpoint enabled at /mcp/http")
+    except Exception as _mcp_http_err:
+        print(f"⚠️  MCP Streamable HTTP endpoint failed to load: {_mcp_http_err} — continuing without it")
+
 # MCP SSE server — enabled via config: mcp.sse.enabled = true
 if config.get("mcp", {}).get("sse", {}).get("enabled", False):
     try:
