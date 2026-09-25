@@ -5,6 +5,10 @@ Mounts at /mcp:
   GET  /mcp/sse          → SSE connection (clients connect here)
   POST /mcp/messages/    → message endpoint (MCP protocol)
 
+Streamable HTTP (mcp.streamable_http.enabled, registered by app.py):
+  POST /mcp/http         → stateless Streamable HTTP endpoint, for clients
+                           that don't speak SSE (e.g. Microsoft Copilot Studio)
+
 Client config (no local Python needed):
   {
     "mcpServers": {
@@ -26,6 +30,7 @@ import sqlglot
 from sqlglot import exp
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp import types
 from starlette.applications import Starlette
@@ -57,6 +62,19 @@ server = Server("sqlatte")
 _security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 # endpoint path is relative to the mount point (/mcp), so just /messages/
 sse = SseServerTransport("/messages/", security_settings=_security)
+
+# ── Streamable HTTP transport ─────────────────────────────────────────────────
+# Stateless + plain JSON responses: every POST is self-contained (the token is
+# re-validated per request), so there's no MCP session to lose on a pod
+# restart and no long-lived stream for the OKD route/HAProxy to time out.
+# Its task group must be running — app.py enters mcp_http_manager.run() on
+# startup.
+mcp_http_manager = StreamableHTTPSessionManager(
+    app=server,
+    json_response=True,
+    stateless=True,
+    security_settings=_security,
+)
 
 
 # ── Internal API helper ───────────────────────────────────────────────────────
@@ -326,7 +344,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         return [types.TextContent(type="text", text=f"Error: {e}")]
 
 
-# ── SSE connection handler ────────────────────────────────────────────────────
+# ── Connection auth & context (shared by SSE and Streamable HTTP) ─────────────
 
 def _get_self_url() -> str:
     try:
@@ -338,54 +356,81 @@ def _get_self_url() -> str:
         return "http://127.0.0.1:8000"
 
 
-async def handle_sse(request: Request) -> Response:
-    # Token from header or query param
-    token = request.headers.get("x-mcp-token") or request.query_params.get("token")
-    if not token:
-        return Response("Missing x-mcp-token header or ?token= query param", status_code=401)
+class _AuthError(Exception):
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
 
-    # Validate token and create a session — direct DB call, no HTTP
+
+def _request_token(request: Request) -> str | None:
+    return request.headers.get("x-mcp-token") or request.query_params.get("token")
+
+
+def _validate_token(token: str | None) -> dict:
+    """Validate an API token — direct DB call, no HTTP. Raises _AuthError."""
+    if not token:
+        raise _AuthError(401, "Missing x-mcp-token header or ?token= query param")
     try:
         from src.core.config_db import get_config_db
-        from src.plugins.session_manager import auth_session_manager
-
-        config_db = get_config_db()
-        result = config_db.validate_api_token(token)
-
-        if result is None:
-            return Response("Invalid, expired, or revoked token", status_code=401)
-
-        session_id = auth_session_manager.create_session(
-            username=result["username"],
-            db_config=result["db_config"],
-            api_token=token,
-            token_type=result.get("token_type", "query"),
-        )
-        provider = result["db_config"].get("provider", "")
-        sql_dialect = _PROVIDER_TO_DIALECT.get(provider, "")
+        result = get_config_db().validate_api_token(token)
     except Exception as e:
-        logger.error(f"MCP SSE auth error: {e}")
-        return Response("Authentication error", status_code=500)
+        logger.error(f"MCP auth error: {e}")
+        raise _AuthError(500, "Authentication error")
+    if result is None:
+        raise _AuthError(401, "Invalid, expired, or revoked token")
+    return result
 
-    # Fetch active mask rules — direct DB call
+
+def _create_session(token: str, token_info: dict) -> str:
     try:
-        rules = [
+        from src.plugins.session_manager import auth_session_manager
+        return auth_session_manager.create_session(
+            username=token_info["username"],
+            db_config=token_info["db_config"],
+            api_token=token,
+            token_type=token_info.get("token_type", "query"),
+        )
+    except Exception as e:
+        logger.error(f"MCP session creation error: {e}")
+        raise _AuthError(500, "Authentication error")
+
+
+def _load_mask_rules() -> list:
+    """Fetch active mask rules — direct DB call."""
+    try:
+        from src.core.config_db import get_config_db
+        return [
             {"field_pattern": r["field_pattern"], "strategy": r["strategy"]}
-            for r in config_db.list_mask_rules()
+            for r in get_config_db().list_mask_rules()
             if r["enabled"]
         ]
     except Exception:
-        rules = []
+        return []
 
-    self_url = _get_self_url()
 
-    # Set per-connection contextvars and run the MCP server for this connection
+def _set_request_context(session_id: str, token_info: dict) -> None:
+    """Set the per-connection contextvars the tool handlers read."""
+    provider = token_info["db_config"].get("provider", "")
     _ctx_session_id.set(session_id)
-    _ctx_self_url.set(self_url)
-    _ctx_mask_rules.set(rules)
-    _ctx_sql_dialect.set(sql_dialect)
+    _ctx_self_url.set(_get_self_url())
+    _ctx_mask_rules.set(_load_mask_rules())
+    _ctx_sql_dialect.set(_PROVIDER_TO_DIALECT.get(provider, ""))
 
-    logger.info(f"MCP SSE connection: user={result['username']} session={session_id[:8]}...")
+
+# ── SSE connection handler ────────────────────────────────────────────────────
+
+async def handle_sse(request: Request) -> Response:
+    token = _request_token(request)
+    try:
+        token_info = _validate_token(token)
+        session_id = _create_session(token, token_info)
+    except _AuthError as e:
+        return Response(e.message, status_code=e.status_code)
+
+    _set_request_context(session_id, token_info)
+
+    logger.info(f"MCP SSE connection: user={token_info['username']} session={session_id[:8]}...")
 
     async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
         # stateless=True: auth is handled above via token; skip the server-side
@@ -394,6 +439,50 @@ async def handle_sse(request: Request) -> Response:
         await server.run(streams[0], streams[1], server.create_initialization_options(), stateless=True)
 
     return Response()
+
+
+# ── Streamable HTTP handler ───────────────────────────────────────────────────
+
+# sha256(token) → auth session_id. Streamable HTTP is stateless, so without
+# this every tool call would mint a fresh auth session; reusing one per token
+# keeps the session list (and the conversation link on it) stable. The token
+# itself is still re-validated on every request, so revocation is immediate.
+_http_sessions: dict[str, str] = {}
+
+
+def _session_for_token(token: str, token_info: dict) -> str:
+    from src.plugins.session_manager import auth_session_manager
+
+    key = hashlib.sha256(token.encode()).hexdigest()
+    session_id = _http_sessions.get(key)
+    if session_id and auth_session_manager.get_session(session_id):
+        return session_id
+    session_id = _create_session(token, token_info)
+    _http_sessions[key] = session_id
+    return session_id
+
+
+class _StreamableHTTPEndpoint:
+    """Raw ASGI endpoint (a class instance, so Starlette's Route passes it
+    scope/receive/send instead of wrapping it as a request handler)."""
+
+    async def __call__(self, scope, receive, send):
+        request = Request(scope, receive)
+        token = _request_token(request)
+        try:
+            token_info = _validate_token(token)
+            session_id = _session_for_token(token, token_info)
+        except _AuthError as e:
+            await Response(e.message, status_code=e.status_code)(scope, receive, send)
+            return
+
+        # The manager runs the MCP server in a task spawned from this one, so
+        # it inherits these contextvars.
+        _set_request_context(session_id, token_info)
+        await mcp_http_manager.handle_request(scope, receive, send)
+
+
+mcp_http_endpoint = _StreamableHTTPEndpoint()
 
 
 # ── Starlette sub-app mounted at /mcp ─────────────────────────────────────────

@@ -125,6 +125,22 @@ mcp:
 
 Multiple users connect to the same server concurrently — each connection is isolated by token.
 
+### Network Mode — Streamable HTTP (Microsoft Copilot Studio)
+
+Some clients — notably **Microsoft Copilot Studio** — only speak the newer Streamable HTTP transport, not SSE. Enable it alongside (or instead of) SSE; both can run at the same time and share the same tools, token auth, masking rules and audit trail:
+
+```yaml
+mcp:
+  sse:
+    enabled: true
+  streamable_http:
+    enabled: true
+```
+
+The endpoint is `POST /mcp/http`. It is stateless — every request carries the token and is validated on its own, so revoking a token takes effect on the next call.
+
+**Copilot Studio:** add an MCP tool with server URL `https://your-sqlatte-server/mcp/http`, authentication **API key**, type **Header**, header name `x-mcp-token`. Pick **End user credentials** so each user connects with their own token (per-user audit trail and daily limits); **Maker-provided credentials** shares one token — and one audit identity — across everyone. Copilot Studio connects from Microsoft's cloud, so the URL must be reachable from the internet over HTTPS.
+
 ### Local Mode — stdio (Default)
 
 ### Option A — API Token (Recommended)
