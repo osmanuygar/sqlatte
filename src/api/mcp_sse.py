@@ -18,6 +18,9 @@ Client config (no local Python needed):
       }
     }
   }
+
+Auth (mcp.auth.methods): SQLatte API tokens (x-mcp-token / ?token=) and/or
+OAuth Bearer JWTs from an external IdP — see src/api/mcp_oauth.py.
 """
 
 import contextvars
@@ -37,6 +40,8 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Mount, Route
+
+from src.api import mcp_oauth
 
 logger = logging.getLogger(__name__)
 
@@ -357,14 +362,22 @@ def _get_self_url() -> str:
 
 
 class _AuthError(Exception):
-    def __init__(self, status_code: int, message: str):
+    def __init__(self, status_code: int, message: str, oauth_error: str | None = None):
         super().__init__(message)
         self.status_code = status_code
         self.message = message
+        self.oauth_error = oauth_error
 
 
 def _request_token(request: Request) -> str | None:
     return request.headers.get("x-mcp-token") or request.query_params.get("token")
+
+
+def _bearer_token(request: Request) -> str | None:
+    scheme, _, credentials = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() == "bearer" and credentials.strip():
+        return credentials.strip()
+    return None
 
 
 def _validate_token(token: str | None) -> dict:
@@ -382,7 +395,40 @@ def _validate_token(token: str | None) -> dict:
     return result
 
 
-def _create_session(token: str, token_info: dict) -> str:
+def _authenticate(request: Request) -> tuple[dict, str | None, str]:
+    """Authenticate via OAuth Bearer JWT or SQLatte API token, whichever the
+    request carries and mcp.auth.methods allows. Raises _AuthError.
+
+    Returns (token_info, api_token, session_key). api_token is None for OAuth
+    — it's only used to look up per-token query budgets. session_key
+    identifies the caller for Streamable HTTP session reuse: per user+profile
+    for OAuth, since access tokens are refreshed far more often than API tokens.
+    """
+    methods = mcp_oauth.auth_methods()
+    bearer = _bearer_token(request)
+
+    if bearer and "oauth" in methods:
+        try:
+            info = mcp_oauth.validate_bearer(bearer)
+        except mcp_oauth.OAuthError as e:
+            raise _AuthError(e.status_code, e.message, oauth_error=e.error)
+        return info, None, f"oauth:{info['username']}:{info['profile']}"
+
+    token = _request_token(request)
+    if "token" not in methods or (not token and "oauth" in methods):
+        raise _AuthError(401, "Missing or unsupported credentials — send an OAuth Bearer token")
+    info = _validate_token(token)
+    return info, token, hashlib.sha256(token.encode()).hexdigest()
+
+
+def _auth_error_response(request: Request, e: _AuthError) -> Response:
+    headers = {}
+    if e.status_code in (401, 403) and "oauth" in mcp_oauth.auth_methods():
+        headers["WWW-Authenticate"] = mcp_oauth.www_authenticate(request, e.oauth_error)
+    return Response(e.message, status_code=e.status_code, headers=headers)
+
+
+def _create_session(token: str | None, token_info: dict) -> str:
     try:
         from src.plugins.session_manager import auth_session_manager
         return auth_session_manager.create_session(
@@ -421,12 +467,11 @@ def _set_request_context(session_id: str, token_info: dict) -> None:
 # ── SSE connection handler ────────────────────────────────────────────────────
 
 async def handle_sse(request: Request) -> Response:
-    token = _request_token(request)
     try:
-        token_info = _validate_token(token)
-        session_id = _create_session(token, token_info)
+        token_info, api_token, _ = _authenticate(request)
+        session_id = _create_session(api_token, token_info)
     except _AuthError as e:
-        return Response(e.message, status_code=e.status_code)
+        return _auth_error_response(request, e)
 
     _set_request_context(session_id, token_info)
 
@@ -443,21 +488,21 @@ async def handle_sse(request: Request) -> Response:
 
 # ── Streamable HTTP handler ───────────────────────────────────────────────────
 
-# sha256(token) → auth session_id. Streamable HTTP is stateless, so without
-# this every tool call would mint a fresh auth session; reusing one per token
-# keeps the session list (and the conversation link on it) stable. The token
-# itself is still re-validated on every request, so revocation is immediate.
+# session key (see _authenticate) → auth session_id. Streamable HTTP is
+# stateless, so without this every tool call would mint a fresh auth session;
+# reusing one per caller keeps the session list (and the conversation link on
+# it) stable. Credentials are still re-validated on every request, so
+# revocation is immediate.
 _http_sessions: dict[str, str] = {}
 
 
-def _session_for_token(token: str, token_info: dict) -> str:
+def _session_for(key: str, api_token: str | None, token_info: dict) -> str:
     from src.plugins.session_manager import auth_session_manager
 
-    key = hashlib.sha256(token.encode()).hexdigest()
     session_id = _http_sessions.get(key)
     if session_id and auth_session_manager.get_session(session_id):
         return session_id
-    session_id = _create_session(token, token_info)
+    session_id = _create_session(api_token, token_info)
     _http_sessions[key] = session_id
     return session_id
 
@@ -468,12 +513,11 @@ class _StreamableHTTPEndpoint:
 
     async def __call__(self, scope, receive, send):
         request = Request(scope, receive)
-        token = _request_token(request)
         try:
-            token_info = _validate_token(token)
-            session_id = _session_for_token(token, token_info)
+            token_info, api_token, key = _authenticate(request)
+            session_id = _session_for(key, api_token, token_info)
         except _AuthError as e:
-            await Response(e.message, status_code=e.status_code)(scope, receive, send)
+            await _auth_error_response(request, e)(scope, receive, send)
             return
 
         # The manager runs the MCP server in a task spawned from this one, so
