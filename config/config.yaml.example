@@ -376,6 +376,43 @@ mcp:
     enabled: false   # set true to expose POST /mcp/http (Streamable HTTP) —
                      # needed for clients without SSE support, e.g. Microsoft Copilot Studio
 
+  # Auth for /mcp/sse and /mcp/http. "token" = SQLatte API tokens
+  # (x-mcp-token header / ?token=), "oauth" = Bearer JWTs from an external IdP
+  # (Entra ID, Keycloak, any OIDC provider). SQLatte only validates tokens;
+  # the IdP issues them. Default: [token].
+  auth:
+    methods: [token]          # e.g. [token, oauth] or [oauth]
+    oauth:
+      # Entra ID v2: https://login.microsoftonline.com/<tenant-id>/v2.0
+      # Keycloak:    https://<host>/realms/<realm>
+      issuer: ""
+      jwks_url: ""            # empty → discovered from <issuer>/.well-known/openid-configuration
+      audience: ""            # Entra: the API app's client id or api://<app-id>; string or list
+      algorithms: [RS256]
+      required_scopes: []     # e.g. [mcp.access] — checked against the scp/scope claim
+      username_claim: [preferred_username, upn, email, sub]   # first non-empty wins
+      groups_claim: [groups, roles]                           # Entra "groups" holds object IDs, not names
+      resource_url: ""        # public URL of this MCP server, e.g. https://sqlatte.example.com/mcp
+                              # (empty → derived from the request)
+      authorization_servers: []   # empty → [issuer]
+      # A JWT carries no DB connection, so users are mapped to a DB profile by
+      # group/role — first match wins, then default_profile; no match → 403.
+      group_profiles: []
+      #  - group: "SQLatte-Marketing"
+      #    profile: marketing
+      default_profile: null
+      token_type: query       # "query" or "discovery"; a profile may override it
+      db_profiles: {}         # same shape as the top-level "database:" section
+      #  marketing:
+      #    provider: trino
+      #    trino:
+      #      host: trino.example.com
+      #      port: 443
+      #      user: ${SQLATTE_MARKETING_DB_USER}
+      #      password: ${SQLATTE_MARKETING_DB_PASSWORD}
+      #      catalog: hive
+      #      schema: marketing
+
   # Security alerts: notify when an AI/MCP-generated query looks sensitive.
   # Fires on either trigger — a risk_score above the threshold, or the query
   # referencing a column matching an enabled MCP Masking field_pattern.

@@ -323,6 +323,16 @@ if config.get("mcp", {}).get("streamable_http", {}).get("enabled", False):
     except Exception as _mcp_http_err:
         print(f"⚠️  MCP Streamable HTTP endpoint failed to load: {_mcp_http_err} — continuing without it")
 
+# MCP OAuth protected-resource metadata (RFC 9728) — enabled via config:
+# "oauth" in mcp.auth.methods. MCP clients find it through the
+# WWW-Authenticate header on a 401 and use it to discover the IdP.
+if "oauth" in (config.get("mcp", {}).get("auth", {}).get("methods") or []):
+    from src.api.mcp_oauth import handle_protected_resource_metadata
+
+    app.add_route("/.well-known/oauth-protected-resource", handle_protected_resource_metadata, methods=["GET"])
+    app.add_route("/.well-known/oauth-protected-resource/{path:path}", handle_protected_resource_metadata, methods=["GET"])
+    print("✅ MCP OAuth enabled — metadata at /.well-known/oauth-protected-resource")
+
 # MCP SSE server — enabled via config: mcp.sse.enabled = true
 if config.get("mcp", {}).get("sse", {}).get("enabled", False):
     try:
