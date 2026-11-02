@@ -139,7 +139,34 @@ mcp:
 
 The endpoint is `POST /mcp/http`. It is stateless — every request carries the token and is validated on its own, so revoking a token takes effect on the next call.
 
-**Copilot Studio:** add an MCP tool with server URL `https://your-sqlatte-server/mcp/http`, authentication **API key**, type **Header**, header name `x-mcp-token`. Pick **End user credentials** so each user connects with their own token (per-user audit trail and daily limits); **Maker-provided credentials** shares one token — and one audit identity — across everyone. Copilot Studio connects from Microsoft's cloud, so the URL must be reachable from the internet over HTTPS.
+**Copilot Studio:** add an MCP tool with server URL `https://your-sqlatte-server/mcp/http`, authentication **API key**, type **Header**, header name `x-mcp-token`. Pick **End user credentials** so each user connects with their own token (per-user audit trail and daily limits); **Maker-provided credentials** shares one token — and one audit identity — across everyone. Copilot Studio connects from Microsoft's cloud, so the URL must be reachable from the internet over HTTPS. With [OAuth](#network-mode--oauth-entra-id--keycloak) enabled, pick authentication **OAuth 2.0** instead and point it at your Entra ID app — users sign in with their own account, no SQLatte token to hand out.
+
+### Network Mode — OAuth (Entra ID / Keycloak)
+
+`/mcp/sse` and `/mcp/http` can also accept OAuth Bearer tokens from an external identity provider (Entra ID, Keycloak, any OIDC provider). SQLatte is only the resource server: the IdP issues the access token, SQLatte validates it against the IdP's JWKS (signature, `iss`, `aud`, `exp`, required scopes). Since a JWT carries no database connection, users are mapped to a DB profile by their groups/roles claim:
+
+```yaml
+mcp:
+  auth:
+    methods: [token, oauth]        # default [token]; [oauth] disables API tokens on these endpoints
+    oauth:
+      issuer: "https://login.microsoftonline.com/<tenant-id>/v2.0"   # Keycloak: https://<host>/realms/<realm>
+      audience: "api://<app-client-id>"
+      required_scopes: [mcp.access]
+      group_profiles:              # first match wins, then default_profile; no match → 403
+        - group: "<entra-group-object-id>"
+          profile: marketing
+      default_profile: null
+      db_profiles:                 # same shape as the top-level "database:" section
+        marketing:
+          provider: trino
+          trino: { host: trino.example.com, port: 443, user: ..., password: ..., catalog: hive, schema: marketing }
+```
+
+Clients find the IdP on their own: a request without credentials gets `401` with `WWW-Authenticate: Bearer resource_metadata="…"`, pointing at the RFC 9728 metadata served at `/.well-known/oauth-protected-resource`. The full option list (JWKS URL, username/groups claims, `resource_url` behind a proxy, …) is in `config/config.yaml.example`.
+
+- **Entra ID:** set `"accessTokenAcceptedVersion": 2` in the app manifest — otherwise tokens carry the v1 issuer (`https://sts.windows.net/<tenant>/`) and fail the `iss` check. The `groups` claim holds group **object IDs**, not names.
+- Per-token daily query limits apply to SQLatte API tokens only, not to OAuth users.
 
 ### Local Mode — stdio (Default)
 
@@ -808,7 +835,7 @@ Multi-layer validation on every query:
 
 ### Credential Isolation
 
-Database credentials are stored server-side. MCP clients and embedded widgets authenticate with short-lived tokens — they never hold raw credentials. Revoking access means invalidating the token, not rotating passwords.
+Database credentials are stored server-side. MCP clients and embedded widgets authenticate with short-lived tokens — SQLatte API tokens, or OAuth access tokens from your identity provider — they never hold raw credentials. Revoking access means invalidating the token (or removing the user from the IdP group), not rotating passwords.
 
 ### Encrypted Configuration Storage
 

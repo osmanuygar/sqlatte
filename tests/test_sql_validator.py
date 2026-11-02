@@ -214,6 +214,26 @@ class TestCatalogAllowlistViolation:
         assert reason is not None
         assert "some_other_catalog" in reason
 
+    def test_cte_reference_is_not_treated_as_unqualified_table(self):
+        sql = (
+            "WITH a AS (SELECT id FROM s3_edr_accesslog.edr.access_log), "
+            "b AS (SELECT id FROM a) SELECT * FROM b LIMIT 10"
+        )
+        assert catalog_allowlist_violation(sql, "trino", CATALOG_MAP) is None
+
+    def test_disallowed_catalog_inside_cte_is_rejected(self):
+        sql = "WITH x AS (SELECT * FROM some_other_catalog.edr.t) SELECT * FROM x"
+        reason = catalog_allowlist_violation(sql, "trino", CATALOG_MAP)
+        assert reason is not None
+        assert "some_other_catalog" in reason
+
+    def test_unqualified_table_inside_cte_is_rejected(self):
+        reason = catalog_allowlist_violation(
+            "WITH x AS (SELECT * FROM access_log) SELECT * FROM x", "trino", CATALOG_MAP
+        )
+        assert reason is not None
+        assert "fully qualified" in reason
+
 
 class TestQualifiedTableAllowlistViolation:
     """The describe-path (bare table_name) counterpart to catalog_allowlist_violation."""
