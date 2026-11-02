@@ -423,8 +423,13 @@ def catalog_allowlist_violation(
         return None  # same "can't judge it" stance as is_select_only's AST path
 
     allowed = {c.lower(): [s.lower() for s in schemas] for c, schemas in catalog_schema_map.items()}
+    cte_names = {cte.alias_or_name.lower() for cte in stmts[0].find_all(exp.CTE)}
 
     for table in stmts[0].find_all(exp.Table):
+        # A bare reference to a CTE defined in this query isn't a real table —
+        # the tables inside the CTE body are still checked as they're walked.
+        if not table.catalog and not table.db and table.name.lower() in cte_names:
+            continue
         cat = table.catalog
         if not cat:
             return (
