@@ -278,3 +278,131 @@ def test_protected_resource_metadata(client):
         "scopes_supported": ["mcp.access"],
         "bearer_methods_supported": ["header"],
     }
+
+
+# ── Per-user DB credential binding ────────────────────────────────────────────
+
+class _BindingDB:
+    def __init__(self):
+        self.rows = {}
+
+    def set_oauth_binding(self, identity, username, credentials):
+        self.rows[identity] = credentials
+
+    def get_oauth_binding(self, identity):
+        return self.rows.get(identity)
+
+    def delete_oauth_binding(self, identity):
+        return self.rows.pop(identity, None) is not None
+
+
+@pytest.fixture
+def binding_db(monkeypatch, auth_config):
+    auth_config["oauth"]["credential_binding"] = {"enabled": True}
+    db = _BindingDB()
+    monkeypatch.setattr("src.core.config_db.get_config_db", lambda: db)
+    monkeypatch.setattr(mcp_oauth, "_verify_db_credentials", lambda cfg: None)
+    return db
+
+
+@pytest.fixture
+def link_client(binding_db):
+    app = Starlette(routes=[Route("/mcp/oauth/link", mcp_oauth.handle_link,
+                                  methods=["GET", "POST", "DELETE"])])
+    with TestClient(app) as c:
+        yield c
+
+
+def _auth(**claims):
+    return {"Authorization": f"Bearer {_make_jwt(**claims)}"}
+
+
+def test_unlinked_user_gets_account_not_linked(binding_db):
+    with pytest.raises(mcp_oauth.OAuthError) as e:
+        mcp_oauth.validate_bearer(_make_jwt())
+    assert e.value.status_code == 403
+    assert e.value.error == "account_not_linked"
+
+
+def test_linked_user_queries_with_own_credentials(binding_db):
+    binding_db.rows[f"{ISSUER}:u-1"] = {"user": "alice", "password": "s3cret"}
+    info = mcp_oauth.validate_bearer(_make_jwt())
+    assert info["db_config"]["trino"] == {"catalog": "hive", "user": "alice", "password": "s3cret"}
+    # the shared profile in config must not be mutated
+    assert "user" not in OAUTH_SETTINGS["db_profiles"]["marketing"]["trino"]
+
+
+def test_binding_is_per_identity(binding_db):
+    binding_db.rows[f"{ISSUER}:u-1"] = {"user": "alice", "password": "a"}
+    with pytest.raises(mcp_oauth.OAuthError):
+        mcp_oauth.validate_bearer(_make_jwt(sub="u-2"))
+
+
+def test_entra_identity_uses_tenant_and_oid(binding_db):
+    binding_db.rows["tenant-1:oid-1"] = {"user": "alice", "password": "a"}
+    info = mcp_oauth.validate_bearer(_make_jwt(tid="tenant-1", oid="oid-1", sub="app-scoped"))
+    assert info["db_config"]["trino"]["user"] == "alice"
+
+
+def test_binding_off_keeps_shared_profile(auth_config):
+    info = mcp_oauth.validate_bearer(_make_jwt())
+    assert info["db_config"]["trino"] == {"catalog": "hive"}
+
+
+def test_binding_unsupported_provider_is_server_error(binding_db):
+    with pytest.raises(mcp_oauth.OAuthError) as e:
+        mcp_oauth.validate_bearer(_make_jwt(groups=["SQLatte-Ops"]))
+    assert e.value.status_code == 500
+
+
+def test_link_status_and_unlink_roundtrip(link_client, binding_db):
+    assert link_client.get("/mcp/oauth/link", headers=_auth()).json() == \
+        {"linked": False, "db_user": None, "profile": "marketing"}
+
+    resp = link_client.post("/mcp/oauth/link", headers=_auth(),
+                            json={"user": "alice", "password": "s3cret"})
+    assert resp.status_code == 200
+    assert resp.json() == {"linked": True, "db_user": "alice", "profile": "marketing"}
+    assert "s3cret" not in resp.text
+    assert binding_db.rows[f"{ISSUER}:u-1"] == {"user": "alice", "password": "s3cret"}
+
+    assert link_client.get("/mcp/oauth/link", headers=_auth()).json()["db_user"] == "alice"
+    assert link_client.delete("/mcp/oauth/link", headers=_auth()).json() == {"linked": False}
+    assert binding_db.rows == {}
+
+
+def test_link_verifies_credentials_before_saving(link_client, binding_db, monkeypatch):
+    def reject(cfg):
+        raise RuntimeError("401 Unauthorized for user alice at radar.internal")
+    monkeypatch.setattr(mcp_oauth, "_verify_db_credentials", reject)
+
+    resp = link_client.post("/mcp/oauth/link", headers=_auth(),
+                            json={"user": "alice", "password": "wrong"})
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "invalid_credentials"
+    assert "radar.internal" not in resp.text      # driver error is not echoed
+    assert binding_db.rows == {}
+
+
+def test_link_verifies_with_profile_target_and_user_credentials(link_client, monkeypatch):
+    seen = []
+    monkeypatch.setattr(mcp_oauth, "_verify_db_credentials", lambda cfg: seen.append(cfg))
+    link_client.post("/mcp/oauth/link", headers=_auth(), json={"user": "alice", "password": "pw"})
+    assert seen[0]["trino"] == {"catalog": "hive", "user": "alice", "password": "pw"}
+
+
+def test_link_requires_valid_bearer(link_client):
+    assert link_client.post("/mcp/oauth/link", json={"user": "a", "password": "b"}).status_code == 401
+    bad = {"Authorization": f"Bearer {_make_jwt(key=_OTHER_KEY)}"}
+    assert link_client.get("/mcp/oauth/link", headers=bad).status_code == 401
+
+
+def test_link_rejects_incomplete_body(link_client):
+    resp = link_client.post("/mcp/oauth/link", headers=_auth(), json={"user": "alice"})
+    assert resp.status_code == 400
+
+
+def test_link_disabled_without_binding(auth_config):
+    app = Starlette(routes=[Route("/mcp/oauth/link", mcp_oauth.handle_link, methods=["GET"])])
+    with TestClient(app) as c:
+        assert c.get("/mcp/oauth/link", headers=_auth()).status_code == 404

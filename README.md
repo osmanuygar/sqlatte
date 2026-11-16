@@ -168,6 +168,24 @@ Clients find the IdP on their own: a request without credentials gets `401` with
 - **Entra ID:** set `"accessTokenAcceptedVersion": 2` in the app manifest — otherwise tokens carry the v1 issuer (`https://sts.windows.net/<tenant>/`) and fail the `iss` check. The `groups` claim holds group **object IDs**, not names.
 - Per-token daily query limits apply to SQLatte API tokens only, not to OAuth users.
 
+**Per-user database credentials (Trino).** By default every OAuth user of a profile shares that profile's DB account. To make each user query as themselves, enable credential binding — the profile then only supplies host/catalog/schema:
+
+```yaml
+    oauth:
+      credential_binding:
+        enabled: true
+```
+
+Each user links their own DB account once, authenticating with their OAuth access token:
+
+```bash
+curl -X POST https://sqlatte.example.com/mcp/oauth/link \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"user": "jane.doe", "password": "…"}'
+```
+
+SQLatte test-connects with the credentials before saving them (encrypted in the config DB, keyed by the token's `oid`/`sub`). `GET` on the same URL shows link status, `DELETE` unlinks. Until a user has linked, MCP calls return `403 account_not_linked`. This needs a stable `config_db.encryption_key`.
+
 ### Local Mode — stdio (Default)
 
 ### Option A — API Token (Recommended)

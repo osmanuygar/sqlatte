@@ -402,6 +402,14 @@ mcp:
       #    profile: marketing
       default_profile: null
       token_type: query       # "query" or "discovery"; a profile may override it
+      # Per-user DB credentials: when enabled, the profile only supplies the
+      # connection target (host, catalog, …) and each user links their own DB
+      # username/password to their OAuth identity once via POST /mcp/oauth/link
+      # (Bearer token + JSON {"user": …, "password": …}). Queries then run under
+      # the user's own DB account; the password is stored encrypted in the
+      # config DB. Unlinked users get 403 account_not_linked. Trino only.
+      credential_binding:
+        enabled: false
       db_profiles: {}         # same shape as the top-level "database:" section
       #  marketing:
       #    provider: trino

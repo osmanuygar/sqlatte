@@ -333,6 +333,14 @@ if "oauth" in (config.get("mcp", {}).get("auth", {}).get("methods") or []):
     app.add_route("/.well-known/oauth-protected-resource/{path:path}", handle_protected_resource_metadata, methods=["GET"])
     print("✅ MCP OAuth enabled — metadata at /.well-known/oauth-protected-resource")
 
+    # Per-user DB credential binding — users link their own DB account to their
+    # OAuth identity. Registered before the /mcp mount so it isn't shadowed.
+    if (config.get("mcp", {}).get("auth", {}).get("oauth", {}).get("credential_binding") or {}).get("enabled"):
+        from src.api.mcp_oauth import handle_link
+
+        app.add_route("/mcp/oauth/link", handle_link, methods=["GET", "POST", "DELETE"])
+        print("✅ MCP OAuth credential binding enabled — /mcp/oauth/link")
+
 # MCP SSE server — enabled via config: mcp.sse.enabled = true
 if config.get("mcp", {}).get("sse", {}).get("enabled", False):
     try:

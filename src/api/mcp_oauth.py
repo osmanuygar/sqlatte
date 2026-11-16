@@ -169,14 +169,12 @@ def decode_token(token: str, settings: dict) -> dict:
         raise OAuthError(500, "Authentication error", error="server_error")
 
 
-def validate_bearer(token: str) -> dict:
-    """Validate an OAuth access token and map it to a DB profile.
+def _authenticate_claims(token: str, settings: dict) -> dict:
+    """Verify the token and resolve who the caller is and which profile they get.
 
-    Returns the same shape as ConfigDB.validate_api_token() plus "profile":
-      {"username": …, "db_config": …, "token_type": …, "profile": …}
+    Returns {"claims", "username", "identity", "profile_name", "profile"}.
     Raises OAuthError.
     """
-    settings = oauth_settings()
     claims = decode_token(token, settings)
 
     missing = set(_as_list(settings.get("required_scopes"))) - _token_scopes(claims)
@@ -200,14 +198,186 @@ def validate_bearer(token: str) -> dict:
         logger.error(f"MCP OAuth: profile '{profile_name}' is not defined in mcp.auth.oauth.db_profiles")
         raise OAuthError(500, "Authentication error", error="server_error")
 
-    db_config = deepcopy(profile)
-    token_type = db_config.pop("token_type", None) or settings.get("token_type", "query")
     return {
+        "claims": claims,
         "username": str(username),
+        "identity": _identity(claims),
+        "profile_name": profile_name,
+        "profile": profile,
+    }
+
+
+def validate_bearer(token: str) -> dict:
+    """Validate an OAuth access token and map it to a DB profile.
+
+    Returns the same shape as ConfigDB.validate_api_token() plus "profile":
+      {"username": …, "db_config": …, "token_type": …, "profile": …}
+
+    With credential_binding enabled the profile only supplies the connection
+    target (host, catalog, …); the user/password come from the caller's own
+    linked DB account. Raises OAuthError.
+    """
+    settings = oauth_settings()
+    auth = _authenticate_claims(token, settings)
+
+    db_config = deepcopy(auth["profile"])
+    token_type = db_config.pop("token_type", None) or settings.get("token_type", "query")
+
+    if binding_enabled():
+        _apply_binding(db_config, auth)
+
+    return {
+        "username": auth["username"],
         "db_config": db_config,
         "token_type": token_type,
-        "profile": profile_name,
+        "profile": auth["profile_name"],
     }
+
+
+# ── Per-user DB credential binding ───────────────────────────────────────────
+#
+# The access token proves *who* the caller is but carries no DB password. With
+# mcp.auth.oauth.credential_binding.enabled, each user links their own DB
+# username/password to their OAuth identity once (POST /mcp/oauth/link); from
+# then on their MCP queries run under those credentials. The password is
+# stored Fernet-encrypted in the config DB, never in the token or config file.
+
+# Providers whose connection block takes user/password credentials.
+_BINDABLE_PROVIDERS = {"trino"}
+
+
+def binding_enabled() -> bool:
+    return bool((oauth_settings().get("credential_binding") or {}).get("enabled"))
+
+
+def _identity(claims: dict) -> str:
+    """Stable per-user key. Entra's oid (scoped by tenant) beats sub, which is
+    only unique per application there."""
+    tid = claims.get("tid")
+    uid = claims.get("oid") or claims.get("sub")
+    return f"{tid}:{uid}" if tid else f"{claims.get('iss')}:{uid}"
+
+
+def _provider_block(db_config: dict) -> dict:
+    provider = db_config.get("provider")
+    if provider not in _BINDABLE_PROVIDERS:
+        logger.error(f"MCP OAuth credential binding does not support provider '{provider}'")
+        raise OAuthError(500, "Authentication error", error="server_error")
+    return db_config.setdefault(provider, {})
+
+
+def _apply_binding(db_config: dict, auth: dict) -> None:
+    from src.core.config_db import get_config_db
+
+    try:
+        creds = get_config_db().get_oauth_binding(auth["identity"])
+    except Exception as e:
+        logger.error(f"MCP OAuth binding lookup failed: {e}")
+        raise OAuthError(500, "Authentication error", error="server_error")
+
+    block = _provider_block(db_config)
+    if not creds:
+        logger.warning(f"MCP OAuth: user={auth['username']} has no linked DB account")
+        raise OAuthError(
+            403,
+            "Your database account is not linked yet. Link it once with "
+            "POST /mcp/oauth/link (Bearer token, JSON body {\"user\": ..., \"password\": ...}).",
+            error="account_not_linked",
+        )
+    block["user"] = creds["user"]
+    block["password"] = creds["password"]
+
+
+def _verify_db_credentials(db_config: dict) -> None:
+    """Open a real connection with the supplied credentials. Raises on failure."""
+    from src.providers.database.trino_provider import TrinoProvider
+
+    provider = TrinoProvider(db_config[db_config["provider"]])
+    conn = provider.connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchall()
+        cursor.close()
+    finally:
+        conn.close()
+
+
+def _bearer_from(request: Request) -> str | None:
+    scheme, _, credentials = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() == "bearer" and credentials.strip():
+        return credentials.strip()
+    return None
+
+
+async def handle_link(request: Request) -> JSONResponse:
+    """GET: link status · POST: link/replace DB credentials · DELETE: unlink.
+
+    Authenticated with the same OAuth Bearer token as the MCP endpoints, so a
+    user can only ever manage their own binding.
+    """
+    from starlette.concurrency import run_in_threadpool
+
+    if not binding_enabled() or "oauth" not in auth_methods():
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    def _fail(status: int, message: str, error: str = "invalid_token") -> JSONResponse:
+        headers = {}
+        if status in (401, 403):
+            headers["WWW-Authenticate"] = www_authenticate(request, error)
+        return JSONResponse({"error": error, "message": message}, status_code=status, headers=headers)
+
+    bearer = _bearer_from(request)
+    if not bearer:
+        return _fail(401, "Send an OAuth Bearer token")
+    try:
+        auth = await run_in_threadpool(_authenticate_claims, bearer, oauth_settings())
+    except OAuthError as e:
+        return _fail(e.status_code, e.message, e.error)
+
+    from src.core.config_db import get_config_db
+    db = get_config_db()
+    identity = auth["identity"]
+
+    if request.method == "GET":
+        creds = await run_in_threadpool(db.get_oauth_binding, identity)
+        return JSONResponse({"linked": bool(creds), "db_user": creds["user"] if creds else None,
+                             "profile": auth["profile_name"]})
+
+    if request.method == "DELETE":
+        removed = await run_in_threadpool(db.delete_oauth_binding, identity)
+        logger.warning(f"MCP OAuth: user={auth['username']} unlinked DB account (removed={removed})")
+        return JSONResponse({"linked": False})
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _fail(400, "Body must be JSON: {\"user\": ..., \"password\": ...}", "invalid_request")
+    user = str((body or {}).get("user") or (body or {}).get("username") or "").strip()
+    password = str((body or {}).get("password") or "")
+    if not user or not password:
+        return _fail(400, "Both user and password are required", "invalid_request")
+
+    db_config = deepcopy(auth["profile"])
+    db_config.pop("token_type", None)
+    try:
+        block = _provider_block(db_config)
+    except OAuthError as e:
+        return _fail(e.status_code, e.message, e.error)
+    block["user"], block["password"] = user, password
+
+    try:
+        await run_in_threadpool(_verify_db_credentials, db_config)
+    except Exception as e:
+        # Never echo the driver error back verbatim — it can contain the host
+        # and user; the details go to the server log (without the password).
+        logger.warning(f"MCP OAuth link rejected for user={auth['username']} db_user={user}: {type(e).__name__}")
+        return _fail(400, "The database rejected these credentials", "invalid_credentials")
+
+    await run_in_threadpool(db.set_oauth_binding, identity, auth["username"],
+                            {"user": user, "password": password})
+    logger.warning(f"MCP OAuth: user={auth['username']} linked DB account db_user={user} profile={auth['profile_name']}")
+    return JSONResponse({"linked": True, "db_user": user, "profile": auth["profile_name"]})
 
 
 # ── RFC 9728 protected-resource metadata ─────────────────────────────────────

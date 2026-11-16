@@ -200,6 +200,19 @@ class ConfigDB:
             )
         """)
 
+        # Per-user database credentials linked to an OAuth identity (MCP OAuth
+        # credential binding). The credentials JSON is Fernet-encrypted.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS oauth_db_bindings (
+                id SERIAL PRIMARY KEY,
+                identity VARCHAR(512) UNIQUE NOT NULL,
+                username VARCHAR(255),
+                credentials_encrypted TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         self.conn.commit()
         cursor.close()
 
@@ -1505,6 +1518,50 @@ class ConfigDB:
         ph = "%s" if self.db_type == "postgresql" else "?"
         cursor = self.conn.cursor()
         cursor.execute(f"DELETE FROM mcp_mask_rules WHERE id = {ph}", (rule_id,))
+        affected = cursor.rowcount
+        self.conn.commit()
+        cursor.close()
+        return affected > 0
+
+    # ── OAuth → DB credential bindings ────────────────────────────────────────
+
+    def set_oauth_binding(self, identity: str, username: str, credentials: Dict[str, Any]) -> None:
+        """Link (or re-link) an OAuth identity to its own DB credentials."""
+        ph = "%s" if self.db_type == "postgresql" else "?"
+        encrypted = self._encrypt(json.dumps(credentials))
+        cursor = self.conn.cursor()
+        cursor.execute(
+            f"""
+            INSERT INTO oauth_db_bindings (identity, username, credentials_encrypted)
+            VALUES ({ph}, {ph}, {ph})
+            ON CONFLICT (identity) DO UPDATE SET
+                username = excluded.username,
+                credentials_encrypted = excluded.credentials_encrypted,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (identity, username, encrypted),
+        )
+        self.conn.commit()
+        cursor.close()
+
+    def get_oauth_binding(self, identity: str) -> Optional[Dict[str, Any]]:
+        """Decrypted credentials linked to an OAuth identity, or None."""
+        ph = "%s" if self.db_type == "postgresql" else "?"
+        cursor = self.conn.cursor()
+        cursor.execute(
+            f"SELECT credentials_encrypted FROM oauth_db_bindings WHERE identity = {ph}",
+            (identity,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        if not row:
+            return None
+        return json.loads(self._decrypt(row[0]))
+
+    def delete_oauth_binding(self, identity: str) -> bool:
+        ph = "%s" if self.db_type == "postgresql" else "?"
+        cursor = self.conn.cursor()
+        cursor.execute(f"DELETE FROM oauth_db_bindings WHERE identity = {ph}", (identity,))
         affected = cursor.rowcount
         self.conn.commit()
         cursor.close()
