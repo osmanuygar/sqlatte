@@ -159,9 +159,10 @@ def decode_token(token: str, settings: dict) -> dict:
             options={"require": ["exp", "iss", "aud"]},
         )
     except jwt.ExpiredSignatureError:
+        logger.warning("MCP OAuth token rejected: access token expired")
         raise OAuthError(401, "Access token expired")
     except (jwt.PyJWKClientError, jwt.InvalidTokenError) as e:
-        logger.info(f"MCP OAuth token rejected: {e}")
+        logger.warning(f"MCP OAuth token rejected: {type(e).__name__}: {e}")
         raise OAuthError(401, "Invalid access token")
     except Exception as e:
         logger.error(f"MCP OAuth validation error: {e}")
